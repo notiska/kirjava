@@ -25,7 +25,7 @@ from ...version import Version
 if typing.TYPE_CHECKING:
     from .method import Code
 
-logger = logging.getLogger("najd.jvm.classfile.attributes.code")
+logger = logging.getLogger("kirjava.classfile.attributes.code")
 
 
 class StackMapTable(AttributeInfo):

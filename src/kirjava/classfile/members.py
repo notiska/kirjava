@@ -13,7 +13,7 @@ if typing.TYPE_CHECKING:
     from . import ClassFile
     from .attributes import AttributeInfo
 
-logger = logging.getLogger("najd.jvm.classfile.members")
+logger = logging.getLogger("kirjava.classfile.members")
 
 
 class MethodInfo(Method):
