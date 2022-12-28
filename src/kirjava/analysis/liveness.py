@@ -85,13 +85,15 @@ class Liveness:
                 before = entries.get(block, None)
                 live = live.copy()
 
-                for exit in trace.states[block].values():
-                    for index, _, _, read in reversed(exit.local_accesses):
-                        if read:
-                            live.add(index)
-                        elif index in live:
-                            live.remove(index)
-                    break  # Local accesses do not vary in different states, so this only needs to be done once
+                # Check if the block was visited, if not, we don't need to worry about the liveness for it
+                if block in trace.states:
+                    for exit in trace.states[block].values():
+                        for index, _, _, read in reversed(exit.local_accesses):
+                            if read:
+                                live.add(index)
+                            elif index in live:
+                                live.remove(index)
+                        break  # Local accesses do not vary in different states, so this only needs to be done once
 
                 # Exception edges assume that the exception might have been thrown anywhere in the block, and
                 # therefore we also need to copy the liveness state from the handler's entry to the current block's
