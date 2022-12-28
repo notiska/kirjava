@@ -29,7 +29,7 @@ In [1]: import kirjava
 ```
 Kirjava bases all information (currently just classes) around the `kirjava.environment.Environment` class. Calling `kirjava.initialise` simply loads the skelton
 classes as of right now, it may do more in the future however.  
-Note: it is not always necessary to perform this step, if the assembler (or Java) gives errors though, you may want to.
+**Note:** it is not always necessary to perform this step, if the assembler (or Java) gives errors though, you may want to.
 
 ### Reading classfiles
 ```python3
@@ -59,7 +59,7 @@ Out[5]: (<FieldInfo(name='field', type=int) at 7ffab12254e0>,)
 
 ### Editing methods
 This is a more major feature (which still requires a lot of work unfortunately).  
-To abstract away some of the annoyances of creating valid bytecode, we can use `kirava.analysis.Graph`:
+To abstract away some of the annoyances of creating valid bytecode, we can use `kirava.analysis.InsnGraph`:
 ```python3
 In [6]: graph = kirjava.analysis.InsnGraph.disassemble(cf.get_method("test"))
    ...: graph.blocks  # The basic blocks that the disassembler created
@@ -72,7 +72,7 @@ Out[6]:
  <InsnBlock(label=7, instructions=[iinc 1 by 1]) at 7ffab14d66b0>)
 ```
 
-... transformations to the graph can be done here.
+... transformations to the graph and blocks can be done here.
 
 To reassemble the method:
 ```python3
