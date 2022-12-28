@@ -10,8 +10,8 @@ from typing import List
 
 from . import Instruction
 from ... import types
-from ...analysis import Error
-from ...analysis.trace import _check_reference_type, Entry, State
+from ...abc import Error, TypeChecker
+from ...analysis.trace import BlockInstruction, State
 from ...types import BaseType
 
 
@@ -24,16 +24,17 @@ class ReturnInstruction(Instruction, ABC):
 
     type_: BaseType = ...
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         # TODO: Check method return type too?
         if self.type_ != types.void_t:  # Void returns accept no value
             if self.type_ is None:
-                entry = state.pop()
-                errors.append(_check_reference_type(offset, self, entry.type))
+                entry = state.pop(source)
+                if not checker.check_reference(entry.type):
+                    errors.append(Error(source, "expected reference type, got %s" % entry.type))
             else:
-                entry, *_ = state.pop(self.type_.internal_size, tuple_=True)
-                if not self.type_.can_merge(entry.type):
-                    errors.append(Error(offset, self, "expected type %s, got %s" % (self.type_, entry.type)))
+                entry, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
+                if not checker.check_merge(self.type_, entry.type):
+                    errors.append(Error(source, "expected type %s, got %s" % (self.type_, entry.type)))
 
         # if state.stack:
         #     raise ValueError("Stack is not empty after return.")
@@ -49,11 +50,18 @@ class AThrowInstruction(Instruction, ABC):
         types.nullpointerexception_t,
     )
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        entry = state.pop()
-        errors.append(_check_reference_type(offset, self, entry.type))  # TODO: Check extends exception?
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        entry = state.pop(source)
         state.stack.clear()
-        state.push(entry)
+
+        # TODO: We might be able to work out the lower bound from the exception ranges?
+        if not checker.check_merge(types.throwable_t, entry.type):
+            errors.append(Error(source, "expected type java/lang/Throwable, got %s" % entry.type))
+            state.push(source, checker.merge(types.throwable_t, entry.type), parents=entry.parents, merges=(entry,))
+        elif entry.type == types.null_t:  # FIXME: This might throw things off the in the future?
+            state.push(source, types.nullpointerexception_t, parents=(entry,))
+        else:
+            state.push(source, entry)
 
 
 class MonitorEnterInstruction(Instruction, ABC):
@@ -61,9 +69,14 @@ class MonitorEnterInstruction(Instruction, ABC):
     An instruction that enters a monitor for an object.
     """
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        entry = state.pop()
-        errors.append(_check_reference_type(offset, self, entry.type))
+    throws = (
+        types.nullpointerexception_t,
+    )
+
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        entry = state.pop(source)
+        if not checker.check_reference(entry.type):
+            errors.append(Error(source, "expected reference type, got %s" % entry.type))
 
 
 class MonitorExitInstruction(Instruction, ABC):
@@ -71,6 +84,12 @@ class MonitorExitInstruction(Instruction, ABC):
     An instruction that exits a monitor for an object.
     """
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        entry = state.pop()
-        errors.append(_check_reference_type(offset, self, entry.type))
+    throws = (
+        types.illegalmonitorstateexception_t,
+        types.nullpointerexception_t,
+    )
+
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        entry = state.pop(source)
+        if not checker.check_reference(entry.type):
+            errors.append(Error(source, "expected reference type, got %s" % entry.type))

@@ -13,32 +13,32 @@
 Kirjava - A Java bytecode library for Python.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 # Expose API
-from . import abc, classfile, environment, jarfile, skeleton
+from . import abc, analysis, classfile, environment, jarfile, skeleton
 from .abc import *
 from .classfile import *
 from .environment import *
 from .jarfile import *
 from .version import *
 
+_initialised = False
 
-def initialise(load_skeletons: bool = True, skeletons_version: Version = Version.get("11")) -> Environment:
+
+def initialise(load_skeletons: bool = True, skeletons_version: Version = Version.get("11")) -> None:
     """
     Initialises Kirjava.
 
     :param load_skeletons: Loads the skeleton classes.
     :param skeletons_version: The Java version to load the skeleton classes for.
-    :return: The initialised environment.
     """
 
-    if Environment.INSTANCE is not None:
-        return Environment.INSTANCE
+    global _initialised
 
-    environ = Environment()
+    if _initialised:
+        return
+    _initialised = True
 
     if load_skeletons:
         skeleton.load_skeletons(skeletons_version)
-
-    return environ

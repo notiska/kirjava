@@ -5,13 +5,13 @@ __all__ = (
 )
 
 """
-Java class skeletons in case Kirjava can't find any default Java libraries.
+Java class skeletons in case we haven't loaded any Java libraries (rt.jar specifically).
 """
 
 import json
 import logging
 import os
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 
 from .. import _argument
 from ..abc import Class, Field, Method
@@ -29,9 +29,6 @@ def load_skeletons(version: Version = Version.get("11")) -> None:
 
     :param version: The Java version to load the skeleton classes for.
     """
-
-    if Environment.INSTANCE is None:
-        raise Exception("Kirjava environment is not yet initialised.")
 
     logger.debug("Loading skeletons for version %r..." % version.name)
 
@@ -83,7 +80,7 @@ def load_skeletons(version: Version = Version.get("11")) -> None:
     if skipped:
         logger.debug(" - Skipped %i class(es) due to unresolved names." % skipped)
 
-    Environment.INSTANCE.register_classes(*classes.values())
+    Environment.register_classes(*classes.values())
 
     logger.debug("Found %i skeleton class(es)." % len(classes))
 
@@ -145,8 +142,18 @@ class _SkeletonClass(Class):
         return self._super
 
     @property
+    def super_name(self) -> Union[str, None]:
+        if self._super is None:
+            return None
+        return self._super.name
+
+    @property
     def interfaces(self) -> Tuple["_SkeletonClass", ...]:
         return self._interfaces
+
+    @property
+    def interface_names(self) -> Tuple[str, ...]:
+        return tuple(interface.name for interface in self._interfaces)
 
     @property
     def methods(self) -> Tuple["_SkeletonMethod", ...]:
@@ -212,6 +219,9 @@ class _SkeletonClass(Class):
         self._is_annotation = is_annotation
         self._is_enum = is_enum
         self._is_module = is_module
+
+    def __repr__(self) -> str:
+        return "<_SkeletonClass(name=%r) at %x>" % (self._name, id(self))
 
     def get_method(
             self,
@@ -363,6 +373,9 @@ class _SkeletonField(Field):
         self._is_synthetic = is_synthetic
         self._is_enum = is_enum
 
+    def __repr__(self) -> str:
+        return "_SkeletonField(name=%r, type=%s) at %x>" % (self._name, self._type, id(self))
+
 
 class _SkeletonMethod(Method):
     """
@@ -479,3 +492,10 @@ class _SkeletonMethod(Method):
         self._is_abstract = is_abstract
         self._is_native = is_native
         self._is_synthetic = is_synthetic
+
+    def __repr__(self) -> str:
+        return "<_SkeletonMethod(name=%r, argument_types=(%s), return_type=%s) at %x>" % (
+            self._name,
+            ", ".join(map(str, self._argument_types)) + ("," if len(self._argument_types) == 1 else ""),
+            self._return_type, id(self),
+        )

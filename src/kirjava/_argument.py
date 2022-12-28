@@ -14,6 +14,34 @@ from .types import BaseType, ReferenceType
 from .types.reference import ClassOrInterfaceType
 
 
+def get_class_constant(argument: Union[Class_, ReferenceType, Class, str]) -> Class_:
+    """
+    Converts the argument into a class constant.
+
+    :param argument: The argument to convert.
+    :return: The class constant.
+    """
+
+    if isinstance(argument, Class_):
+        return argument
+    elif isinstance(argument, ClassOrInterfaceType):
+        return Class_(argument.name)
+    elif isinstance(argument, ReferenceType):
+        return Class_(descriptor.to_descriptor(argument))
+    elif isinstance(argument, Class):
+        return Class_(argument.name)
+    elif isinstance(argument, str):
+        try:
+            type_ = descriptor.parse_field_descriptor(argument)
+            if not isinstance(type_, ReferenceType):
+                raise Exception
+            return get_class_constant(type_)
+        except Exception:
+            return Class_(argument)
+    else:
+        raise TypeError("Don't know how to convert %r into a class constant." % argument.__class__)
+
+
 def get_reference_type(argument: Union[ReferenceType, Class, Class_, str]) -> ReferenceType:
     """
     Converts the argument into a reference type.
@@ -24,13 +52,16 @@ def get_reference_type(argument: Union[ReferenceType, Class, Class_, str]) -> Re
 
     if isinstance(argument, ReferenceType):
         return argument
-    elif isinstance(argument, Class) or isinstance(argument, Class_):  # Lol, I know :p
+    elif isinstance(argument, Class):
         return argument.get_type()
+    elif isinstance(argument, Class_):  # Lol, I know :p
+        return argument.get_actual_type()
     elif isinstance(argument, str):
         try:
             type_ = descriptor.parse_field_descriptor(argument)
             if not isinstance(type_, ReferenceType):
                 raise Exception
+            return type_
         except Exception:
             return ClassOrInterfaceType(argument)
     else:

@@ -1,1270 +1,1098 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "Block", "Edge", "Graph",
-    "ExceptionEdge", "FallthroughEdge", "JumpEdge",
+    "InsnBlock", "InsnReturnBlock", "InsnRethrowBlock",
+    "JumpEdge", "FallthroughEdge", "ExceptionEdge",
+    "InsnGraph",
 )
 
 """
-Method control flow.
+A control flow graph containing the Java instructions (with offsets removed, so somewhat abstracted).
 """
 
 import itertools
 import logging
-import operator
-from abc import abstractmethod, ABC
-from io import BytesIO
-from typing import Any, Dict, List, Set, Tuple, Union
+import typing
+from typing import Dict, List, Set, Tuple, Union
 
-from . import Error, VerifyError
-from .trace import Entry, State
-from .. import types
-from ..classfile import instructions, ClassFile
+from ._block import *
+from ._edge import *
+from .liveness import Liveness
+from .trace import BlockInstruction, Entry, State, Trace
+from .verifier import FullTypeChecker
+from .. import _argument, types
+from ..abc import Class, Edge, Error, Graph, VerifyError
+from ..classfile import instructions
 from ..classfile.attributes.code import StackMapTable
 from ..classfile.attributes.method import Code
-from ..classfile.constants import Class
-from ..classfile.instructions import Instruction, MetaInstruction
-from ..classfile.instructions.flow import ConditionalJumpInstruction, JumpInstruction
-from ..classfile.instructions.other import ReturnInstruction
-from ..classfile.members import MethodInfo
-from ..environment import Environment
-from ..types import ReferenceType, VerificationType
-from ..types.reference import ClassOrInterfaceType
+from ..classfile.constants import Class as Class_
+from ..classfile.instructions import (
+    MetaInstruction, Instruction, ConditionalJumpInstruction,
+    JumpInstruction, JsrInstruction, RetInstruction,
+    ReturnInstruction,
+)
+from ..types import ReferenceType
+from ..types.verification import Uninitialized
+
+if typing.TYPE_CHECKING:
+    from ..classfile.members import MethodInfo
 
 logger = logging.getLogger("kirjava.analysis.graph")
 
 
-class Block:
+class InsnGraph(Graph):
     """
-    An (extended) basic block, as technically any instruction could jump to an exception handler or the rethrow block.
-    """
-
-    def __init__(self, label: int, cfg: Union["Graph", None] = None) -> None:
-        """
-        :param label: The unique label of this block.
-        :param cfg: The control flow graph that this block belongs to.
-        """
-
-        self.label = label
-        if cfg is not None:
-            cfg.add(self)
-
-        self.instructions: List[Instruction] = []
-
-        self.fallthrough_edge: Union[FallthroughEdge, None] = None
-        self.jump_edges: List[JumpEdge] = []
-        self.exception_edges: List[ExceptionEdge] = []
-
-    def __repr__(self) -> str:
-        return "<Block(label=%i) at %x>" % (self.label, id(self))
-
-    def __eq__(self, other: Any) -> bool:
-        return isinstance(other, Block) and other.label == self.label and other.instructions == self.instructions
-
-    def __hash__(self) -> int:
-        return self.label
-
-    def copy(self) -> "Block":
-        """
-        Creates a copy of this block.
-
-        :return: The copied block.
-        """
-
-        block = Block(self.label)
-        block.instructions.extend(self.instructions)    
-        # It doesn't make sense to copy the edges here as they'll still reference the old blocks, so don't, as they'll
-        # be copied later (at least in the assemble method) and copying them here would just be a waste of time.
-        block.fallthrough_edge = self.fallthrough_edge
-        block.jump_edges.extend(self.jump_edges)
-        block.exception_edges.extend(self.exception_edges)
-
-        return block
-
-    # ------------------------------ Public API ------------------------------ #
-
-    def add(self, instruction: Union[MetaInstruction, Instruction], block: Union["Block", None] = None) -> Instruction:
-        """
-        Adds an instruction to this block.
-
-        :param instruction: The instruction to add.
-        :param block: The block to jump to, if adding a jump instruction.
-        :return: The same instruction.
-        """
-
-        if isinstance(instruction, MetaInstruction):
-            instruction = instruction()  # Should throw at this point, if invalid
-
-        if isinstance(instruction, JumpInstruction):
-            if block is None:
-                raise ValueError("Expected a value for parameter 'block' if adding a jump instruction.")
-            self.jump(block, instruction)
-            return instruction
-
-        self.instructions.append(instruction)  # Otherwise, just add to insns
-
-        return instruction
-
-    def fallthrough(self, to: "Block") -> "FallthroughEdge":
-        """
-        Creates a fallthrough edge to the provided block and sets it to this block's fallthrough edge.
-
-        :param to: The block to fallthrough to.
-        :return: The fallthrough edge that was created.
-        """
-
-        self.fallthrough_edge = FallthroughEdge(self, to)
-        return self.fallthrough_edge
-
-    def jump(self, to: "Block", instruction: Union[Instruction, MetaInstruction, None] = None) -> "JumpEdge":
-        """
-        Creates a jump edge to the provided block and adds it to this block's jump edges.
-
-        :param to: The block to jump to.
-        :param instruction: The jump instruction to use.
-        :return: The jump edge that was created.
-        """
-
-        if instruction is None:
-            instruction = instructions.goto()
-        if isinstance(instruction, MetaInstruction):
-            instruction = instruction(0)
-        jump_edge = JumpEdge(self, to, instruction)
-        if not jump_edge in self.jump_edges:
-            self.jump_edges.append(jump_edge)
-        return jump_edge
-
-
-class Edge(ABC):
-    """
-    An edge between two vertices (blocks) in the control flow graph.
-    """
-
-    def __init__(self, from_: Block, to: Block) -> None:
-        """
-        :param from_: The block we're coming from.
-        :param to: The block we're going to.
-        """
-
-        self.from_ = from_
-        self.to = to
-
-    def __repr__(self) -> str:
-        return "<%s(from=%r, to=%r) at %x>" % (self.__class__.__name__, self.from_, self.to, id(self))
-
-    def __eq__(self, other: Any) -> bool:
-        return other.__class__ == self.__class__ and other.from_ == self.from_ and other.to == self.to
-
-    def __hash__(self) -> int:
-        return hash((self.from_, self.to))
-
-    @abstractmethod
-    def copy(self) -> "Edge":
-        """
-        Creates a copy of this edge.
-
-        :return: The copied edge.
-        """
-
-        ...
-
-
-class JumpEdge(Edge):
-    """
-    An edge caused by an explicit jump in the bytecode.
-    """
-
-    def __init__(self, from_: Block, to: Block, jump: JumpInstruction) -> None:
-        """
-        :param jump: The jump instruction responsible for the jump.
-        """
-
-        super().__init__(from_, to)
-
-        self.jump = jump
-
-    def __repr__(self) -> str:
-        return "<JumpEdge(from=%r, to=%r, jump=%r) at %x>" % (self.from_, self.to, self.jump, id(self))
-
-    def copy(self) -> "JumpEdge":
-        return JumpEdge(self.from_, self.to, self.jump)
-
-
-class SwitchEdge(JumpEdge):
-    """
-    A switch-specific jump edge.
-    """
-
-    def __init__(self, from_: Block, to: Block, jump: JumpInstruction, index: Union[int, None] = None) -> None:
-        """
-        :param index: The index/value in the switch statement, None for the default.
-        """
-
-        super().__init__(from_, to, jump)
-
-        self.index = index
-
-    def __repr__(self) -> str:
-        if self.index is None:
-            return "<SwitchEdge(from=%r, to=%r, jump=%r, index=<default>) at %x>" % (
-                self.from_, self.to, self.jump, id(self),
-            )
-        return "<SwitchEdge(from=%r, to=%r, jump=%r, index=%i) at %x>" % (
-            self.from_, self.to, self.jump, self.index, id(self),
-        )
-
-    def copy(self) -> "SwitchEdge":
-        return SwitchEdge(self.from_, self.to, self.jump, self.index)
-
-
-class FallthroughEdge(Edge):
-    """
-    An edge caused by a block fallthrough.
-    """
-
-    def copy(self) -> "FallthroughEdge":
-        return FallthroughEdge(self.from_, self.to)
-
-
-class ExceptionEdge(Edge):
-    """
-    An edge caused by an exception handler.
-    """
-
-    def __init__(self, from_: Block, to: Block, exception: Class, explicit: bool = False) -> None:
-        """
-        :param exception: The class of the exception being caught.
-        :param explicit: Is it an explicit throw?
-        """
-
-        super().__init__(from_, to)
-
-        self.exception = exception
-        self.explicit = explicit
-
-    def __repr__(self) -> str:
-        return "<ExceptionEdge(from=%r, to=%r, exception=%s, explicit=%s) at %x>" % (
-            self.from_, self.to, self.exception, self.explicit, id(self),
-        )
-
-    def copy(self) -> "ExceptionEdge":
-        return ExceptionEdge(self.from_, self.to, self.exception, self.explicit)
-
-
-class Graph:
-    """
-    A control flow graph used to represent methods' code.
+    A control flow graph that contains Java instructions.
     """
 
     @classmethod
-    def disassemble(cls, method_info: MethodInfo) -> "Graph":  # TODO: Accept Code attribute, not MethodInfo
+    def disassemble(cls, method_info: "MethodInfo") -> "InsnGraph":
         """
-        Creates a control flow graph from the given method and instructions.
+        Disassembles a method's code and returns the disassembled graph.
 
-        :param method_info: The method.
-        :param instructions_: The instructions in the method.
-        :return: The control flow graph.
+        :param method_info: The method to disassemble.
+        :return: The created graph.
         """
 
-        if not Code.name_ in method_info.attributes:
-            raise ValueError("Method %r has no code." % method_info)
-        code, = method_info.attributes[Code.name_]
+        if method_info.is_abstract:
+            raise ValueError("Method %s is abstract, cannot disassemble." % method_info)
+        if method_info.is_native:
+            raise ValueError("Method %s is native, cannot disassemble." % method_info)
 
-        instructions_ = sorted(code.instructions.items(), key=operator.itemgetter(0))
+        code, *_ = method_info.attributes.get(Code.name_, (None,))
+        if code is None:
+            raise ValueError("Method %s has no code, cannot disassemble." % method_info)
 
-        graph = cls(method_info)
         logger.debug("Disassembling method %r:" % str(method_info))
 
-        # Find jump targets
+        graph = cls(method_info)
 
-        targets: Set[int] = set()
+        # Find jump and exception targets, copy instructions into temporary list
 
-        # Add the exception handlers to the jump targets to attempt to create separate blocks
-        for exception_handler in code.exception_table:
-            targets.add(exception_handler.start_pc)
-            targets.add(exception_handler.end_pc)
-            targets.add(exception_handler.handler_pc)
+        # Different bytecode offsets that we'll use for splitting the code into blocks
+        jump_targets: Set[int] = set()
+        handler_targets: Set[int] = set()
+        exception_bounds: Set[int] = set()
 
-        for offset, instruction in instructions_:
+        # has_subroutines = False
+
+        for offset, instruction in code.instructions.items():
+            if isinstance(instruction, JumpInstruction):  # Add jump offsets for jump instructions
+                if isinstance(instruction, RetInstruction):
+                    ...  # has_subroutines = True
+                else:
+                    jump_targets.add(offset + instruction.offset)
+
+            elif instruction == instructions.tableswitch:  # Add jump offsets for tableswitch instructions
+                jump_targets.add(offset + instruction.default)
+                for offset_ in instruction.offsets:
+                    jump_targets.add(offset + offset_)
+
+            elif instruction == instructions.lookupswitch:  # Add jump offsets for lookupswitch instructions
+                jump_targets.add(offset + instruction.default)
+                for offset_ in instruction.offsets.values():
+                    jump_targets.add(offset + offset_)
+
+        for handler in code.exception_table:  # Add exception handler targets and bounds
+            handler_targets.add(handler.handler_pc)
+            exception_bounds.add(handler.start_pc)
+            exception_bounds.add(handler.end_pc)
+
+        logger.debug(" - Found %i jump target(s), %i exception handler target(s) and %i exception bound(s)." % (
+            len(jump_targets), len(handler_targets), len(exception_bounds),
+        ))
+
+        # Create basic blocks and edges
+
+        starting: Dict[int, InsnBlock] = {}
+        forward_jumps: Dict[int, List[JumpEdge]] = {}  # Forward reference jump targets
+
+        graph.entry_block = InsnBlock(graph, 0)
+        block = graph.entry_block
+
+        for offset, instruction in sorted(code.instructions.items(), key=lambda item: item[0]):
+            # Don't want to modify the original as some instructions are not immutable (due to their operands).
+            instruction = instruction.copy()
+
+            if offset in exception_bounds:
+                # If the current block has instructions, we need to create a new one, otherwise, don't even if it is
+                # the entry block as this block is not jumped to.
+                if block.instructions:
+                    previous = block
+                    block = InsnBlock(graph, block.label + 1)
+
+                    graph.connect(FallthroughEdge(previous, block))
+
+            if offset in jump_targets or offset in handler_targets:  # Is this block jumped to at any point?
+                # Don't create a new block if the current one isn't empty as that's wasteful. The exception to this
+                # however is the entry block, as by definition, it must dominate all other blocks in the graph.
+                if block.instructions or block == graph.entry_block:
+                    previous = block
+                    block = InsnBlock(graph, block.label + 1)
+
+                    graph.connect(FallthroughEdge(previous, block))
+
+            if not block.instructions:
+                starting[offset] = block
+
+                # Check if any previous jumps reference this starting offset
+                if offset in forward_jumps:
+                    for edge in forward_jumps[offset]:
+                        # Technically we aren't allowed to set the edge's to, but we can get away with it here as we
+                        # haven't yet added it to the graph, though generally, these should be immutable.
+                        edge.to = block
+                        graph.connect(edge)
+
+                    del forward_jumps[offset]
+
+            block.instructions.append(instruction)
+
+            # Check if it's an instruction that breaks the control flow and create a new block (adding edges if 
+            # necessary).
             if isinstance(instruction, JumpInstruction):
-                targets.add(offset + instruction.offset)
+                if isinstance(instruction, RetInstruction):
+                    graph.connect(RetEdge(block, None, instruction))
+
+                elif not isinstance(instruction, JsrInstruction):  # jsr instructions are handled more specifically
+                    to = starting.get(offset + instruction.offset, None)
+                    if to is not None:
+                        graph.connect(JumpEdge(block, to, instruction))
+                    else:  # Mark the offset as a forward jump edge
+                        forward_jumps.setdefault(offset + instruction.offset, []).append(
+                            JumpEdge(block, None, instruction),
+                        )
+
+                previous = block
+                block = InsnBlock(graph, block.label + 1)
+
+                if isinstance(instruction, JsrInstruction):
+                    to = starting.get(offset + instruction.offset, None)
+                    if to is not None:
+                        graph.connect(JsrEdge(previous, to, block, instruction))
+                    else:
+                        forward_jumps.setdefault(offset + instruction.offset, []).append(
+                            JsrEdge(previous, None, block, instruction),
+                        )
+
+                elif isinstance(instruction, ConditionalJumpInstruction):
+                    graph.connect(FallthroughEdge(previous, block))
+
+                instruction.offset = None  # It doesn't make sense for a jump to have an offset at this point
 
             elif instruction == instructions.tableswitch:
-                targets.add(offset + instruction.default)
-                for offset_ in instruction.offsets:
-                    targets.add(offset + offset_)
+                to = starting.get(offset + instruction.default, None)
+                if to is not None:
+                    graph.connect(SwitchEdge(block, to, instruction, None))
+                else:
+                    forward_jumps.setdefault(offset + instruction.default, []).append(
+                        SwitchEdge(block, None, instruction, None),
+                    )
+
+                for index, offset_ in enumerate(instruction.offsets):
+                    to = starting.get(offset + offset_, None)
+                    if to is not None:
+                        graph.connect(SwitchEdge(block, to, instruction, index))
+                    else:
+                        forward_jumps.setdefault(offset + offset_, []).append(
+                            SwitchEdge(block, None, instruction, index),
+                        )
+
+                instruction.default = None
+                instruction.offsets.clear()
+
+                block = InsnBlock(graph, block.label + 1)
 
             elif instruction == instructions.lookupswitch:
-                targets.add(offset + instruction.default)
-                for offset_ in instruction.offsets.values():
-                    targets.add(offset + offset_)
+                to = starting.get(offset + instruction.default, None)
+                if to is not None:
+                    graph.connect(SwitchEdge(block, to, instruction, None))
+                else:
+                    forward_jumps.setdefault(offset + instruction.default, []).append(
+                        SwitchEdge(block, None, instruction, None),
+                    )
 
-        logger.debug(" - Found %i jump target(s)." % len(targets))
+                for value, offset_ in instruction.offsets.items():
+                    to = starting.get(offset + offset_, None)
+                    if to is not None:
+                        graph.connect(SwitchEdge(block, to, instruction, value))
+                    else:
+                        forward_jumps.setdefault(offset + offset_, []).append(
+                            SwitchEdge(block, None, instruction, value),
+                        )
 
-        # Create the basic blocks
+                instruction.default = None
+                instruction.offsets.clear()
 
-        current = Block(0)
-        # Starting bytecode offset to block mapping (and the reverse too, because I'm lazy)
-        starting: Dict[Union[int, Block], Union[Block, int]] = {0: current, current: 0}
-        ending: Dict[Block, int] = {}  # Block to their (inclusive) ending offsets, only if they have a jump
-        fallthroughs: Dict[Block, Block] = {}  # Blocks to their fallthrough blocks
+                block = InsnBlock(graph, block.label + 1)
 
-        for offset, instruction in instructions_:
-            if offset in targets:
-                # Don't create a new block if the current one isn't empty as that's wasteful
-                if current.instructions:
-                    previous = current
-                    current = Block(current.label + 1)
+            # FIXME: Exception coverage issues with empty blocks and the return + athrow instructions themselves
+            elif isinstance(instruction, ReturnInstruction):
+                block.instructions.pop()  # Don't include the return instruction
+                graph.connect(FallthroughEdge(block, graph._return_block))
 
-                    fallthroughs[previous] = current
+                block = InsnBlock(graph, block.label + 1)
 
-            # This is the first instruction, so add the current block to the starting offsets with the current offset
-            if not current.instructions:
-                starting[offset] = current
-                starting[current] = offset
-            current.instructions.append(instruction)
-
-            if (
-                isinstance(instruction, JumpInstruction) or
-                isinstance(instruction, ReturnInstruction) or
-                instruction in (instructions.athrow, instructions.tableswitch, instructions.lookupswitch)
-            ):
-                ending[current] = offset
-
-                previous = current
-                current = Block(current.label + 1)
-
-                fallthroughs[previous] = current
-
-        logger.debug(" - Found %i basic block(s)." % (len(starting) // 2))
-
-        # Remove the jumps and create edges
-
-        for start_offset, block in starting.items():
-            if not isinstance(block, Block):  # We also iterate the reverse mappings
-                continue
-
-            graph.blocks.append(block)
-            last = block.instructions[-1]
-            explicit_throw = False
-
-            if isinstance(last, JumpInstruction):
+            elif instruction == instructions.athrow:
                 block.instructions.pop()
+                graph.connect(FallthroughEdge(block, graph._rethrow_block))
 
-                block.jump_edges.append(JumpEdge(block, starting[ending[block] + last.offset], last))
-                if isinstance(last, ConditionalJumpInstruction):  # Need to add the fallthrough edge too
-                    block.fallthrough_edge = FallthroughEdge(block, fallthroughs[block])
+                block = InsnBlock(graph, block.label + 1)
 
-            elif last == instructions.tableswitch:
-                block.instructions.pop()
+        if forward_jumps:
+            unbound = sum(map(len, forward_jumps.values()))
+            if unbound:
+                logger.debug(" - %i unbound forward jump(s)!" % unbound)
 
-                block.jump_edges.append(SwitchEdge(block, starting[ending[block] + last.default], last, None))
-                for index, offset in enumerate(last.offsets):
-                    block.jump_edges.append(SwitchEdge(block, starting[ending[block] + offset], last, index))
+        # Add exception edges via the code's exception table
 
-            elif last == instructions.lookupswitch:
-                block.instructions.pop()
+        for start, block in starting.items():
+            for index, handler in enumerate(code.exception_table):
+                if handler.start_pc <= start < handler.end_pc:
+                    type_ = handler.catch_type.get_actual_type() if handler.catch_type is not None else None
+                    graph.connect(ExceptionEdge(block, starting[handler.handler_pc], index, type_))
 
-                block.jump_edges.append(SwitchEdge(block, starting[ending[block] + last.default], last, None))
-                for value, offset in last.offsets.items():
-                    block.jump_edges.append(SwitchEdge(block, starting[ending[block] + offset], last, value))
+        # Remove any empty blocks that might have been generated (due to return insns, etc...)
 
-            elif last == instructions.athrow:
-                ...  # FIXME: We can't actually know it's explicit until we check the type I guess :(
-                # block.instructions.pop()
-                # explicit_throw = True
+        to_remove: Set[InsnBlock] = set()
+        removed = 0
 
-            elif not isinstance(last, ReturnInstruction):  # Add a fallthrough edge to the next block, if it doesn't break the control flow
-                block.fallthrough_edge = FallthroughEdge(block, fallthroughs[block])
+        for block in graph._blocks:
+            if not block.instructions and block != graph.entry_block:
+                to_remove.add(block)
 
-            # Add exception edges
-            found_handler = False
-            if block in fallthroughs:
-                end_offset = starting.get(fallthroughs[block], offset)
-            else:  # If there's no fallthrough we'll use the final offset
-                end_offset = offset
-            for exception_handler in code.exception_table:
-                if start_offset >= exception_handler.start_pc and end_offset <= exception_handler.end_pc:
-                    found_handler = True
-                    exception = exception_handler.catch_type
-                    if exception is None:
-                        exception = Class("java/lang/Throwable")
+        while to_remove:
+            for block in to_remove:
+                target: Union[InsnBlock, None] = None
+                cant_remove = False
+                cant_remove_yet = False
 
-                    block.exception_edges.append(ExceptionEdge(
-                        block, starting[exception_handler.handler_pc], exception,  # explicit_throw,
-                    ))
+                for edge in graph.out_edges(block):
+                    if isinstance(edge, ExceptionEdge):
+                        continue
+                    elif edge.to != block and edge.to in to_remove:  
+                        cant_remove_yet = True
+                        break
+                    elif target is not None:
+                        cant_remove = True
+                        break
+                    target = edge.to
+
+                if cant_remove:  # This block is an intermediary, so we can't remove it
+                    to_remove.remove(block)
+                    break  # FIXME: Some more analysis on the types of edges could be done however
+                elif cant_remove_yet:
+                    continue
+                if not graph.remove(block):  # Might be removing key blocks (i.e. return/rethrow blocks), so don't.
+                    to_remove.remove(block)
+                    break
+
+                # Reconnect the in edges with their new to block being the to block from the out edge (lol I should 
+                # probably use better/correct terminology, I need to touch up on my graph theory I guess).
+                for edge in graph.in_edges(block):
+                    graph.disconnect(edge)
+                    edge.to = target  # Kinda evil doing this, but it's faster than creating a new edge
+                    graph.connect(edge)
+
+                removed += 1
+                break
+
+        logger.debug(" - Removed %i empty block(s)." % removed)
+
+        graph.fix_labels()
+        logger.debug(" - Found %i basic block(s)." % len(graph._blocks))
 
         return graph
 
-    def __init__(self, method_info: MethodInfo) -> None:
-        """
-        :param method_info: The method whose code this graph represents.
-        :param blocks: A mapping of labels to their blocks in the method's code.
-        """
+    def __init__(self, method: "MethodInfo") -> None:
+        self.method = method
 
-        self.method_info = method_info
+        super().__init__(method, InsnReturnBlock(self), InsnRethrowBlock(self))
 
-        # self.entry_block = EntryBlock(self)
-        # self.return_block = ReturnBlock(self)
-        # self.rethrow_block = RethrowBlock(self)
-
-        self.blocks: List[Block] = []
-
-    # ------------------------------ Utility ------------------------------ #
+    # ------------------------------ Internal methods ------------------------------ #
 
     def _write_block(
             self,
-            block: Block,
             offset: int,
-            max_label: int,
+            block: InsnBlock,
             code: Code,
-            blocks: Dict[int, Block],
-            offsets: Dict[Block, Tuple[int, int]],
-            jumps: Dict[int, Tuple[Edge, ...]],
             errors: List[Error],
-    ) -> Tuple[int, int]:
+            offsets: Dict[InsnBlock, List[Tuple[int, int, Dict[int, int]]]],
+            jumps: Dict[int, JumpEdge],
+            switches: Dict[int, List[SwitchEdge]],
+            exceptions: List[ExceptionEdge],
+            temporary: Set[InsnBlock],
+            inlined: Dict[Edge, Tuple[int, int]],
+            inline: bool = False,
+    ) -> int:
         """
-        :param block: The block to write:
-        :param offset: The current bytecode offset.
-        :param max_label: The current maximum block label.
-        :param code: The code we're writing to.
-        :param blocks: A copy of all the blocks in this graph.
-        :param offsets: Blocks to their start/end offsets.
-        :param jumps: Jumps given their offsets and jump edges.
-        :param errors: The list of errors that occurred when assembling.
-        :return: The new bytecode offset and the new max label.
+        A helper method for writing individual blocks to the code's instructions.
         """
 
-        # Check if the previously written block has a fallthrough edge, and check if we need to generate a goto in its
-        # place. We only need to generate a goto if we haven't already written the fallthrough block, as otherwise we'll
-        # have already generated one.
+        inline = inline and block.inline
+        if block in offsets and not inline:  # The block is already written, so nothing to do here
+            return offset
+        elif not block.instructions:  # No instructions means nothing to write
+            return offset
 
         if offsets:  # Have we actually written any yet?
-            previous = next(reversed(offsets.keys()))
-            if (
-                previous.fallthrough_edge is not None and
-                previous.fallthrough_edge.to != block and
-                not previous.fallthrough_edge.to in offsets and
-                # Check that we also haven't already done this lol cos sometimes we can end up writing two gotos
-                not previous.fallthrough_edge in jumps.get(offsets[previous][1], ())
-            ):
-                instruction = instructions.goto_w()  # FIXME: Work out if goto or goto_w is needed
+            previous = next(reversed(offsets))
+            fallthrough: Union[FallthroughEdge, None] = None
+
+            for edge in self._forward_edges.get(previous, ()):
+                if isinstance(edge, FallthroughEdge):
+                    fallthrough = edge
+                    break
+
+            # Check to see if this block won't fallthrough to its target
+            if fallthrough is not None and fallthrough.to != block and not fallthrough.to in offsets:
+                # Currently using a goto_w to mitigate any issues with large methods, as we don't know the target offset
+                # yet.
+                instruction = instructions.goto_w()
 
                 code.instructions[offset] = instruction
-                jumps[offset] = (previous.fallthrough_edge,)
-
-                logger.debug(" - Generated goto for fallthrough block %i to block %i." % (
-                    previous.label, previous.fallthrough_edge.to.label,
-                ))
-
+                jumps[offset] = JumpEdge(previous, fallthrough.to, instruction)
                 offset += instruction.get_size(offset, False)
-                # offsets[previous] = (offsets[previous][0], offset)  # Adjust previous block bounds
 
-        # Record the starting offset of the block and calculate the new offsets, given the instructions in the block.
+                logger.debug("    - Generated jump %s to account for edge %s." % (instruction, fallthrough))
 
-        start_offset = offset
-        start_shift = 0
+        start = offset
         instructions_: Dict[int, Instruction] = {}
+        new_offsets: Dict[int, int] = {}
 
-        wide = False  # TODO: Accounting for wide instructions across blocks?
-        for instruction in block.instructions:
-            instructions_[offset] = instruction
+        shifted = False
+        while not shifted:
+            offset = start
+            instructions_.clear()
+            new_offsets.clear()
 
-            offset += instruction.get_size(offset, wide)
-            wide = instruction == instructions.wide
+            wide = False
+            for index, instruction in enumerate(block.instructions):
+                instructions_[offset] = instruction.copy()
+                if instruction == instructions.new:
+                    new_offsets[index] = offset
+                offset += instruction.get_size(offset, wide)
 
-        # Account for wide forwards jump offsets in already written blocks.
+                wide = instruction == instructions.wide
 
-        if offset > 32767:  # This case can't occur unless the method is large enough
-            for block_, (_, end_offset) in list(offsets.items()):
-                for jump_edge in block_.jump_edges:
-                    if not jump_edge.to in offsets:
-                        offset_delta = offset - end_offset
-                        # Will this jump be valid? If not, we need to generate an intermediary one.
-                        if offset_delta > 32767 and jump_edge.jump != instructions.goto_w:
-                            intermediary_block = Block(max_label + 1)
-                            intermediary_block.jump(jump_edge.to, instructions.goto_w())
+            # Is the method is large enough that we may need to consider generating intermediary blocks to account for
+            # jumps around this block?
+            if offset < 32768:
+                break
 
-                            max_label += 1
-                            blocks[max_label] = intermediary_block
-
-                            logger.debug(" - Generated new block %i to account for edge from block %i to block %i (%s)." % (
-                                max_label, jump_edge.from_.label, jump_edge.to.label, jump_edge.jump,
-                            ))
-
-                            jump_edge.to = intermediary_block
-
-                            offset_, max_label = self._write_block(
-                                intermediary_block, start_offset, max_label, code, blocks, offsets, jumps, errors,
-                            )
-                            offset_delta = offset_ - start_offset
-
-                            # Shift the starting offset up by the delta, we can do this as we can be sure that no 
-                            # instructions inside the block are going to reference other bytecode offsets (jumps
-                            # in particular) as we haven't written this block's jump instruction yet (if it even exists).
-                            # This is equivalent to simply inserting the intermediary block right before the one we're writing 
-                            # right now.
-                            start_shift += offset_delta
-                            offset += offset_delta
-
-        if start_shift:
-            logger.debug(" - Shifted block %i by %+i bytes." % (block.label, start_shift))
-
-            code.instructions.update({offset + start_shift: instruction for offset, instruction in instructions_.items()})
-            start_offset += start_shift
-
-        else:
-            code.instructions.update(instructions_)
-
-        # We might be generating new blocks, so we need to add this block to the "already written blocks" to prevent
-        # gotos being generated for fallthroughs. It doesn't matter if the offsets are incorrect, as we'll correct
-        # them later.
-        offsets[block] = (start_offset, offset)
-
-        # Add the jump instruction to this offset too, check for invalid edges and account for wide backwards jump 
-        # offsets.
-
-        jump: Union[Instruction, None] = None
-        jump_offset = 0
-        modified_fallthrough = False  # bool(start_shift)
-
-        for jump_edge in block.jump_edges:
-            if jump is not None:
-                if jump_edge.jump != jump:
-                    errors.append(Error(offset, None, "block %i has multiple jump instructions" % block.label))
-                else:
-                    jumps[jump_offset] += (jump_edge,)
-
-            elif jump is None:
-                jump = jump_edge.jump
-                jump_offset = offset
-
-                if isinstance(jump, ConditionalJumpInstruction) and block.fallthrough_edge is None:
-                    errors.append(Error(
-                        offset, None, "block %i has a conditional jump edge but no fallthrough edge" % block.label,
-                    ))
-
-                # Check for backwards jump references that may need to be modified to account for wide jump offsets
-                # (i.e. offsets > 32767). If this is the case, a temporarily modified copy of the block and jump
-                # edge in question is created and written, and that is used through the rest of the assembly.
-
-                jump_start, _ = offsets.get(jump_edge.to, (None, None))
-                if jump_start is None:  # We haven't written the edge target block yet, so no need to do anything
-                    code.instructions[offset] = jump
-                    jumps[offset] = (jump_edge,)
-                    offset += jump.get_size(offset, wide)
+            for offset_, edge in jumps.items():
+                # If either the offset delta is valid for a 2 byte jump, the target of the jump has already been
+                # written, or the jump instruction is a wide goto, we don't need to handle anything here.
+                if offset - offset_ <= 32767 or edge.to in offsets or edge.jump == instructions.goto_w:
                     continue
+                shifted = True
 
-                offset_delta = jump_start - offset
+                intermediary = InsnBlock(self)
+                temporary.add(intermediary)
+                intermediary.jump(edge.to, instructions.goto_w)
 
-                # The jump is valid, so yet again, no need to do anything
-                if offset_delta > -32768 or jump == instructions.goto_w:
-                    code.instructions[offset] = jump
-                    jumps[offset] = (jump_edge,)
-                    offset += jump.get_size(offset, wide)
-                    continue
+                # Overwrite the old edge with a new one where the jump target is the intermediary block.
+                jumps[offset_] = JumpEdge(edge.from_, intermediary, edge.jump)
 
-                if isinstance(jump, ConditionalJumpInstruction):
-                    # Create the block that contains the edge with the wide goto
-                    jump_block = Block(max_label + 1)
-                    jump_block.jump(jump_edge.to, instructions.goto_w(offset_delta))
+                # Write the block immediately, adjusting the offset too
+                offset = self._write_block(
+                    offset, intermediary, code, errors, offsets, jumps, switches, exceptions, temporary, inlined,
+                )
+                logger.debug("    - Generated %s to account for edge %s." % (intermediary, edge))
 
-                    max_label += 1
-                    blocks[max_label] = jump_block
+            if not shifted:
+                break
 
-                    # Create a fallthrough block and replace this block's actual fallthrough with a fallthrough
-                    # edge to the fallthrough block, confusing, I know, sorry :p.
-                    # Note: we also need to check if there actually is a fallthrough edge as the code being
-                    #       generated might be unverified.
-                    if block.fallthrough_edge is not None:
-                        fallthrough_block = Block(max_label + 1)
-                        fallthrough_block.fallthrough(block.fallthrough_edge.to)
+            logger.debug("    - Shifted %s by %+i bytes." % (block, offset - start))
+            start = offset
 
-                        max_label += 1
-                        blocks[max_label] = fallthrough_block
+        code.instructions.update(instructions_)  # Add the new instructions to the code
+        max_offset = next(reversed(instructions_))
 
-                        block.fallthrough(fallthrough_block)
-                        modified_fallthrough = True
+        offsets.setdefault(block, []).append((start, offset, new_offsets))  # Update with the new bounds of this block
 
-                        logger.debug(" - Generated new blocks %i and %i to account for edge from block %i to block %i (%s)." % (
-                            jump_block.label, max_label, jump_edge.from_.label, jump_edge.to.label, 
-                            jump_edge.jump,
-                        ))
+        # Validate that the out edges from this block are valid, and get the required ones.
+        
+        multiple_fallthroughs = False
+        multiple_jumps = False
+        has_out_edges = False
 
-                    else:
-                        logger.debug(" - Generated new block %i to account for edge from block %i to block %i (%s)." % (
-                            max_label, jump_edge.from_.label, jump_edge.to.label,
-                        ))
+        fallthrough: Union[FallthroughEdge, None] = None
+        jump: Union[JumpEdge, None] = None
+        switches_: List[SwitchEdge] = []
 
-                    jump_edge.to = jump_block  # This is here cos we reference the old one in the logging calls
-                    code.instructions[offset] = jump
-                    jumps[offset] = (jump_edge,)
-                    offset += jump.get_size(offset, wide)
+        for edge in self._forward_edges.get(block, ()):
+            if isinstance(edge, FallthroughEdge):
+                if fallthrough is not None:
+                    multiple_fallthroughs = True
+                fallthrough = edge
+                has_out_edges = True
 
-                    # Now write the blocks that we've generated as we want them to immediately follow this block, for
-                    # organisational reasons really.
-                    if block.fallthrough_edge is not None:
-                        offset, max_label = self._write_block(
-                            block.fallthrough_edge.to, offset, max_label, code, blocks, offsets, jumps, errors,
-                        )
-                    offset, max_label = self._write_block(
-                        jump_block, offset, max_label, code, blocks, offsets, jumps, errors,
+            elif isinstance(edge, SwitchEdge):
+                switches_.append(edge)
+                has_out_edges = True
+
+            elif isinstance(edge, JumpEdge):
+                if jump is not None:
+                    multiple_jumps = True
+                jump = edge
+                has_out_edges = True
+
+            elif isinstance(edge, ExceptionEdge):
+                exceptions.append(edge)
+                # Exceptions don't count as valid out edges, at least I wouldn't think so
+                # FIXME: ^^^ true?
+
+        # Check that all the edges are valid
+
+        if multiple_fallthroughs:
+            errors.append(Error(block, "multiple fallthrough edges on block"))
+
+        if jump is not None:
+            if multiple_jumps:
+                errors.append(Error(block, "multiple jumps on block"))
+            is_conditional = isinstance(jump.jump, ConditionalJumpInstruction)
+
+            if jump.jump == instruction:  # Record the offset of the jump instruction on the jump edge, for adjustment
+                offsets_ = offsets.get(jump.to, None)
+                if offsets_ is not None:  # If we have written the block already, we may need to add intermediary jumps
+                    start_ = min(map(lambda item: item[0], offsets_), key=lambda offset_: offset - offset_)
+                    delta = start_ - offset
+
+                # Check if we can remove the jump altogether (due to inline blocks)
+                if not is_conditional and jump.to is not None and jump.to.inline:
+                    del code.instructions[max_offset]
+                    offset -= instruction.get_size(max_offset, False)
+                    offsets[block][-1] = (start, offset, new_offsets)
+                    offset = self._write_block(
+                        offset, jump.to, code,
+                        errors, offsets,
+                        jumps, switches, exceptions,
+                        temporary, inlined,
+                        inline=True,
                     )
+                    inlined[jump] = offsets[jump.to][-1][:-1]
 
-                elif jump == instructions.tableswitch:  # TODO
-                    raise NotImplemented("Widened tableswitch is not yet implemented.")
+                # We don't need to adjust the jump at all if any of these are the case
+                elif offsets_ is None or delta > -32768 or jump.jump == instructions.goto_w:
+                    jumps[max_offset] = jump
 
-                elif jump == instructions.lookupswitch:  # TODO
-                    raise NotImplemented("Widened lookupswitch is not yet implemented.")
+                elif is_conditional:
+                    raise NotImplementedError("Wide conditional substitution is not yet implemented.")
 
-                else:  # We can just generate a goto_w in its place and it won't change anything
-                    jump_edge.jump = instructions.goto_w(offset_delta)
-                    code.instructions[offset] = jump_edge.jump
-                    jumps[offset] = (jump_edge,)
-                    offset += jump_edge.jump.get_size(offset, wide)
+                else:  # Otherwise we can just generate the wide variants of the jumps and it won't change much
+                    if jump.jump == instructions.jsr:
+                        instruction = instructions.jsr_w(delta)
+                    else:
+                        instruction = instructions.goto_w(delta)
 
-        # Now check if we need to generate a goto for this block's fallthrough edge, in case the target has already been
-        # written. We also need to check that we haven't modified the fallthrough edge, which can occur when accounting
-        # for wide jumps.
+                    jumps[max_offset] = JumpEdge(block, jump.to, instruction)
+                    code.instructions[max_offset] = instruction
+                    # We also need to adjust the offset and bounds of the block
+                    offset = max_offset + instruction.get_size(max_offset, False)
+                    offsets[block][-1] = (start, offset, new_offsets)
 
-        if not modified_fallthrough and block.fallthrough_edge is not None:
-            fallthrough_offset, _ = offsets.get(block.fallthrough_edge.to, (None, None))
-            if fallthrough_offset is not None:
-                offset_delta = fallthrough_offset - offset
+                    logger.debug("    - Adjusted edge %s to wide jump %s." % (jump, instruction))
 
-                if offset_delta < -32767:
-                    instruction = instructions.goto_w(offset_delta)
+            else:
+                errors.append(Error(block, "expected jump instruction %s at end of block" % jump.jump))
+
+            if is_conditional and fallthrough is None:
+                errors.append(Error(block, "conditional jump edge with no fallthrough edge on block"))
+            elif not is_conditional and fallthrough is not None:
+                errors.append(Error(block, "unconditional jump edge with a fallthrough edge on block"))
+
+            if switches_:
+                errors.append(Error(block, "jump and switch edges on block"))
+
+        elif switches_:
+            multiple = False
+            previous = None
+
+            for edge in switches_:
+                if previous is not None and previous.jump != edge.jump:
+                    multiple = True
+                previous = edge
+
+            if multiple:
+                errors.append(Error(block, "block has multiple switch edges which reference different switch instructions"))
+
+            if edge.jump == instruction:
+                if multiple:  # Remove any edges whose instruction we aren't writing
+                    for edge in switches_.copy():
+                        if edge.jump != instruction:
+                            switches_.remove(edge)
+                instruction = code.instructions[max_offset]  # Use the copied instruction from now on
+                instruction.offsets.clear()
+
+                switches[max_offset] = switches_
+                # We need to fix the switch instruction's size because as far as it is concerned, it won't have any offsets
+                # and therefore it won't compute the size correctly, so dummy values are added as offsets here.
+                if instruction == instructions.tableswitch:
+                    for edge in switches_:
+                        if edge.value is not None:  # Ignore the default switch edge
+                            instruction.offsets.append(0)
+                elif instruction == instructions.lookupswitch:
+                    for edge in switches_:
+                        if edge.value is not None:
+                            instruction.offsets[edge.value] = 0
+
+                # Recompute the offset and readjust the block's bounds
+                offset = max_offset + instruction.get_size(max_offset, False)
+                offsets[block][-1] = (start, offset, new_offsets)
+
+            else:
+                errors.append(Error(block, "expected switch instruction %s at end of block" % edge.jump))
+
+        if not has_out_edges and not block in (self._return_block, self._rethrow_block):
+            errors.append(Error(block, "block has no out edges"))
+
+        if fallthrough is not None:
+            offsets_ = offsets.get(fallthrough.to, None)
+
+            if fallthrough.to.inline and fallthrough.to != block:  # Try to inline the fallthrough block if we can
+                offset = self._write_block(
+                    offset, fallthrough.to, code,
+                    errors, offsets,
+                    jumps, switches, exceptions,
+                    temporary, inlined,
+                    inline=True,
+                )
+                inlined[fallthrough] = offsets[fallthrough.to][-1][:-1]  # Note down where we inlined the block at
+
+            # Have we already written the fallthrough block? Bear in mind, that if the block can be inlined, we don't
+            # need to worry about it as we can just write it directly after this one.
+            elif offsets_ is not None:
+                # Find the closest starting offset for the fallthrough block, as we want to avoid using wide jumps as
+                # much as possible.
+                start = min(map(lambda item: item[0], offsets_), key=lambda offset_: offset - offset_)
+                delta = start - offset
+
+                if delta < -32767:
+                    instruction = instructions.goto(delta)
                 else:
-                    instruction = instructions.goto(offset_delta)
+                    instruction = instructions.goto_w(delta)
 
+                jumps[offset] = JumpEdge(block, fallthrough.to, instruction)
                 code.instructions[offset] = instruction
-                jumps[offset] = (block.fallthrough_edge,)
                 offset += instruction.get_size(offset, False)
 
-                logger.debug(" - Generated goto for fallthrough block %i to block %i." % (
-                    block.label, block.fallthrough_edge.to.label,
-                ))
+                logger.debug("    - Generated jump %s to account for edge %s." % (instruction, fallthrough))
 
-        # Check to see if this block has out edges
-        if jump is None and block.fallthrough_edge is None and not block.exception_edges:
-            last = instructions_[max(instructions_)]
-            # Also check that it isn't an instruction that breaks the control flow
-            if not isinstance(last, ReturnInstruction) and last != instructions.athrow:
-                errors.append(Error(offset, None, "block %i has no out edges" % block.label))
+        return offset
 
-        offsets[block] = (start_offset, offset)
-        return offset, max_label
-
-    def _combine_reference_types(self, entry_a: Entry, entry_b: Entry) -> Union[Entry, None]:
-        """
-        Combines two reference types, when merging the stack or locals for two blocks.
-
-        :param entry_a: The entry that we're attempting to merge.
-        :param entry_b: The entry that is in the entry constraints.
-        :return: The new entry to replace it with, or None if no replacement is required.
-        """
-
-        if entry_a.type == entry_b.type:  # Nothing to do here
-            return None
-        elif entry_a.type == types.null_t:  # Trying to merge a null type, so no extra information
-            return None
-        elif entry_b.type == types.null_t:  # Trying to merge into a null type, so return the first type
-            return entry_a
-        elif isinstance(entry_a.type, ClassOrInterfaceType) and isinstance(entry_b.type, ClassOrInterfaceType):
-            environ = Environment.INSTANCE
-
-            common: Union[str, None] = None
-            super_classes_a: Set[str] = set()
-
-            try:
-                class_a = environ.find_class(entry_a.type.name)
-                class_b = environ.find_class(entry_b.type.name)
-
-                while class_a is not None:
-                    super_classes_a.add(class_a.name)
-                    if class_a.name == class_b.name:
-                        common = class_a.name
-                        break
-                    try:
-                        class_a = class_a.super
-                    except LookupError:
-                        break
-
-                while common is None and class_b is not None:
-                    if class_b.name in super_classes_a:
-                        common = class_b.name
-                        break
-                    class_b = class_b.super
-
-            except LookupError:
-                ...
-
-            if common is not None:
-                logger.debug(" - Combined common Java supertype for %r and %r, %r." % (
-                    entry_a.type.name, entry_b.type.name, common,
-                ))
-                return Entry(entry_a.offset, ClassOrInterfaceType(class_b.name))
-
-            logger.debug(" - Could not resolve common Java supertype for %r and %r." % (
-                entry_a.type.name, entry_b.type.name,
-            ))
-            return Entry(entry_b.offset, types.object_t)  # java/lang/Object it is then :(
-
-        # TODO: Array types
-
-    # ------------------------------ Public API ------------------------------ #
-
-    def add(self, block: Block, fix_label: bool = True) -> None:
-        """
-        Adds a block to this graph.
-
-        :param block: The block to add.
-        :param fix_label: Fixes the label of the block if a block with that label already exists.
-        """
-
-        if block in self.blocks:
-            return
-
-        if fix_label and block.label in self.blocks:
-            conflict = False
-            max_label = 0
-
-            for block_ in self.blocks:
-                if block_.label > max_label:
-                    max_label = block_.label
-                if block_.label == block.label:
-                    conflict = True
-
-            if conflict:
-                block.label = max_label + 1
-
-        self.blocks.append(block)
-
-    def remove(self, block: Block) -> None:
-        """
-        Removes a block from this graph.
-        Note: this does not remove the references to it in other blocks.
-
-        :param block: The block to remove.
-        """
-
-        try:
-            self.blocks.remove(block)
-        except ValueError:
-            ...
+    # ------------------------------ Assembly ------------------------------ #
 
     def assemble(
             self,
-            class_file: ClassFile,
-            no_verify: bool = False,
+            do_raise: bool = True,
+            simplify_exception_ranges: bool = True,
             compute_frames: bool = True,
-            compress_frames: bool = False,
-            sort_blocks: bool = False,
+            compress_frames: bool = True,
+            remove_dead_blocks: bool = True,
     ) -> Code:
         """
-        Creates writeable instructions with their given offsets.
+        Assembles this graph into a Code attribute.
 
-        :param class_file: The classfile that the method belongs to.
-        :param no_verify: Don't verify the instructions (may throw exceptions though).
-        :param compute_frames: Computes the stackmap frames for the code, if verification fails, no frames are computed.
-        :param compress_frames: Compresses the stackmap frames.
-        :param sort_blocks: Writes the blocks in order based on their ID.
-        :return: The instructions and generated stack frames.
+        :param do_raise: Raise an exception if there are verify errors.
+        :param simplify_exception_ranges: Merges overlapping exception ranges, if possible.
+        :param compute_frames: Computes stackmap frames and creates a StackMapTable attribute for the code.
+        :param compress_frames: Uses compressed stackmap frames instead of just writing out FullFrames.
+        :param remove_dead_blocks: Doesn't write dead blocks.
         """
 
-        logger.debug("Assembling method %r:" % str(self.method_info))
+        if self.entry_block is None:
+            raise ValueError("Cannot assemble as the entry block is None.")
+        if self._opaque_edges:
+            raise NotImplementedError("Cannot yet assemble a method with opaque edges.")
 
-        state = State.make_initial(self.method_info)
-        code = Code(self.method_info, len(state.stack), len(state.locals))
+        logger.debug("Assembling method %r:" % str(self.method))
 
-        if not self.blocks:  # Obviously
-            return code
-
+        checker = FullTypeChecker()  # TODO: Allow specified type checker through verifier parameter
         errors: List[Error] = []
 
-        jumps_to_adjust: Dict[int, Tuple[Edge, ...]] = {}  # Jumps that will be adjusted later
-        exception_handlers_to_adjust: List[Tuple[ExceptionEdge, ...]] = []  # Exception handlers to adjust later
+        trace = Trace.from_graph(self, checker)
+        errors.extend(trace.errors)
 
-        # Visited blocks with their entry/exit constraints and the edges to the block
-        visited: Dict[Block, Tuple[State, State, Set[Edge]]] = {}
-        offsets: Dict[Block, Tuple[int, int]] = {}  # Blocks and their starting/ending offsets
-
-        # Create a copy of the blocks in this graph as they may be modified when writing, if required.
-        blocks: Dict[int, Block] = {block.label: block.copy() for block in self.blocks}
-
-        # Copy and modify the block edges to fit the copied blocks
-        for block in blocks.values():
-            if block.fallthrough_edge is not None:
-                block.fallthrough_edge = FallthroughEdge(block, blocks[block.fallthrough_edge.to.label])
-
-            jump_edges = []
-            for jump_edge in block.jump_edges:
-                jump_edge = jump_edge.copy()
-                jump_edge.from_ = block
-                jump_edge.to = blocks[jump_edge.to.label]
-                jump_edges.append(jump_edge)
-            block.jump_edges = jump_edges
-
-            exception_edges = []
-            for exception_edge in block.exception_edges:
-                exception_edge = exception_edge.copy()
-                exception_edge.from_ = block
-                exception_edge.to = blocks[exception_edge.to.label]
-                exception_edges.append(exception_edge)
-            block.exception_edges = exception_edges
-
-        max_label = max(blocks)  # For when generating new blocks
-        offset = 0  # Current bytecode offset
-
-        if sort_blocks:
-            for label in list(sorted(blocks)):
-                offset, max_label = self._write_block(
-                    blocks[label], offset, max_label, code, blocks, offsets, jumps_to_adjust, errors,
-                )
-
-        # Find the entry block, start from the block with the smallest label and follow its predecessors until we find
-        # one with no more predecessors, this is the entry block. I'm sure something with dominators could be done to
-        # better determine the entry block but I'm lazy.
-        entry_block = blocks[min(blocks)]
-
-        # The next edges to visit, in terms of priortiy
-        fallthrough_edges: List[FallthroughEdge] = []
-        jump_edges: List[JumpEdge] = []
-        exception_edges: List[ExceptionEdge] = []
-
-        edge: Union[Edge, None] = None  # Current edge
-        block = entry_block  # Current block
-
-        while True:
-            if block in visited:
-                entry_constraints, exit_constraints, edges = visited[block]
-                _, end_offset = offsets[block]
-
-                edges.add(edge)
-
-                # Entries that need to be repropagated through the graph, normally due to merging of reference types.
-                to_repropagate: Dict[Entry, Entry] = {}
-
-                if len(state.stack) > len(entry_constraints.stack):
-                    errors.append(Error(
-                        end_offset, None,
-                        "stack overrun, expected stack size %i for block %i to block %i transition, got size %i" % (
-                            len(entry_constraints.stack), edge.from_.label, block.label, len(state.stack),
-                        ),
-                    ))
-                    compute_frames = False
-                elif len(state.stack) < len(entry_constraints.stack):
-                    errors.append(Error(
-                        end_offset, None,
-                        "stack underrun, expected stack size %i for block %i to block %i transition, got size %i" % (
-                            len(entry_constraints.stack), edge.from_.label, block.label, len(state.stack),
-                        ),
-                    ))
-                    compute_frames = False
-
-                for index, (entry_a, entry_b) in enumerate(zip(state.stack, entry_constraints.stack)):
-                    if not entry_a.type.can_merge(entry_b.type):
-                        errors.append(Error(
-                            end_offset, None,
-                            "illegal stack merge for block %i to block %i transition, (%s and %s)" % (
-                                edge.from_.label, block.label, entry_a.type, entry_b.type,
-                            ),
-                        ))
-                        compute_frames = False
-                        break
-
-                    combined = self._combine_reference_types(entry_a, entry_b)
-                    if combined is not None:
-                        to_repropagate[entry_b] = combined
-                        # Replace the values here, for this block, to save time later
-                        entry_constraints.replace(entry_b, combined)
-                        exit_constraints.replace(entry_b, combined)
-
-                # Locals that are "live" (note: we can't determine this fully yet) in this block, so we won't trust
-                # this information fully.
-                # live: Set[int] = set()
-                # for index, read in exit_constraints.local_accesses:
-                #     if read:
-                #         live.add(index)
-                #     elif index in live:
-                #         live.remove(index)
-
-                for index in set(state.locals).intersection(entry_constraints.locals):  # live:
-                    if not index in entry_constraints.locals:  # No need to check it then
-                        continue
-
-                    entry_a = state.locals[index]
-                    entry_b = entry_constraints.locals[index]
-
-                    if not entry_a.type.can_merge(entry_b.type):
-                        continue  # FIXME: Lazy solution for now, instead, calculate if overwritten, etc...
-
-                        # if not index in live:  # Might not be needed, so don't worry about it right now
-                        #     continue
-                        # if not no_verify:
-                        #     print(entry_a, entry_b)
-                        #     raise Exception("Illegal locals merge.")
-                        # compute_frames = False
-                        # break
-
-                    combined = self._combine_reference_types(entry_a, entry_b)
-                    if combined is not None and combined != entry_b:
-                        to_repropagate[entry_b] = combined
-                        entry_constraints.replace(entry_b, combined)
-                        exit_constraints.replace(entry_b, combined)
-
-                if to_repropagate:
-                    logger.debug(" - Repropagating %i entry(s) due to block %i to block %i merge." % (
-                        len(to_repropagate), edge.from_.label, block.label,
-                    ))
-                    # for entry_a, entry_b in to_repropagate.items():
-                    #     logger.debug("    - Entry %s (offset %i) merges with %s (offset %i)." % (
-                    #         entry_a.type, entry_a.offset, entry_b.type, entry_b.offset,
-                    #     ))
-
-                    next_: List[Edge] = list(edges)
-                    finished: Set[Edge] = {edge}
-
-                    while next_:
-                        edge = next_.pop(0)
-                        if edge in finished:
-                            continue
-
-                        # If we haven't visited this block already, that's fine, as we've already adjusted the exit
-                        # constraints for this block we're jumping from, so when it's run through it should have the
-                        # adjusted types too.
-                        if edge.to in visited:
-                            entry_constraints, exit_constraints, edges = visited[edge.to]
-
-                            for entry_a, entry_b in to_repropagate.items():
-                                entry_constraints.replace(entry_a, entry_b)
-                                exit_constraints.replace(entry_a, entry_b)
-
-                            if edge.to.fallthrough_edge is not None:
-                                next_.append(edge.to.fallthrough_edge)
-                            next_.extend(edge.to.jump_edges)
-                            next_.extend(edge.to.exception_edges)
-
-                        finished.add(edge)
-
-            else:
-                # Find the start and end offsets for this block, and write it if necessary
-
-                start_offset, end_offset = offsets.get(block, (None, None))
-                if start_offset is None:  # Write the block
-                    offset, max_label = self._write_block(
-                        block, offset, max_label, code, blocks, offsets, jumps_to_adjust, errors,
-                    )
-                    start_offset, end_offset = offsets[block]
-
-                # print("==================== block %i ====================" % block.label)
-
-                # Update the future edges to visit (and handle exceptions)
-
-                if block.fallthrough_edge is not None:
-                    fallthrough_edges.append(block.fallthrough_edge)
-                if block.jump_edges:
-                    jump_edges.extend(block.jump_edges)
-                if block.exception_edges:
-                    # explicit = False
-                    for exception_edge in block.exception_edges:
-                        # if exception_edge.explicit and not explicit:
-                        #     instructions_.append(instructions.athrow())  # Generate an athrow instruction
-                        #     explicit = True
-                        exception_edges.append(exception_edge)
-
-                    exception_handlers_to_adjust.append(tuple(block.exception_edges))
-
-                # Step through the instructions in the block
-
-                start_state = state.copy()
-                for offset_, instruction in code.instructions.items():
-                    # Check that we are within the bounds of the current block
-                    if offset_ < start_offset:
-                        continue
-                    if offset_ >= end_offset:
-                        break
-
-                    instruction.step(offset_, state, errors, True)
-
-                    # print(offset_, "\t", instruction, "\t[ %s ]" % ", ".join(map(str, state.stack)))
-                    # print("stack:  [ %s ]" % ", ".join(map(str, state.stack)))
-                    # print("locals: { %s }" % ", ".join(["%i=%s" % local for local in state.locals.items()]))
-
-                # Adjust the maximum stack and local depths for the method, if necessary
-
-                if state.max_stack > code.max_stack:
-                    code.max_stack = state.max_stack
-                if state.max_locals > code.max_locals:
-                    code.max_locals = state.max_locals
-
-                visited[block] = (start_state, state, {edge})
-
-            if fallthrough_edges:
-                edge = fallthrough_edges.pop(0)
-            elif jump_edges:
-                edge = jump_edges.pop(0)
-            elif exception_edges:
-                edge = exception_edges.pop(0)
-            else:  # No other edges to visit
-                break
-
-            # print(edge)
-
-            block = edge.to
-            entry_constraints, exit_constraints, _ = visited[edge.from_]
-            if isinstance(edge, ExceptionEdge):
-                state = exit_constraints.copy()  # exit_constraints.copy()
-                if not edge.explicit:  # Stack should already be in a valid state otherwise
-                    state.stack.clear()
-                    state.push(Entry(-4, edge.exception.get_type()))
-            else:
-                state = exit_constraints.copy()
-
+        code = Code(self.method, trace.max_stack, trace.max_locals)
         logger.debug(" - Max stack: %i, max locals: %i." % (code.max_stack, code.max_locals))
 
-        while None in errors:  # Shouldn't have been lazy earlier, oops
-            errors.remove(None)
+        # Write blocks and record the offsets they were written at, as well as keeping track of jump, switch and
+        # exception offsets for later adjustment, as we don't know all the offsets while we're writing.
 
-        if errors:
-            if not no_verify:
-                logger.debug(" - %i error(s) occurred during assembling:" % len(errors))
-            else:
-                logger.debug(" - Skipping %i error(s) during assembling:" % len(errors))
-            for error in errors:
-                logger.debug("    - At offset %i (%s): %r" % (error.offset, error.instruction, error.message))
-            if not no_verify:
-                raise VerifyError(errors)
+        offset = 0
+        # Record the blocks that have been written and their start/end offsets as well as new instruction mappings (this
+        # for keeping track of uninitialised types, hacky, I know). Note that blocks can actually be written multiple 
+        # times if they have inline=True, so take that into account.
+        offsets: Dict[InsnBlock, List[Tuple[int, int, Dict[int, int]]]] = {}
+        dead: Set[InsnBlock] = set()
 
-        # For generating stackmap frames, if applicable, we also need to generate stackmap frames for the exception
-        # handers, which is why this variable is defined here.
-        frame_offsets: Dict[int, Tuple[Block, State, State]] = {}
+        jumps: Dict[int, JumpEdge] = {}
+        switches: Dict[int, List[SwitchEdge]] = {}
+        exceptions: List[ExceptionEdge] = []
+        inlined: Dict[FallthroughEdge, Tuple[int, int]] = {}
 
-        # Adjust exception handler offsets and add them
+        logger.debug(" - Writing %i block(s):" % len(self._blocks))
 
-        if exception_handlers_to_adjust:
-            for exception_edges in exception_handlers_to_adjust:
-                for edge in exception_edges:
-                    entry_constraints, exit_constraints, _ = visited[edge.to]
+        # We'll record blocks that we've created for the purpose of assembling so that we can remove them later, as we
+        # don't want to alter the state of the graph.
+        temporary: Set[InsnBlock] = set()
 
-                    start_offset, end_offset = offsets[edge.from_]
-                    handler_offset, _ = offsets[edge.to]
+        for block in sorted(self._blocks, key=lambda block_: block_.label):
+            if remove_dead_blocks and not block in trace.states:
+                dead.add(block)
+                continue
+            if block in (self._return_block, self._rethrow_block):
+                continue
 
-                    # FIXME: Simplify overlapping exception handlers
-                    code.exception_table.append(Code.ExceptionHandler(
-                        start_offset, end_offset, handler_offset, edge.exception,
-                    ))
+            offset = self._write_block(
+                offset, block, code, errors, offsets, jumps, switches, exceptions, temporary, inlined,
+            )
 
-                    frame_offsets[handler_offset] = (edge.to, entry_constraints, exit_constraints)
+        # We may need to write the return and rethrow blocks if we have direct jumps to them that weren't, this can
+        # occur, for example, when the only exit path from a method is via a conditional directly to the return block.
+        for block in (self._return_block, self._rethrow_block):
+            if block in offsets:  # Has already been written, so we don't need to worry about it
+                continue
+            for edge in itertools.chain(jumps.values(), *switches.values(), exceptions):
+                if edge.to == block:
+                    offset = self._write_block(
+                        offset, block, code, errors, offsets, jumps, switches, exceptions, temporary, inlined,
+                    )
+                    logger.debug(" - Force write %s due to non-inlined edge reference." % block)
+                    break
 
-            logger.debug(" - Generated %i exception handler(s)." % len(code.exception_table))
+        # Also check for if we haven't written anything lol, cos we need to add a return for the method to be valid.
+        if not offsets:
+            self._write_block(
+                offset, self._return_block, code, errors, offsets, jumps, switches, exceptions, temporary, inlined,
+            )
 
-        # Adjust jump instruction offsets
+        if temporary:
+            logger.debug(" - Generated %i temporary block(s) while writing." % len(temporary))
+            for block in temporary:
+                self.remove(block)
+        if inlined:
+            logger.debug(" - Inlined %i block(s)." % len(inlined))
 
-        if jumps_to_adjust:
-            for offset, edges in jumps_to_adjust.items():
-                jump = code.instructions[offset]
+        dead_frames: Dict[InsnBlock, State] = {}
 
-                if isinstance(jump, JumpInstruction):
-                    entry_constraints, exit_constraints, _ = visited[edges[0].to]
-                    target_offset, _ = offsets[edges[0].to]
-                    
-                    jump.offset = target_offset - offset
-                    # Record this for stackmap frame generation later
-                    frame_offsets[target_offset] = (edges[0].to, entry_constraints, exit_constraints)
+        # Fix dead blocks by replacing them with nops and an athrow at the end, to break control flow.
 
-                    # logger.debug(" - Adjusted jump at offset %i to block %i (%s)." % (offset, edges[0].to.label, jump))
+        if dead:
+            if compute_frames:
+                # The standard state we'll use for these dead blocks' stackmap frames, since these are never actually
+                # visited, the only proof we need that the athrow is valid is from the stackmap frame, so we can just
+                # say that there's a throwable on the stack lol.
+                state = State(0)
+                state.push(None, types.throwable_t)
 
-                    # if abs(jump.offset) > 32767:
-                    #     print(self.method_info, jump)
-                    #     input()
+            logger.debug(" - %i dead block(s):")
+            for block in dead:
+                if not block in offsets:
+                    logger.debug("    - %s (unwritten)" % block)
+                    continue
 
-                elif jump in (instructions.tableswitch, instructions.lookupswitch):
-                    # logger.debug(" - Adjusted switch at offset %i (%s)." % (offset, jump))
-                    for edge in edges:
-                        entry_constraints, exit_constraints, _ = visited[edge.to]
-                        target_offset, _ = offsets[edge.to]
+                logger.debug("    - %s (written at %s)" % (
+                    block, ", ".join(map(str, (start for start, _, _ in offsets[block]))),
+                ))
+                if compute_frames:  # We'll only do this if we're computing frames, as otherwise there's no point
+                    dead_frames[block] = state
 
-                        frame_offsets[target_offset] = (edge.to, entry_constraints, exit_constraints)
-                        offset_delta = target_offset - offset
-
-                        if edge.index is None:
-                            jump.default = offset_delta
-                            # logger.debug(" - Adjusted switch default at offset %i to block %i (%+i)." % (
-                            #     offset, edge.to.label, offset_delta,
-                            # ))
-
-                        else:
-                            jump.offsets[edge.index] = offset_delta
-                            # logger.debug(" - Adjusted switch at offset %i to block %i (index/value %i -> %+i)." % (
-                            #     offset, edge.to.label, edge.index, offset_delta,
-                            # ))
-
-            logger.debug(" - Adjusted %i jump(s)." % len(jumps_to_adjust))
-
-        compute_frames = compute_frames and not errors
-
-        # Check for dead blocks that were written (this can occur with sort_blocks=True) and fix them by replacing all
-        # the instructions in them with nops and then adding an athrow at the end to break control flow. We also need
-        # to generate stackmap frames for these.
-
-        if len(visited) != len(blocks):
-            # The standard state we'll use for these dead blocks' stackmap frames, since these are never actually 
-            # visited, the only proof we need that the athrow is valid is from the stackmap frame, so we can just
-            # say that there's a throwable on the stack lol.
-            state = State(0)
-            state.push(Entry(0, types.throwable_t))
-
-            logger.debug(" - %i dead block(s):" % (len(blocks) - len(visited)))
-            for block in blocks.values():
-                if not block in visited:
-                    start_offset, end_offset = offsets.get(block, (None, None))
-                    if start_offset is None:
-                        logger.debug("    - Block %i (not written)." % block.label)
-                        continue
-
-                    # We only need to be concerned about dead blocks that were actually written
-                    logger.debug("    - Block %i (written at offset %i to %i)." % (
-                        block.label, start_offset, end_offset,
-                    ))
-
-                    if compute_frames:  # We'll nop out the block only if we need to
-                        frame_offsets[start_offset] = (block, state, None)
-
-                        last_offset = end_offset - 1
-                        offset = start_offset
-                        while offset < last_offset:
+                    for start, end, _ in offsets[block]:
+                        last = end - 1
+                        offset = start
+                        while offset < last:
                             code.instructions[offset] = instructions.nop()
                             offset += 1
-                        code.instructions[last_offset] = instructions.athrow()
+                        code.instructions[last] = instructions.athrow()
 
-        # Generate the stackmap frames, if necessary
+        # Adjust jumps and switches to the correct positions, if needs be.
 
-        if compute_frames and frame_offsets:
-            liveness: Dict[Block, Set[int]] = {}  # TODO: Move into liveness.py
+        for offset, edge in jumps.items():
+            if edge.jump.offset is not None:  # Already computed the jump offset
+                continue
+            start = min(map(lambda item: item[0], offsets[edge.to]), key=lambda offset_: abs(offset - offset_))
+            code.instructions[offset].offset = start - offset
+        if jumps:
+            logger.debug(" - Adjusted %i jump(s)." % len(jumps))
 
-            # Compute the liveness of the locals
-            exit_blocks = []
-            for block in visited:
-                if not block.jump_edges and block.fallthrough_edge is None:  # Don't count exception edges
-                    exit_blocks.append(block)
+        for offset, edges in switches.items():
+            instruction = code.instructions[offset]
+            for edge in edges:
+                start = min(map(lambda item: item[0], offsets[edge.to]), key=lambda offset_: abs(offset - offset_))
+                value = edge.value
+                if value is None:
+                    instruction.default = start - offset
+                else:
+                    instruction.offsets[value] = start - offset
 
-            if not exit_blocks:
-                # If there are no exits (i.e. infinite loops), just start from the back of the code
-                exit_blocks.append(next(reversed(offsets.keys())))
+        if switches:
+            logger.debug(" - Adjusted %i switch(es)." % len(switches))
 
-            for exit_block in exit_blocks:
-                _, exit_constraints, edges = visited[exit_block]
-                next_: List[Edge] = list(edges)
-                if None in next_:
-                    next_.remove(None) 
-                finished: Set[Edge] = set()
+        # Add exception handlers and set their offsets to the correct positions to, then simplify any overlapping ones
+        # if required (simplify_exception_ranges=True).
 
-                # First compute the liveness for the exit block itself, it shouldn't have been calculated already as it
-                # has no backwards edges, so there's no need to check that.
-                variables = set()
-                for index, read in reversed(exit_constraints.local_accesses):
-                    if read:
-                        variables.add(index)
-                    elif index in variables:
-                        variables.remove(index)
-                liveness[exit_block] = variables
+        for edge in sorted(exceptions, key=lambda edge_: edge_.priority):
+            for start, end, _ in offsets[edge.from_]:
+                (handler, _, _), *extra = offsets[edge.to]
+                if extra:
+                    errors.append(Error(edge, "multiple exception handler targets (is the handler inlined?)"))
+                # If there are multiple offsets for the exception handler, simply just pick the first one.
+                code.exception_table.append(Code.ExceptionHandler(
+                    start, end, handler, Class_(edge.throwable.name),
+                ))
+        if simplify_exception_ranges:
+            ...  # TODO
+        if code.exception_table:
+            logger.debug(" - Generated %i exception handler(s)." % len(code.exception_table))
 
-                while next_:
-                    edge = next_.pop(0)
-                    if edge is None:
+        # Compute stackmap frames
+
+        if compute_frames and (dead_frames or jumps or switches or exceptions):
+            stackmap_table = StackMapTable(code)
+            stackmap_frames: Dict[int, Tuple[Dict[int, int], InsnBlock, State]] = {
+                # Create the bootstrap (implicit) frame
+                -1: (self.entry_block, tuple(trace.states[self.entry_block].keys())[0]),
+            }
+            visited: Set[InsnBlock] = set()
+            liveness = Liveness.from_trace(trace)
+
+            # Add the dead stackmap frames first
+
+            for block, state in dead_frames.items():
+                for start, _, _ in offsets[block]:
+                    stackmap_frames[start] = (block, state)
+
+            # Add all the blocks that are jump targets in some sense (this includes exception handler targts), as we
+            # don't actually need to write all the states basic blocks, contrary to what the JVM spec says, instead we
+            # only need to write the states at basic blocks that are jumped to. At this stage, we'll also combine the
+            # states from different paths.
+
+            for edge in itertools.chain(jumps.values(), *switches.values(), exceptions):
+                block = edge.to
+                base: Union[State, None] = None
+
+                # We can split constraints on inlined blocks
+                if block.inline and edge in inlined:
+                    states = trace.states[edge.from_]
+                    offsets_ = (inlined[edge],)
+                elif block in visited:  # Don't check this for inline edges, obviously
+                    continue
+                else:
+                    visited.add(block)
+                    states = trace.states[block]
+                    offsets_ = offsets[block]
+
+                # print(edge)
+                for state in states:
+                    # print(", ".join(map(str, state.locals.values())))
+                    if base is None:
+                        base = state.unfreeze()
                         continue
 
-                    # print("block_%i -> block_%i %r" % (edge.to.label, edge.from_.label, liveness[edge.to]))
+                    # Check that the stack is mergeable
+                    if len(state.stack) > len(base.stack):
+                        errors.append(Error(
+                            edge,
+                            "stack overrun, expected stack size %i for edge, got size %i" % (
+                                len(base.stack), len(state.stack),
+                            ),
+                        ))
+                    elif len(state.stack) < len(base.stack):
+                        errors.append(Error(
+                            edge,
+                            "stack underrun, expected stack size %i for edge, got size %i" % (
+                                len(base.stack), len(state.stack),
+                            ),
+                        ))
 
-                    _, exit_constraints, edges = visited[edge.from_]
+                    for index, (entry_a, entry_b) in enumerate(zip(base.stack, state.stack)):
+                        if not checker.check_merge(entry_a.type, entry_b.type):
+                            errors.append(Error(
+                                edge,
+                                "illegal stack merge at index %i (%s, via %s and %s, via %s)" % (
+                                    index, entry_a.type, entry_a.source, entry_b.type, entry_b.source,
+                                ),
+                            ))
 
-                    changed = False  # Has there been a change in the liveness for this edge?
-                    if not edge.from_ in liveness:  # First time computing the liveness for this block
-                        liveness[edge.from_] = set()
-                        changed = True
+                        merged = checker.merge(entry_a.type, entry_b.type)
+                        if merged != entry_a.type:  # Has the merge changed the entry?
+                            base.stack[index] = Entry(-base.id, None, merged, parents=(), merges=(entry_a, entry_b))
 
-                    variables = liveness[edge.from_]
-                    variables_before = variables.copy()
-                    variables.update(liveness[edge.to])
+                    for index in liveness.entries[block]:
+                        entry_a = base.locals.get(index, None)
+                        entry_b = state.locals.get(index, None)
 
-                    # Already computed liveness for this edge, check there hasn't been another change though
-                    if edge in finished:
-                        if variables_before == variables:
-                            # print("...skipped")
+                        if entry_a is None and entry_b is None:
+                            errors.append(Error(
+                                edge, "illegal locals merge at index %i, expected live local" % index,
+                            ))
+                            continue
+                        elif entry_a is None:
+                            errors.append(Error(
+                                edge,
+                                "illegal locals merge at index %i, expected live local (have %s via %s)" % (
+                                    index, entry_b.type, entry_b.source,
+                                ),
+                            ))
+                            base.set(entry_b.source, index, entry_b)
+                            continue
+                        elif entry_b is None:
+                            errors.append(Error(
+                                edge,
+                                "illegal locals merge at index %i, expected live local (have %s via %s)" % (
+                                    index, entry_a.type, entry_a.source,
+                                ),
+                            ))
                             continue
 
-                    for index, read in reversed(exit_constraints.local_accesses):
-                        if read:
-                            variables.add(index)
-                        elif index in variables:
-                            variables.remove(index)
+                        if not checker.check_merge(entry_a.type, entry_b.type):
+                            errors.append(Error(
+                                edge,
+                                "illegal locals merge at index %i (%s via %s and %s via %s)" % (
+                                    index, entry_a.type, entry_a.source, entry_b.type, entry_b.source,
+                                ),
+                            ))
 
-                    if not changed:
-                        if variables_before == variables:  # Check this now, as it's more expensive
-                            finished.add(edge)
+                        merged = checker.merge(entry_a.type, entry_b.type)
+                        if merged != entry_a.type:
+                            base.locals[index] = Entry(-base.id, None, merged, parents=(), merges=(entry_a, entry_b))
 
-                    next_.extend(edges)
+                for start, _, _ in offsets_:
+                    stackmap_frames[start] = (block, base)
 
-            stack_map_table = StackMapTable(code)
+            for offset, (block, state) in sorted(stackmap_frames.items(), key=lambda item: item[0]):
+                # The bootstrap (implicit) frame requires that all types are explicit and there are no tops, so we don't
+                # take the liveness for the entry block, instead we just use the local indices to indicate that all the
+                # locals are "live".
+                live = liveness.entries[block] if offset >= 0 else set(state.locals.keys())
 
-            prev_offset = -1
-            frame_offsets = sorted(frame_offsets.items(), key=operator.itemgetter(0))
-
-            for base_offset, (block, entry_constraints, _) in frame_offsets:
                 locals_ = []
                 stack = []
 
-                if entry_constraints.locals:
-                    live = liveness[block]
-                    max_local = 0  # The maxmimum local we'll write up to
-                    index = 0
+                max_local = 0  # We can truncate trailing tops from the locals
+                max_actual = max((0, *live))
 
-                    while index <= max(entry_constraints.locals):
-                        entry = entry_constraints.locals.get(index, None)
+                if state.locals:
+                    wide_skip = False
+                    for index in range(max(state.locals) + 1):
+                        if wide_skip:
+                            wide_skip = False
+                            continue
 
-                        if entry is not None:
-                            # Still need to include uninitialised this types, even if they're unused
-                            if index in live or entry.type == types.uninit_this_t:
-                                if entry.type == types.this_t:  # Don't write this types, obviously
-                                    locals_.append(entry.type.class_)
-                                else:
-                                    locals_.append(entry.type)
-                                max_local = len(locals_)  # Update to the current size of the locals
-                                index += entry.type.internal_size
-                            else:
-                                locals_.append(types.top_t)
-                                index += 1
+                        entry = state.locals.get(index, state._top)
 
-                        else:
+                        # Note: uninitializedThis must be specified, live or not.
+                        if not index in live and entry.type != types.uninit_this_t:
                             locals_.append(types.top_t)
-                            index += 1
-
-                    locals_ = locals_[:max_local]  # Truncate locals to add implicit tops
-
-                for entry in entry_constraints.stack:
-                    if entry.type != types.top_t:
-                        if entry.type == types.this_t:
-                            stack.append(entry.type.class_)
                         else:
-                            stack.append(entry.type)
+                            # Special handling for uninitialised types, we need to add the offset in
+                            if (
+                                isinstance(entry.type, Uninitialized) and
+                                entry.type != types.uninit_this_t and
+                                isinstance(entry.source, BlockInstruction)
+                            ):
+                                done = False
+                                for _, _, new_offsets in offsets[entry.source.block]:
+                                    if done:
+                                        errors.append(Error(
+                                            entry.source,
+                                            "unable to determine source of uninitialised type as block is written multiple times",
+                                        ))
+                                        break
+                                    locals_.append(Uninitialized(new_offsets[entry.source.index]))
+                                    done = True
+                                continue
 
-                # print("offset", base_offset)
-                # print(liveness[block])
-                # print("stack:  [ %s ]" % ", ".join(map(str, stack)))
-                # print("locals: [ %s ]" % ", ".join(map(str, locals_)))
+                            locals_.append(entry.type)
+                            max_local = len(locals_)
+                            wide_skip = entry.type.internal_size > 1
 
-                offset_delta = base_offset - (prev_offset + 1)
-                # FIXME: Not full frames every time, cos that's wasteful
-                if compress_frames:
-                    ...
-                else:
-                    stack_map_table.stack_frames.append(StackMapTable.FullFrame(
-                        offset_delta, tuple(locals_), tuple(stack),
-                    ))
-                prev_offset = base_offset
+                    locals_ = locals_[:max_local]
 
-            logger.debug(" - Generated %i stackmap frame(s)." % len(stack_map_table.stack_frames))
-            code.attributes[stack_map_table.name] = (stack_map_table,)
+                for entry in state.stack:
+                    if entry == state._top:
+                        continue
+                    elif (
+                        isinstance(entry.type, Uninitialized) and
+                        entry.type != types.uninit_this_t and
+                        isinstance(entry.source, BlockInstruction)
+                    ):
+                        done = False
+                        for _, _, new_offsets in offsets[entry.source.block]:
+                            if done:
+                                errors.append(Error(
+                                    entry.source,
+                                    "unable to determine source of uninitialised type as block is written multiple times",
+                                ))
+                                break
+                            stack.append(Uninitialized(new_offsets[entry.source.index]))
+                            done = True
+                        continue
+
+                    stack.append(entry.type)
+
+                # print(offset, block, live, liveness.exits.get(block, None))
+                # print("locals: [", ", ".join(map(str, locals_)), "]")
+                # print("stack:  [", ", ".join(map(str, stack)), "]")
+
+                if offset >= 0:  # Don't write the bootstrap frame (offset -1)
+                    stackmap_frame: Union[StackMapTable.StackMapFrame, None] = None
+                    offset_delta = offset - (prev_offset + 1)
+
+                    if compress_frames:
+                        locals_delta = max_local - prev_max_local
+                        same_locals = not locals_delta and locals_ == prev_locals
+
+                        # if locals_ and locals_[-1].internal_size > 1:
+                        #     locals_delta -= 1
+
+                        if same_locals:
+                            if not stack:
+                                stackmap_frame = (
+                                    StackMapTable.SameFrame(offset_delta) if offset_delta < 64 else
+                                    StackMapTable.SameFrameExtended(offset_delta)
+                                )
+                            elif len(stack) == 1:
+                                stackmap_frame = (
+                                    StackMapTable.SameLocals1StackItemFrame(offset_delta, stack[0]) if offset_delta < 64 else
+                                    StackMapTable.SameLocals1StackItemFrameExtended(offset_delta, stack[0])
+                                )
+                        elif not stack and max_actual != prev_max_actual:
+                            if -3 <= locals_delta < 0 and locals_ == prev_locals[:locals_delta]:
+                                stackmap_frame = StackMapTable.ChopFrame(offset_delta, -locals_delta)
+                            elif 3 >= locals_delta > 0 and locals_[:-locals_delta] == prev_locals:
+                                stackmap_frame = StackMapTable.AppendFrame(offset_delta, locals_[-locals_delta:])
+
+                    if stackmap_frame is None:  # Resort to a full frame if we haven't worked out what it should be
+                        stackmap_frame = StackMapTable.FullFrame(offset_delta, tuple(locals_), stack)
+
+                    stackmap_table.frames.append(stackmap_frame)
+
+                prev_offset = offset
+                prev_locals = locals_
+                prev_stack = stack
+                prev_max_local = max_local
+                prev_max_actual = max_actual
+
+            if stackmap_table.frames:
+                code.attributes[stackmap_table.name] = (stackmap_table,)
+                logger.debug(" - Generated %i stackmap frame(s)." % len(stackmap_table.frames))
+
+        if errors:
+            if do_raise:
+                raise VerifyError(errors)
+
+            logger.debug(" - %i error(s) during assembling:" % len(errors))
+            for error in errors:
+                logger.debug("    - %s" % error)
 
         return code
+
+    # ------------------------------ Edges ------------------------------ #
+
+    def connect(self, edge: Edge, handle_fallthroughs: bool = True, handle_jumps: bool = True) -> None:
+        """
+        :param handle_fallthroughs: Handle multiple fallthrough edges by removing already existing ones.
+        :param handle_jumps: Handle jump edges by removing extra ones and adding the jump to the block if it isn't
+                             already in it.
+        """
+
+        if isinstance(edge, FallthroughEdge) and handle_fallthroughs:
+            # Ensure that blocks only have one fallthrough edge
+            for edge_ in self._forward_edges.get(edge.from_, []).copy():
+                if isinstance(edge_, FallthroughEdge):
+                    self.disconnect(edge_)
+
+        elif isinstance(edge, JumpEdge) and handle_jumps:
+            for edge_ in self._forward_edges.get(edge.from_, []).copy():
+                if isinstance(edge_, JumpEdge) and edge_.jump != edge.jump:
+                    self.disconnect(edge_)
+
+            if not edge.jump in edge.from_.instructions:  # Add to the instructions in the block we're jumping from
+                edge.from_.instructions.append(edge.jump)
+
+        super().connect(edge)
+
+    def disconnect(self, edge: Edge, handle_jumps: bool = True) -> None:
+        """
+        :param handle_jumps: Removes jump instructions from the block if this edge is the last edge that references them.
+        """
+
+        if isinstance(edge, JumpEdge) and handle_jumps:
+            # Remove the jump instruction if there are no more edges referencing the jump
+            for edge_ in self._forward_edges.get(edge.from_, ()):
+                if isinstance(edge_, JumpEdge):
+                    break
+            else:
+                while edge.jump in edge.from_.instructions:
+                    edge.from_.instructions.remove(edge.jump)
+
+        super().disconnect(edge)
+
+    def fallthrough(self, from_: InsnBlock, to: InsnBlock) -> FallthroughEdge:
+        """
+        Creates and connects a fallthrough edge between two blocks.
+
+        :param from_: The block we're coming from.
+        :param to: The block we're going to.
+        :return: The created fallthrough edge.
+        """
+
+        edge = FallthroughEdge(from_, to)
+        self.connect(edge)
+        return edge
+
+    def jump(
+            self, from_: InsnBlock, to: InsnBlock, jump: Union[MetaInstruction, Instruction] = instructions.goto,
+    ) -> JumpEdge:
+        """
+        Creates a jump edge between two blocks.
+
+        :param from_: The block we're coming from.
+        :param to: The block we're going to.
+        :param jump: The jump instruction.
+        :return: The jump edge that was created.
+        """
+
+        if isinstance(jump, MetaInstruction):
+            jump = jump()
+
+        if isinstance(jump, JsrInstruction) or isinstance(jump, RetInstruction):
+            raise TypeError("Cannot add jsr/ret instructions with jump() method.")
+        elif jump in (instructions.tableswitch, instructions.lookupswitch):
+            raise TypeError("Cannot add switch instructions with jump() method.")
+
+        jump.offset = None
+
+        edge = JumpEdge(from_, to, jump)
+        self.connect(edge)
+        return edge
+
+    def catch(
+            self,
+            from_: InsnBlock,
+            to: InsnBlock,
+            priority: Union[int, None] = None,
+            exception: Union[ReferenceType, Class, Class_, str] = types.throwable_t,
+    ) -> ExceptionEdge:
+        """
+        Creates an exception edge between two blocks.
+
+        :param from_: The block we're coming from.
+        :param to: The block that will act as the exception handler.
+        :param priority: The priority of this exception handler, lower values mean higher priority.
+        :param exception: The exception type being caught.
+        :return: The exception edge that was created.
+        """
+
+        exception = _argument.get_reference_type(exception)
+        if priority is None:  # Determine this automatically
+            priority = 0
+            for edge in self._forward_edges.get(from_, ()):
+                if isinstance(edge, ExceptionEdge) and edge.priority >= priority:
+                    priority = edge.priority + 1
+
+        edge = ExceptionEdge(from_, to, priority, exception)
+        self.connect(edge)
+        return edge

@@ -232,6 +232,26 @@ class MethodInfo(Method):
     def class_(self) -> "ClassFile":
         return self._class
 
+    @property
+    def code(self) -> Union["Code", None]:
+        """
+        :return: The code attribute for this method, None if it doesn't have one.
+        """
+
+        code, *_ = self.attributes.get(Code.name_, (None,))
+        return code
+
+    @code.setter
+    def code(self, value: Union["Code", None]) -> None:
+        """
+        Sets this method's code attribute.
+        """
+
+        if value is None:
+            del self.attributes[Code.name_]
+        else:
+            self.attributes[value.name] = (value,)
+
     def __init__(
             self,
             name: str,
@@ -480,7 +500,7 @@ class FieldInfo(Field):
 
     @name.setter
     def name(self, value: str) -> None:
-        self._name = name
+        self._name = value
 
     @property
     def type(self) -> BaseType:
@@ -568,3 +588,5 @@ class FieldInfo(Field):
 
 
 from . import attributes
+from .attributes.method import Code
+# from ..analysis.graph import InsnGraph

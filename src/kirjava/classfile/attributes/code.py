@@ -12,7 +12,7 @@ import logging
 import struct
 import typing
 from abc import abstractmethod, ABC
-from typing import Dict, IO, List, Tuple, Union
+from typing import IO, List, Tuple, Union
 
 from . import AttributeInfo
 from .. import descriptor, ClassFile
@@ -33,7 +33,7 @@ class StackMapTable(AttributeInfo):
     Contains information about stack frames, used for inference verification.
     """
 
-    __slots__ = ("stack_frames",)
+    __slots__ = ("frames",)
 
     name_ = "StackMapTable"
     since = Version(50, 0)
@@ -62,7 +62,7 @@ class StackMapTable(AttributeInfo):
             return types.uninit_this_t
         elif tag == 7:
             class_index, = struct.unpack(">H", buffer.read(2))
-            return class_file.constant_pool[class_index].get_type()
+            return class_file.constant_pool[class_index].get_actual_type()
         elif tag == 8:
             offset, = struct.unpack(">H", buffer.read(2))
             return Uninitialized(offset)
@@ -89,6 +89,9 @@ class StackMapTable(AttributeInfo):
             buffer.write(bytes((5,)))
         elif type_ == types.uninit_this_t:
             buffer.write(bytes((6,)))
+        elif type_ == types.this_t:
+            buffer.write(bytes((7,)))
+            buffer.write(struct.pack(">H", class_file.constant_pool.add(Class(type_.class_.name))))
         elif isinstance(type_, ClassOrInterfaceType):
             buffer.write(bytes((7,)))
             buffer.write(struct.pack(">H", class_file.constant_pool.add(Class(type_.name))))
@@ -104,26 +107,26 @@ class StackMapTable(AttributeInfo):
     def __init__(self, parent: "Code") -> None:
         super().__init__(parent, StackMapTable.name_)
 
-        self.stack_frames: List[StackMapTable.StackMapFrame] = []
+        self.frames: List[StackMapTable.StackMapFrame] = []
 
     def __repr__(self) -> str:
-        return "<StackMapTable(%r) at %x>" % (self.stack_frames, id(self))
+        return "<StackMapTable(%r) at %x>" % (self.frames, id(self))
 
     def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        self.stack_frames.clear()
+        self.frames.clear()
         frames_count, = struct.unpack(">H", buffer.read(2))
         for index in range(frames_count):
             frame_type, = buffer.read(1)
             for stack_frame in self.STACK_MAP_FRAMES:
                 if frame_type in stack_frame.frame_type:
-                    self.stack_frames.append(stack_frame.read(frame_type, class_file, buffer))
+                    self.frames.append(stack_frame.read(frame_type, class_file, buffer))
                     break
             else:
                 ...  # TODO: Raise exception / log
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.stack_frames)))
-        for stack_frame in self.stack_frames:
+        buffer.write(struct.pack(">H", len(self.frames)))
+        for stack_frame in self.frames:
             stack_frame.write(class_file, buffer)
 
     # ------------------------------ Stack frame types ------------------------------ #

@@ -10,8 +10,8 @@ from typing import Any, IO, List, Union
 from . import Instruction, MetaInstruction
 from .. import ClassFile
 from ... import types
-from ...analysis import Error
-from ...analysis.trace import _check_reference_type, Entry, State
+from ...abc import Error, TypeChecker
+from ...analysis.trace import BlockInstruction, State
 from ...types import BaseType
 
 
@@ -40,24 +40,28 @@ class LoadLocalInstruction(Instruction, ABC):
 
     def __eq__(self, other: Any) -> bool:
         return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or 
+            (isinstance(other, MetaInstruction) and other == self.__class__) or
             (other.__class__ == self.__class__ and other.index == self.index)
         )
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        entry = state.get(self.index)
+    def copy(self) -> "LoadLocalInstruction":
+        return self.__class__(self.index)
+
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        entry = state.get(source, self.index)
 
         error = None
         if self.type_ is None:
-            error = _check_reference_type(offset, self, entry.type)
-        elif not self.type_.can_merge(entry.type):
-            error = Error(offset, self, "expected type %s, got %s" % (self.type_, entry.type))
+            if not checker.check_reference(entry.type):
+                error = Error(source, "expected reference type, got %s" % entry.type)
+        elif not checker.check_merge(self.type_, entry.type):
+            error = Error(source, "expected type %s, got %s" % (self.type_, entry.type))
 
         if error is not None:
             errors.append(error)
-            state.push(Entry(offset, self.type_) if self.type_ is not None and no_verify else entry)
+            state.push(source, checker.merge(self.type_, entry.type), parents=entry, merges=(entry,))
         else:
-            state.push(entry)
+            state.push(source, entry)
 
 
 class LoadLocalFixedInstruction(LoadLocalInstruction, ABC):
@@ -83,6 +87,9 @@ class LoadLocalFixedInstruction(LoadLocalInstruction, ABC):
 
     def __eq__(self, other: Any) -> bool:
         return other == self.__class__ or other.__class__ == self.__class__
+
+    def copy(self) -> "LoadLocalFixedInstruction":
+        return self
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         ...
@@ -116,26 +123,30 @@ class StoreLocalInstruction(Instruction, ABC):
 
     def __eq__(self, other: Any) -> bool:
         return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or 
+            (isinstance(other, MetaInstruction) and other == self.__class__) or
             (other.__class__ == self.__class__ and other.index == self.index)
         )
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
+    def copy(self) -> "StoreLocalInstruction":
+        return self.__class__(self.index)
+
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         error = None
         if self.type_ is not None:
-            entry, *_ = state.pop(self.type_.internal_size, tuple_=True)
-            if not self.type_.can_merge(entry.type):
-                error = Error(offset, self, "expected type %s, got %s" % (self.type_, entry.type))
+            entry, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
+            if not checker.check_merge(self.type_, entry.type):
+                error = Error(source, "expected type %s, got %s" % (self.type_, entry.type))
         else:
-            entry = state.pop()
-            if entry.type != types.return_address_t:  # Can also be used for returnAddresses
-                error = _check_reference_type(offset, self, entry.type)
+            entry = state.pop(source)
+            if not checker.check_merge(types.return_address_t, entry.type):  # Can also be used for returnAddresses
+                if not checker.check_reference(entry.type):
+                    error = Error(source, "expected reference type or returnAddress type, got %s" % entry.type)
 
         if error is not None:
-            state.set(self.index, Entry(offset, self.type_) if self.type_ is not None and no_verify else entry)
             errors.append(error)
+            state.set(source, self.index, checker.merge(self.type_, entry.type), parents=entry.parents, merges=(entry,))
         else:
-            state.set(self.index, entry)
+            state.set(source, self.index, entry)
 
 
 class StoreLocalFixedInstruction(StoreLocalInstruction, ABC):
@@ -162,6 +173,9 @@ class StoreLocalFixedInstruction(StoreLocalInstruction, ABC):
     def __eq__(self, other: Any) -> bool:
         return other == self.__class__ or other.__class__ == self.__class__
 
+    def copy(self) -> "StoreLocalFixedInstruction":
+        return self
+
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         ...
 
@@ -185,20 +199,24 @@ class IncrementLocalInstruction(Instruction, ABC):
 
     def __repr__(self) -> str:
         return "<IncrementLocalInstruction(opcode=0x%x, mnemonic=%s, index=%i, value=%i) at %x>" % (
-            self.opcode, self.mnemonic, self.index, self.value,
+            self.opcode, self.mnemonic, self.index, self.value, id(self),
         )
 
     def __str__(self) -> str:
         return "%s %i by %i" % (self.mnemonic, self.index, self.value)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or 
-            (other.__class__ == self.__class__ and other.index == self.index and other.value == self.value)
+        return (isinstance(other, MetaInstruction) and other == self.__class__) or (
+            other.__class__ == self.__class__ and
+            other.index == self.index and
+            other.value == self.value
         )
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        entry = state.get(self.index)
-        if not types.int_t.can_merge(entry.type):
-            errors.append(Error(offset, self, "expected type int, got %s" % entry.type))
-        state.set(self.index, Entry(offset, types.int_t))
+    def copy(self) -> "IncrementLocalInstruction":
+        return self.__class__(self.index, self.value)
+
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        entry = state.get(source, self.index)
+        if not checker.check_merge(types.int_t, entry.type):
+            errors.append(Error(source, "expected type int, got %s" % entry.type))
+        state.set(source, self.index, types.int_t, parents=(entry,))

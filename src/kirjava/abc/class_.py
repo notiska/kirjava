@@ -184,9 +184,23 @@ class Class(ABC):
 
     @property
     @abstractmethod
+    def super_name(self) -> Union[str, None]:
+        """
+        :return: The name of the superclass of this class.
+        """
+
+        ...
+
+    @super_name.setter
+    @abstractmethod
+    def super_name(self, value: Union[str, None]) -> None:
+        ...
+
+    @property
+    @abstractmethod
     def interfaces(self) -> Tuple["Class", ...]:
         """
-        :return: The superinterfaces of this class.
+        :return: The interfaces that this class implements.
         """
 
         ...
@@ -194,6 +208,20 @@ class Class(ABC):
     @interfaces.setter
     @abstractmethod
     def interfaces(self, value: Tuple["Class", ...]) -> None:
+        ...
+
+    @property
+    @abstractmethod
+    def interface_names(self) -> Tuple[str, ...]:
+        """
+        :return: The names of the interfaces that this class implements.
+        """
+
+        ...
+
+    @interface_names.setter
+    @abstractmethod
+    def interface_names(self, value: Tuple[str, ...]) -> None:
         ...
 
     @property

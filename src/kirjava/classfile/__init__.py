@@ -16,10 +16,10 @@ import typing
 from io import BytesIO
 from typing import Dict, IO, List, Tuple, Union
 
-from .. import _argument
+from .. import _argument, types
 from ..abc import Class as Class_
 from ..environment import Environment
-from ..types import BaseType
+from ..types import BaseType, ReferenceType
 from ..version import Version
 
 if typing.TYPE_CHECKING:
@@ -205,35 +205,37 @@ class ClassFile(Class_):
         self._this = Class(value)
 
     @property
-    def super(self) -> Class_:
+    def super(self) -> Union[Class_, None]:
         if self._super is None:
             return None
-        return Environment.INSTANCE.get_class(self._super.name)
+        return Environment.find_class(self._super.name)
 
     @super.setter
-    def super(self, value: Class_) -> None:
-        self._super = Class(value.name)
+    def super(self, value: Union[Class_, None]) -> None:
+        if value is None:
+            self._super = None
+        else:
+            self._super = Class(value.name)
+
+    @property
+    def super_name(self) -> Union[str, None]:
+        return None if self._super is None else self._super.name
+
+    @super_name.setter
+    def super_name(self, value: Union[str, None]) -> None:
+        if value is None:
+            self._super = None
+        else:
+            self._super = Class(value)
 
     @property
     def interfaces(self) -> Tuple[Class_, ...]:
-        return tuple(Environment.INSTANCE.get_class(interface.name) for interface in self._interfaces)
+        return tuple(Environment.find_class(interface.name) for interface in self._interfaces)
 
     @interfaces.setter
     def interfaces(self, value: Tuple[Class_, ...]) -> None:
         self._interfaces.clear()
         self._interfaces.extend(Class(interface.name) for interface in value)
-
-    @property
-    def this(self) -> "Class":
-        return self._this
-
-    @property
-    def super_name(self) -> str:
-        return self._super.name
-
-    @super_name.setter
-    def super_name(self, value: str) -> None:
-        self._super = Class(value)
 
     @property
     def interface_names(self) -> Tuple[str, ...]:
@@ -243,6 +245,10 @@ class ClassFile(Class_):
     def interface_names(self, value: Tuple[str, ...]) -> None:
         self._interfaces.clear()
         self._interfaces.extend(Class(interface_name) for interface_name in value)
+
+    @property
+    def this(self) -> "Class":
+        return self._this
 
     @property
     def methods(self) -> Tuple["MethodInfo", ...]:
@@ -269,8 +275,8 @@ class ClassFile(Class_):
     def __init__(
             self,
             name: str,
-            super_: Union[Class_, None],
-            interfaces: Union[List[Class_], None] = None,
+            super_: Union["Class", ReferenceType, Class_, str, None] = types.object_t,
+            interfaces: Union[List[Union["Class", ReferenceType, Class_, str]], None] = None,
             version: Version = Version(52, 0),
             is_public: bool = False,
             is_final: bool = False,
@@ -292,11 +298,11 @@ class ClassFile(Class_):
         if super_ is None:
             self._super = None
         else:
-            self._super = Class(super_.name)
+            self._super = _argument.get_class_constant(super_.name)
 
         self._interfaces = []
         if interfaces is not None:
-            self._interfaces.extend([Class(interface.name) for interface in interfaces])
+            self._interfaces.extend([_argument.get_class_constant(interface.name) for interface in interfaces])
 
         self.access_flags = 0
         self.version = version

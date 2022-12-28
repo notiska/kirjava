@@ -9,7 +9,7 @@ Information about classes and such for Kirjava to use.
 """
 
 import logging
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple
 
 from .abc import Class
 
@@ -21,31 +21,24 @@ class Environment:
     The Kirjava environment.
     """
 
-    INSTANCE: Union["Environment", None] = None
-
-    def __init__(self) -> None:
-        if self.__class__.INSTANCE is not None:
-            raise Exception("An environment already exists!")
-        self.__class__.INSTANCE = self
-
-        logger.debug("Initialise Kirjava environment.")
-
-        self._classes: Dict[str, Class] = {}
+    _classes: Dict[str, Class] = {}
 
     # ------------------------------ Registering ------------------------------ #
 
-    def register_class(self, class_: Class) -> None:
+    @classmethod
+    def register_class(cls, class_: Class) -> None:
         """
         Registers a class with the environment.
 
         :param class_: The class to register.
         """
 
-        if class_.name in self._classes:
+        if class_.name in cls._classes:
             logger.debug("Overriding already defined class %s.", class_.name)
-        self._classes[class_.name] = class_
+        cls._classes[class_.name] = class_
 
-    def register_classes(self, *classes: Tuple[Class, ...]) -> None:
+    @classmethod
+    def register_classes(cls, *classes: Tuple[Class, ...]) -> None:
         """
         Registers multiple classes with the environment.
 
@@ -53,11 +46,12 @@ class Environment:
         """
 
         for class_ in classes:
-            self.register_class(class_)
+            cls.register_class(class_)
 
     # ------------------------------ Retrieving ------------------------------ #
 
-    def find_class(self, name: str) -> Class:
+    @classmethod
+    def find_class(cls, name: str) -> Class:
         """
         Retrieves a class from the environment.
 
@@ -65,7 +59,7 @@ class Environment:
         :return: The class.
         """
 
-        class_ = self._classes.get(name, None)
+        class_ = cls._classes.get(name, None)
         if class_ is None:
             raise LookupError("Couldn't find class by name %r." % name)
         return class_

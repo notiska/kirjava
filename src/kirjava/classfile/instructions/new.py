@@ -11,10 +11,9 @@ from . import Instruction, MetaInstruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_
 from ... import _argument, types
-from ...abc import Class
-from ...analysis import Error
-from ...analysis.trace import Entry, State
-from ...types import ReferenceType
+from ...abc import Class, Error, TypeChecker
+from ...analysis.trace import BlockInstruction, State
+from ...types import PrimitiveType, ReferenceType
 from ...types.reference import ArrayType, ClassOrInterfaceType
 from ...types.verification import Uninitialized
 
@@ -49,9 +48,12 @@ class NewInstruction(Instruction, ABC):
             (other.__class__ == self.__class__ and other.type == self.type)
         )
 
+    def copy(self) -> "NewInstruction":
+        return self.__class__(self.type)
+
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
-        self.type = class_file.constant_pool[self._index].get_type()
+        self.type = class_file.constant_pool[self._index].get_actual_type()
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         if isinstance(self.type, ClassOrInterfaceType):
@@ -60,8 +62,8 @@ class NewInstruction(Instruction, ABC):
             self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type)))
         super().write(class_file, buffer, wide)
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        state.push(Entry(offset, Uninitialized(offset, self.type)))
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        state.push(source, Uninitialized(class_=self.type))
 
 
 class NewArrayInstruction(Instruction, ABC):
@@ -94,7 +96,14 @@ class NewArrayInstruction(Instruction, ABC):
         types.long_t: 11,
     }
 
-    def __init__(self, type_: ArrayType) -> None:
+    def __init__(self, type_: Union[ArrayType, PrimitiveType]) -> None:  # FIXME: ArrayType?
+        """
+        :param type_: Either the array type itself, or the element type of the array.
+        """
+
+        if not isinstance(type_, ArrayType):
+            type_ = ArrayType(type_)
+
         self.type = type_
 
     def __repr__(self) -> str:
@@ -111,6 +120,9 @@ class NewArrayInstruction(Instruction, ABC):
             (other.__class__ == self.__class__ and other.type == self.type)
         )
 
+    def copy(self) -> "NewArrayInstruction":
+        return self.__class__(self.type)
+
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
         self.type = ArrayType(self._FORWARD_TYPES[self._atype])
@@ -119,11 +131,11 @@ class NewArrayInstruction(Instruction, ABC):
         self._atype = self._BACKWARD_TYPES[self.type.element_type]
         super().write(class_file, buffer, wide)
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        entry = state.pop()
-        if not types.int_t.can_merge(entry.type):
-            errors.append(Error(offset, self, "expected type int, got %s" % entry.type))
-        state.push(Entry(offset, self.type))
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        entry = state.pop(source)
+        if not checker.check_merge(types.int_t, entry.type):
+            errors.append(Error(source, "expected type int, got %s" % entry.type))
+        state.push(source, self.type, parents=(entry,))
 
 
 class ANewArrayInstruction(Instruction, ABC):
@@ -136,7 +148,14 @@ class ANewArrayInstruction(Instruction, ABC):
     operands = {"_index": ">H"}
     throws = (types.negativearraysizeexception_t,)
 
-    def __init__(self, type_: ArrayType) -> None:
+    def __init__(self, type_: Union[ArrayType, ReferenceType]) -> None:
+        """
+        :param type_: Either the array type, or the element type in the array.
+        """
+
+        if not isinstance(type_, ArrayType):
+            type_ = ArrayType(type_)
+
         self.type = type_
 
     def __repr__(self) -> str:
@@ -153,24 +172,27 @@ class ANewArrayInstruction(Instruction, ABC):
             (other.__class__ == self.__class__ and other.type == self.type)
         )
 
+    def copy(self) -> "ANewArrayInstruction":
+        return self.__class__(self.type)
+
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
-        self.type = class_file.constant_pool[self._index].get_type()
-        if not isinstance(self.type, ArrayType):
-            self.type = ArrayType(self.type)
+        self.type = ArrayType(class_file.constant_pool[self._index].get_actual_type())
+        # if not isinstance(self.type, ArrayType):
+        #     self.type = ArrayType(self.type)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         if isinstance(self.type.element_type, ClassOrInterfaceType) and self.type.dimension == 1:
             self._index = class_file.constant_pool.add(Class_(self.type.element_type.name))
         else:
-            self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type)))
+            self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type.element_type)))
         super().write(class_file, buffer, wide)
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        entry = state.pop()
-        if not types.int_t.can_merge(entry.type):
-            errors.append(Error(offset, self, "expected type int, got %s" % entry.type))
-        state.push(Entry(offset, self.type))
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        entry = state.pop(source)
+        if not checker.check_merge(types.int_t, entry.type):
+            errors.append(Error(source, "expected type int, got %s" % entry.type))
+        state.push(source, self.type, parents=(entry,))
 
 
 class MultiANewArrayInstruction(ANewArrayInstruction, ABC):
@@ -184,9 +206,9 @@ class MultiANewArrayInstruction(ANewArrayInstruction, ABC):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
-        self.type = class_file.constant_pool[self._index].get_type()
-        if not isinstance(self.type, ArrayType):
-            self.type = ArrayType(self.type, self._dimension)
+        self.type = ArrayType(class_file.constant_pool[self._index].get_actual_type(), self._dimension)
+        # if not isinstance(self.type, ArrayType):
+        #     self.type = ArrayType(self.type, self._dimension)
         # TODO: Need to verify dimensions of the target array?
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
@@ -194,10 +216,12 @@ class MultiANewArrayInstruction(ANewArrayInstruction, ABC):
         self._dimension = self.type.dimension
         super().write(class_file, buffer, wide)
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        entries = []
         for index in range(self.type.dimension):
-            entry = state.pop()
-            if not types.int_t.can_merge(entry.type):
-                errors.append(Error(offset, self, "expected type int, got %s" % entry.type))
+            entry = state.pop(source)
+            entries.append(entry)
+            if not checker.check_merge(types.int_t, entry.type):
+                errors.append(Error(source, "expected type int, got %s" % entry.type))
 
-        state.push(Entry(offset, self.type))
+        state.push(source, self.type, parents=tuple(entries))

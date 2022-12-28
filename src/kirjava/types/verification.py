@@ -84,7 +84,7 @@ class This(VerificationType):
         return "this"
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, This)
+        return isinstance(other, This) and (self.class_ is None or other.class_ is None or other.class_ == self.class_)
 
     def __hash__(self) -> int:
         return 1952999795
@@ -142,11 +142,16 @@ class UninitializedThis(Uninitialized):
     Used to denote an uninitialized this verification type.
     """
 
+    def __init__(self, class_: Union["ClassOrInterfaceType", None] = None) -> None:
+        super().__init__(-1, class_)
+
     def __str__(self) -> str:
         return "uninitializedThis"
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, UninitializedThis)
+        return isinstance(other, UninitializedThis) and (
+            self.class_ is None or other.class_ is None or other.class_ == self.class_
+        )
 
     def __hash__(self) -> int:
         return 7600498803265268083

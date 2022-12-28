@@ -11,9 +11,8 @@ from . import Instruction, MetaInstruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_
 from ... import _argument, types
-from ...abc import Class
-from ...analysis import Error
-from ...analysis.trace import _check_reference_type, Entry, State
+from ...abc import Class, Error, TypeChecker
+from ...analysis.trace import BlockInstruction, State
 from ...types import PrimitiveType, ReferenceType
 from ...types.reference import ClassOrInterfaceType
 
@@ -31,11 +30,11 @@ class ConversionInstruction(Instruction, ABC):
             self.opcode, self.mnemonic, self.type_in, self.type_out, id(self),
         )
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        entry, *_ = state.pop(self.type_in.internal_size, tuple_=True)
-        if not self.type_in.can_merge(entry.type):
-            errors.append(Error(offset, self, "expected type %s, got %s" % (self.type_in, entry.type)))
-        state.push(Entry(offset, self.type_out.to_verification_type()))
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        entry, *_ = state.pop(source, self.type_in.internal_size, tuple_=True)
+        if not checker.check_merge(self.type_in, entry.type):
+            errors.append(Error(source, "expected type %s, got %s" % (self.type_in, entry.type)))
+        state.push(source, self.type_out.to_verification_type(), parents=(entry,))
 
 
 class TruncationInstruction(ConversionInstruction, ABC):
@@ -82,9 +81,12 @@ class CheckCastInstruction(Instruction, ABC):
             (other.__class__ == self.__class__ and other.type == self.type)
         )
 
+    def copy(self) -> "CheckCastInstruction":
+        return self.__class__(self.type)
+
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
-        self.type = class_file.constant_pool[self._index].get_type()
+        self.type = class_file.constant_pool[self._index].get_actual_type()
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         if isinstance(self.type, ClassOrInterfaceType):
@@ -93,13 +95,16 @@ class CheckCastInstruction(Instruction, ABC):
             self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type)))
         super().write(class_file, buffer, wide)
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        entry = state.pop()
-        errors.append(_check_reference_type(offset, self, entry.type))
-        if entry.type == types.null_t:  # Conserve original offset for tracing purposes
-            state.push(entry)
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        entry = state.pop(source)
+        if not checker.check_reference(entry.type):
+            errors.append(Error(source, "expected reference type, got %s" % entry.type))
+
+        if not entry.type in (types.null_t, self.type):
+            # Technically the same entry, so specify the merge entry too
+            state.push(source, self.type, parents=(entry,), merges=(entry,))
         else:
-            state.push(Entry(offset, self.type))
+            state.push(source, entry)
 
 
 class InstanceOfInstruction(Instruction, ABC):
@@ -132,9 +137,12 @@ class InstanceOfInstruction(Instruction, ABC):
             (other.__class__ == self.__class__ and other.type == self.type)
         )
 
+    def copy(self) -> "InstanceOfInstruction":
+        return self.__class__(self.type)
+
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
-        self.type = class_file.constant_pool[self._index].get_type()
+        self.type = class_file.constant_pool[self._index].get_actual_type()
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         if isinstance(self.type, ClassOrInterfaceType):
@@ -143,7 +151,8 @@ class InstanceOfInstruction(Instruction, ABC):
             self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type)))
         super().write(class_file, buffer, wide)
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        entry = state.pop()
-        errors.append(_check_reference_type(offset, self, entry.type))
-        state.push(Entry(offset, types.int_t))
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        entry = state.pop(source)
+        if not checker.check_reference(entry.type):
+            errors.append(Error(source, "expected reference type, got %s" % entry.type))
+        state.push(source, types.int_t, parents=(entry,))

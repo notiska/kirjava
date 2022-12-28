@@ -11,9 +11,8 @@ from . import Instruction, MetaInstruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_, InterfaceMethodRef, InvokeDynamic, MethodRef, NameAndType
 from ... import _argument, types
-from ...abc import Class
-from ...analysis import Error
-from ...analysis.trace import _check_reference_type, Entry, State
+from ...abc import Class, Error, TypeChecker
+from ...analysis.trace import BlockInstruction, Entry, State
 from ...types import BaseType, ReferenceType
 from ...types.reference import ClassOrInterfaceType
 from ...types.verification import This, Uninitialized
@@ -63,11 +62,14 @@ class InvokeInstruction(Instruction, ABC):
             other.return_type == self.return_type
         )
 
+    def copy(self) -> "InvokeInstruction":
+        return self.__class__(self.class_, self.name, self.argument_types, self.return_type)
+
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
 
         method_ref = class_file.constant_pool[self._index]
-        self.class_ = method_ref.class_.get_type()
+        self.class_ = method_ref.class_.get_actual_type()
         self.name = method_ref.name_and_type.name
         self.argument_types, self.return_type = descriptor.parse_method_descriptor(method_ref.name_and_type.descriptor)
 
@@ -83,6 +85,24 @@ class InvokeInstruction(Instruction, ABC):
 
         super().write(class_file, buffer, wide)
 
+    def _trace_arguments(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> List[Entry]:
+        """
+        Partial tracing for the arguments this instruction should accept.
+        """
+
+        argument_entries = []
+
+        for argument_type in reversed(self.argument_types):
+            argument_type = argument_type.to_verification_type()
+
+            entry, *_ = state.pop(source, argument_type.internal_size, tuple_=True)
+            argument_entries.append(entry)
+
+            if not checker.check_merge(argument_type, entry.type):
+                errors.append(Error(source, "expected type %s, got %s" % (argument_type, entry.type)))
+
+        return argument_entries
+
 
 class InvokeVirtualInstruction(InvokeInstruction, ABC):
     """
@@ -96,21 +116,15 @@ class InvokeVirtualInstruction(InvokeInstruction, ABC):
         types.unsatisfiedlinkerror_t,
     )
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        # FIXME: This code is duplicated a lot
-        for argument_type in reversed(self.argument_types):
-            argument_type = argument_type.to_verification_type()
-            entry, *_ = state.pop(argument_type.internal_size, tuple_=True)
-            if isinstance(argument_type, ReferenceType):  # TODO: Merge check too?
-                errors.append(_check_reference_type(offset, self, entry.type))
-            elif not argument_type.can_merge(entry.type):
-                errors.append(Error(offset, self, "expected type %s, got %s" % (argument_type, entry.type)))
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        argument_entries = self._trace_arguments(source, state, errors, checker)
+        entry = state.pop(source)
 
-        entry = state.pop()
-        errors.append(_check_reference_type(offset, self, entry.type))  # TODO: Assignability check?
+        if not checker.check_merge(self.class_, entry.type):
+            errors.append(Error(source, "expected type %s, got %s" % (self.class_, entry.type)))
 
         if self.return_type != types.void_t:
-            state.push(Entry(offset, self.return_type.to_verification_type()))
+            state.push(source, self.return_type.to_verification_type(), parents=tuple(argument_entries) + (entry,))
 
 
 class InvokeSpecialInstruction(InvokeVirtualInstruction, ABC):
@@ -125,26 +139,23 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction, ABC):
         types.unsatisfiedlinkerror_t,
     )
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        for argument_type in reversed(self.argument_types):
-            argument_type = argument_type.to_verification_type()
-            entry, *_ = state.pop(argument_type.internal_size, tuple_=True)
-            if isinstance(argument_type, ReferenceType):
-                errors.append(_check_reference_type(offset, self, entry.type))
-            elif not argument_type.can_merge(entry.type):
-                errors.append(Error(offset, self, "expected type %s, got %s" % (argument_type, entry.type)))
-
-        entry = state.pop()
-        errors.append(_check_reference_type(offset, self, entry.type))
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        argument_entries = self._trace_arguments(source, state, errors, checker)
+        entry = state.pop(source)
 
         if self.name == "<init>" and self.return_type == types.void_t:
             if entry.type == types.uninit_this_t:
-                state.replace(entry, Entry(offset, This(entry.type.class_)))
+                state.replace(source, entry, This(entry.type.class_), merges=(entry,))
+                return
             elif isinstance(entry.type, Uninitialized):  # Unverified code can cause this not to be an uninitialized type
-                state.replace(entry, Entry(offset, entry.type.class_))
+                state.replace(source, entry, entry.type.class_, merges=(entry,))
+                return
 
-        elif self.return_type != types.void_t:
-            state.push(Entry(offset, self.return_type.to_verification_type()))
+        if not checker.check_merge(self.class_, entry.type):
+            errors.append(Error(source, "expected type %s, got %s" % (self.class_, entry.type)))
+
+        if self.return_type != types.void_t:
+            state.push(source, self.return_type.to_verification_type(), parents=(*argument_entries, entry))
 
 
 class InvokeStaticInstruction(InvokeInstruction, ABC):
@@ -152,17 +163,10 @@ class InvokeStaticInstruction(InvokeInstruction, ABC):
     An instruction that invokes a static method.
     """
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        for argument_type in reversed(self.argument_types):
-            argument_type = argument_type.to_verification_type()
-            entry, *_ = state.pop(argument_type.internal_size, tuple_=True)
-            if isinstance(argument_type, ReferenceType):
-                errors.append(_check_reference_type(offset, self, entry.type))
-            elif not argument_type.can_merge(entry.type):
-                errors.append(Error(offset, self, "expected type %s, got %s" % (argument_type, entry.type)))
-
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        argument_entries = self._trace_arguments(source, state, errors, checker)
         if self.return_type != types.void_t:
-            state.push(Entry(offset, self.return_type.to_verification_type()))
+            state.push(source, self.return_type.to_verification_type(), parents=tuple(argument_entries))
 
 
 class InvokeInterfaceInstruction(InvokeVirtualInstruction, ABC):
@@ -178,6 +182,20 @@ class InvokeInterfaceInstruction(InvokeVirtualInstruction, ABC):
         types.unsatisfiedlinkerror_t,
     )
 
+    def __init__(
+            self,
+            class_: Union[ReferenceType, Class, Class_, str],
+            name: str,
+            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+            count: int = 0,
+    ) -> None:
+        super().__init__(class_, name, *descriptor)
+
+        self.count = count
+
+    def copy(self) -> "InvokeInterfaceInstruction":
+        return self.__class__(self.class_, self.name, self.argument_types, self.return_type, count=self.count)
+
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         if isinstance(self.class_, ClassOrInterfaceType):
             class_ = Class_(self.class_.name)
@@ -190,15 +208,52 @@ class InvokeInterfaceInstruction(InvokeVirtualInstruction, ABC):
 
         Instruction.write(self, class_file, buffer, wide)
 
-    ...  # TODO: Better verification in the future?
 
-
-class InvokeDynamicInstruction(InvokeInstruction, ABC):
+class InvokeDynamicInstruction(InvokeStaticInstruction, ABC):
     """
     An instruction that invokes a dynamically computed callsite.
     """
 
     __slots__ = ("bootstrap_method_attr_index",)
+
+    def __init__(
+            self,
+            bootstrap_method_attr_index: int,
+            name: str,
+            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+    ) -> None:
+        """
+        :param bootstrap_method_attr_index: The index in the bootstrap methods attribute this invokedynamic refers to.
+        """
+
+        self.bootstrap_method_attr_index = bootstrap_method_attr_index
+        self.name = name
+        self.argument_types, self.return_type = _argument.get_method_descriptor(*descriptor)
+
+    def __repr__(self) -> str:
+        # Ugly, but whatever
+        return "<InvokeDynamicInstruction(opcode=0x%x, mnemonic=%s, bootstrap_method_attr_index=%i, name=%r, argument_types=(%s), return_type=%s) at %x>" % (
+            self.opcode, self.mnemonic, self.bootstrap_method_attr_index, self.name, 
+            ", ".join(map(str, self.argument_types)) + ("," if len(self.argument_types) == 1 else ""),
+            self.return_type, id(self),
+        )
+
+    def __str__(self) -> str:
+        return "%s index %i %s %s(%s)" % (
+            self.mnemonic, self.bootstrap_method_attr_index, self.return_type, self.name, ", ".join(map(str, self.argument_types)),
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        return (isinstance(other, MetaInstruction) and other == self.__class__) or (
+            other.__class__ == self.__class__ and
+            other.bootstrap_method_attr_index == self.bootstrap_method_attr_index and
+            other.name == self.name and
+            other.argument_types == self.argument_types and
+            other.return_type == self.return_type
+        )
+
+    def copy(self) -> "InvokeDynamicInstruction":
+        return self.__class__(self.bootstrap_method_attr_index, self.name, self.argument_types, self.return_type)
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         Instruction.read(self, class_file, buffer, wide)
@@ -206,7 +261,6 @@ class InvokeDynamicInstruction(InvokeInstruction, ABC):
         invoke_dynamic = class_file.constant_pool[self._index]
 
         self.bootstrap_method_attr_index = invoke_dynamic.bootstrap_method_attr_index
-        self.class_ = None  # method_ref.class_.get_type()
         self.name = invoke_dynamic.name_and_type.name
         self.argument_types, self.return_type = descriptor.parse_method_descriptor(invoke_dynamic.name_and_type.descriptor)
 
@@ -218,15 +272,3 @@ class InvokeDynamicInstruction(InvokeInstruction, ABC):
         self._index = class_file.constant_pool.add(invoke_dynamic)
 
         Instruction.write(self, class_file, buffer, wide)
-
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False) -> None:
-        for argument_type in reversed(self.argument_types):
-            argument_type = argument_type.to_verification_type()
-            entry, *_ = state.pop(argument_type.internal_size, tuple_=True)
-            if isinstance(argument_type, ReferenceType):
-                errors.append(_check_reference_type(offset, self, entry.type))
-            elif not argument_type.can_merge(entry.type):
-                errors.append(Error(offset, self, "expected type %s, got %s" % (argument_type, entry.type)))
-
-        if self.return_type != types.void_t:
-            state.push(Entry(offset, self.return_type.to_verification_type()))

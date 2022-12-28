@@ -10,8 +10,9 @@ from typing import Any, IO, List
 from . import Instruction, MetaInstruction
 from .. import ClassFile
 from ..constants import Constant, Integer
-from ...analysis import Error
-from ...analysis.trace import Entry, State
+from ... import types
+from ...abc import Error, TypeChecker
+from ...analysis.trace import BlockInstruction, State
 
 
 class ConstantInstruction(Instruction, ABC):
@@ -36,17 +37,21 @@ class ConstantInstruction(Instruction, ABC):
     def __str__(self) -> str:
         return "%s %s" % (self.mnemonic, self.constant)
 
-    def __str__(self) -> str:
-        return "%s %s" % (self.mnemonic, self.constant)
-
     def __eq__(self, other: Any) -> bool:
         return (
             (isinstance(other, MetaInstruction) and other == self.__class__) or
             (other.__class__ == self.__class__ and other.constant == self.constant)
         )
 
-    def step(self, offset: int, state: State, errors: List[Error], no_verify: bool = False):
-        state.push(Entry(offset, self.constant.get_type()))
+    def copy(self) -> "ConstantInstruction":
+        return self.__class__(self.constant)
+
+    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        try:
+            state.push(source, self.constant.get_type())
+        except TypeError:
+            errors.append(Error(source, "can't convert constant %s to Java type" % self.constant))
+            state.push(source, types.top_t)  # Placeholder, doesn't account for wide types tho :(
 
 
 class FixedConstantInstruction(ConstantInstruction, ABC):
@@ -64,6 +69,9 @@ class FixedConstantInstruction(ConstantInstruction, ABC):
 
     def __eq__(self, other: Any) -> bool:
         return other == self.__class__ or other.__class__ == self.__class__
+
+    def copy(self) -> "FixedConstantInstruction":
+        return self  # Immutable type technically
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         ...

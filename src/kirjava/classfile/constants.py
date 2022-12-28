@@ -3,8 +3,7 @@
 import logging
 import struct
 import typing
-from abc import ABC, abstractmethod
-from io import BytesIO
+from abc import abstractmethod, ABC
 from typing import Any, Callable, Dict, IO, List, Union
 
 from ..abc import Constant
@@ -18,7 +17,7 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger("kirjava.classfile.constants")
 
 
-class Constant(Constant):
+class Constant(Constant, ABC):
     """
     Represents a value in the constant pool.
     """
@@ -226,7 +225,12 @@ class Class(Constant):
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(struct.pack(">H", class_file.constant_pool.add_utf8(self.name)))
 
-    def get_type(self) -> Union["ArrayType", "ClassOrInterfaceType"]:
+    def get_type(self) -> "ClassOrInterfaceType":
+        # Interesting bug here lol, this method was previously get_actual_type. I'm sure you can imagine what problems
+        # that caused.
+        return types.class_t
+
+    def get_actual_type(self) -> Union["ArrayType", "ClassOrInterfaceType"]:
         if self.name.startswith("["):  # Array type, duh
             return descriptor.parse_field_descriptor(self.name)
         return ClassOrInterfaceType(self.name)
@@ -677,7 +681,6 @@ class ConstantPool:
             raise TypeError("Index %i is not a valid UTF-8 constant." % index)
 
         return constant.value
-
 
     def clear(self) -> None:
         """

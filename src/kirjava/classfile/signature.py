@@ -72,7 +72,7 @@ def next_argument(signature: str, force_read: bool = False) -> Tuple[Union[TypeA
 
     char = signature[0]
 
-    if char in _base_types:
+    if char in _FORWARD_BASE_TYPES:
         return next_argument_(signature)  # Regular type argument
 
     elif char == "L":

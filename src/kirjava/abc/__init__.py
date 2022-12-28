@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 
 __all__ = (
+    "Source", 
     "Constant",
     "Class", "Field", "Method",
+    "Block", "Edge", "Graph", "RethrowBlock", "ReturnBlock",
+    "Error", "NoTypeChecker", "TypeChecker", "Verifier", "VerifyError",
 )
 
 """
-Abstract base classes.
+Abstract base classes for different concepts used throughout Kirjava.
 """
 
 import typing
@@ -59,4 +62,6 @@ class Constant(ABC):
 
 from .class_ import *
 from .field import *
+from .graph import *
 from .method import *
+from .verifier import *

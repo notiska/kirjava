@@ -9,12 +9,12 @@ Attributes that are only found in method info structures.
 """
 
 import logging
-import operator
 import struct
 from io import BytesIO
 from typing import Dict, IO, List, Tuple, Union
 
 from . import AttributeInfo
+from .code import StackMapTable
 from .. import attributes, ClassFile
 from ..constants import Class
 from ..members import MethodInfo
@@ -33,6 +33,26 @@ class Code(AttributeInfo):
     name_ = "Code"
     since = Version(45, 0)
     locations = (MethodInfo,)
+
+    @property
+    def stackmap_table(self) -> Union["StackMapTable", None]:
+        """
+        :return: The stackmap table in this code, or None if there isn't one.
+        """
+
+        stackmap_table, *_ = self.attributes.get(StackMapTable.name_, (None,))
+        return stackmap_table
+
+    @stackmap_table.setter
+    def stackmap_table(self, value: Union["StackMapTable", None]) -> None:
+        """
+        Sets the stackmap table attribute in this code.
+        """
+
+        if value is None:
+            del self.attributes[StackMapTable.name_]
+        else:
+            self.attributes[value.name] = (value,)
 
     def __init__(
             self, parent: MethodInfo, max_stack: Union[int, None] = None, max_locals: Union[int, None] = None,

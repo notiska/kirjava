@@ -99,6 +99,8 @@ def next_argument(descriptor: str) -> Tuple[BaseType, str]:
 
     elif char == "L":
         end_index = descriptor.find(";")
+        if end_index < 0:
+            return InvalidType(descriptor), ""
         return ClassOrInterfaceType(descriptor[1: end_index]), descriptor[end_index + 1:]
 
     elif char == "[":

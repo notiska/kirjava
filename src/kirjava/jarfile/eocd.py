@@ -37,7 +37,7 @@ class EndOfCentralDirectoryRecord(ZipPart):
             eocd_record.central_directory_start_disk,
             eocd_record.central_driectory_start_offset,
             eocd_record.central_directory_record_count,
-            eocd_recrod.central_directory_size,
+            eocd_record.central_directory_size,
             eocd_record.central_directory_offset,
             eocd_record.comment_size,
         ) = struct.unpack("<HHHHIIH", buffer.read(18))

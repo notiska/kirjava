@@ -62,7 +62,7 @@ class Field(ABC):
 
         ...
 
-    @is_public.setter
+    @is_protected.setter
     @abstractmethod
     def is_protected(self, value: bool) -> None:
         ...

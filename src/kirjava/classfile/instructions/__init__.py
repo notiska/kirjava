@@ -5,19 +5,17 @@ JVM instructions.
 """
 
 import operator
-import struct
 import typing
-from abc import abstractmethod, ABCMeta
+from abc import ABCMeta
 from typing import Any, Dict, IO, List, Tuple, Union
 
 from .. import ClassFile
-from ..constants import Double, Float, Integer, Long
-from ... import types
+from ..constants import Double, Float, Long
+from ...abc import Error, Source, TypeChecker
 from ...types.reference import ClassOrInterfaceType
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Error
-    from ...analysis.trace import State
+    from ...analysis.trace import BlockInstruction, State
 
 
 class MetaInstruction(ABCMeta):
@@ -34,7 +32,7 @@ class MetaInstruction(ABCMeta):
             operands: Union[Dict[str, str], None] = None,
             operands_wide: Union[Dict[str, str], None] = None,
             throws: Union[Tuple[ClassOrInterfaceType, ...], None] = None,
-            **namespace,
+            **namespace: Dict[str, object],
     ) -> "MetaInstruction":
         """
         Creates a new instruction with the given information.
@@ -44,6 +42,7 @@ class MetaInstruction(ABCMeta):
         :param base: The base instruction that this one extends.
         :param operands: Operands and their struct format.
         :param operands_wide: Wide variants of the operands.
+        :param throws: Exceptions that this instruction can throw.
         :param namespace: Any extra variables to include in the class' namespace.
         :return: The created instruction class.
         """
@@ -72,9 +71,9 @@ class MetaInstruction(ABCMeta):
         return cls.__new__(cls, mnemonic, (base,), namespace)
 
 
-class Instruction(metaclass=MetaInstruction):
+class Instruction(Source, metaclass=MetaInstruction):
     """
-    A (somewhat abstracted) JVM opcode.
+    A (somewhat abstracted) JVM instruction.
     """
 
     opcode: int = ...
@@ -96,6 +95,21 @@ class Instruction(metaclass=MetaInstruction):
 
     def __hash__(self) -> int:
         return hash((self.opcode, self.mnemonic))
+
+    def copy(self) -> "Instruction":
+        """
+        Creates a copy of this instruction.
+
+        :return: The copied instruction.
+        """
+
+        # instruction = self.__class__.__new__(self.__class__)
+        # for operand in self.operands:
+        #     if hasattr(self, operand):
+        #         setattr(instruction, operand, getattr(self, operand))
+        # return instruction
+
+        return self  # Assume immutable if not overriden
 
     # @abstractmethod
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
@@ -146,13 +160,14 @@ class Instruction(metaclass=MetaInstruction):
         return 1 + sum(map(struct.calcsize, (self.operands if not wide else self.operands_wide).values()))
 
     # @abstractmethod
-    def step(self, offset: int, state: "State", errors: List["Error"], no_verify: bool = False) -> None:
+    def trace(self, source: "BlockInstruction", state: "State", errors: List[Error], checker: TypeChecker) -> None:
         """
         Steps through this instruction (for stackmap frame generation and verification purposes).
 
+        :param source: More specific information about where this instruction exactly is.
         :param state: The current stack state.
         :param errors: Cumulative errors to add to.
-        :param no_verify: Don't verify types.
+        :param checker: The type checker implementation to use.
         """
 
         ...
@@ -412,9 +427,9 @@ ifnonnull = MetaInstruction.new_instruction(0xc7, "ifnonnull", UnaryComparisonJu
 # Other jumps
 goto = MetaInstruction.new_instruction(0xa7, "goto", JumpInstruction, {"offset": ">h"})
 goto_w = MetaInstruction.new_instruction(0xc8, "goto_w", JumpInstruction, {"offset": ">i"})
-jsr = MetaInstruction.new_instruction(0xa8, "jsr", JumpInstruction, {"offset": ">h"})
-jsr_w = MetaInstruction.new_instruction(0xc9, "jsr_w", JumpInstruction, {"offset": ">i"})
-ret = MetaInstruction.new_instruction(0xa9, "ret", JumpInstruction, {"index": ">B"}, {"index": ">H"})  # TODO
+jsr = MetaInstruction.new_instruction(0xa8, "jsr", JsrInstruction, {"offset": ">h"})
+jsr_w = MetaInstruction.new_instruction(0xc9, "jsr_w", JsrInstruction, {"offset": ">i"})
+ret = MetaInstruction.new_instruction(0xa9, "ret", RetInstruction)
 tableswitch = MetaInstruction.new_instruction(0xaa, "tableswitch", TableSwitchInstruction)
 lookupswitch = MetaInstruction.new_instruction(0xab, "lookupswitch", LookupSwitchInstruction)
 
