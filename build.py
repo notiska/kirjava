@@ -3,7 +3,7 @@
 from pybuilder.core import init, use_plugin, Author, Project
 
 use_plugin("python.core")
-# use_plugin("python.distutils")
+use_plugin("python.distutils")
 
 
 name = "kirjava"
@@ -17,6 +17,8 @@ default_task = "publish"
 
 @init
 def set_properties(project: Project) -> None:
+    project.depends_on("frozendict")
+
     project.set_property("dir_source_main_python", "src/")
     project.set_property("dir_source_unittest_python", "tests/")
 
