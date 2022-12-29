@@ -13,9 +13,9 @@ if __name__ == "__main__":
     hello_world = kirjava.ClassFile("HelloWorld", is_public=True)
     # A note on array types, if the array type does not exist in kirjava.types, you can just wrap it with
     # kirjava.types.ArrayType. With this, you can specify dimensions too.
-    main = kirjava.MethodInfo(
-        "main", (kirjava.types.string_array_t,), kirjava.types.void_t, hello_world, is_public=True, is_static=True,
-    )
+    main = hello_world.add_method("main", (kirjava.types.string_array_t,), kirjava.types.void_t)
+    main.is_public = True
+    main.is_static = True
 
     graph = kirjava.analysis.InsnGraph(main)
     graph.entry_block = kirjava.analysis.InsnBlock(graph)  # Block with label 0, that belongs to the given graph

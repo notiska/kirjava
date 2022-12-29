@@ -33,7 +33,9 @@ class ConversionInstruction(Instruction, ABC):
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry, *_ = state.pop(source, self.type_in.internal_size, tuple_=True)
         if not checker.check_merge(self.type_in, entry.type):
-            errors.append(Error(source, "expected type %s, got %s" % (self.type_in, entry.type)))
+            errors.append(Error(
+                source, "expected type %s" % self.type_in, "got %s (via %s)" % (entry.type, entry.source),
+            ))
         state.push(source, self.type_out.to_verification_type(), parents=(entry,))
 
 
@@ -98,7 +100,7 @@ class CheckCastInstruction(Instruction, ABC):
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_reference(entry.type):
-            errors.append(Error(source, "expected reference type, got %s" % entry.type))
+            errors.append(Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source)))
 
         if not entry.type in (types.null_t, self.type):
             # Technically the same entry, so specify the merge entry too
@@ -154,5 +156,5 @@ class InstanceOfInstruction(Instruction, ABC):
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_reference(entry.type):
-            errors.append(Error(source, "expected reference type, got %s" % entry.type))
+            errors.append(Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source)))
         state.push(source, types.int_t, parents=(entry,))

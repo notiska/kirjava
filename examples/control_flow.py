@@ -15,7 +15,7 @@ def make_main() -> None:
     global control_flow
 
     main = kirjava.MethodInfo(
-        "main", (kirjava.types.string_array_t,), kirjava.types.void_t, control_flow, is_public=True, is_static=True,
+        control_flow, "main", (kirjava.types.string_array_t,), kirjava.types.void_t, is_public=True, is_static=True,
     )
 
     graph = kirjava.analysis.InsnGraph(main)
@@ -61,7 +61,7 @@ def make_conditionals() -> None:
     global control_flow
 
     test_conditionals = kirjava.MethodInfo(
-        "testConditionals", (kirjava.types.string_t,), kirjava.types.void_t, control_flow, is_private=True, is_static=True,
+        control_flow, "testConditionals", (kirjava.types.string_t,), kirjava.types.void_t, is_private=True, is_static=True,
     )
 
     graph = kirjava.analysis.InsnGraph(test_conditionals)
@@ -110,7 +110,7 @@ def make_loop() -> None:
     global control_flow
 
     test_loop = kirjava.MethodInfo(
-        "testLoop", (kirjava.types.string_t, kirjava.types.string_t,), kirjava.types.void_t, control_flow,
+        control_flow, "testLoop", (kirjava.types.string_t, kirjava.types.string_t,), kirjava.types.void_t,
         is_private=True, is_static=True,
     )
 

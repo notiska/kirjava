@@ -99,7 +99,9 @@ class InvokeInstruction(Instruction, ABC):
             argument_entries.append(entry)
 
             if not checker.check_merge(argument_type, entry.type):
-                errors.append(Error(source, "expected type %s, got %s" % (argument_type, entry.type)))
+                errors.append(Error(
+                    source, "expected type %s" % argument_type, "got %s (via %s)" % (entry.type, entry.source),
+                ))
 
         return argument_entries
 
@@ -121,7 +123,9 @@ class InvokeVirtualInstruction(InvokeInstruction, ABC):
         entry = state.pop(source)
 
         if not checker.check_merge(self.class_, entry.type):
-            errors.append(Error(source, "expected type %s, got %s" % (self.class_, entry.type)))
+            errors.append(Error(
+                source, "expected type %s" % self.class_, "got %s (via %s)" % (entry.type, entry.source),
+            ))
 
         if self.return_type != types.void_t:
             state.push(source, self.return_type.to_verification_type(), parents=tuple(argument_entries) + (entry,))
@@ -152,7 +156,9 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction, ABC):
                 return
 
         if not checker.check_merge(self.class_, entry.type):
-            errors.append(Error(source, "expected type %s, got %s" % (self.class_, entry.type)))
+            errors.append(Error(
+                source, "expected type %s" % self.class_, "got %s (via %s)" % (entry.type, entry.source),
+            ))
 
         if self.return_type != types.void_t:
             state.push(source, self.return_type.to_verification_type(), parents=(*argument_entries, entry))

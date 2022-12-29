@@ -134,7 +134,7 @@ class NewArrayInstruction(Instruction, ABC):
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
-            errors.append(Error(source, "expected type int, got %s" % entry.type))
+            errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
         state.push(source, self.type, parents=(entry,))
 
 
@@ -177,51 +177,83 @@ class ANewArrayInstruction(Instruction, ABC):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
-        self.type = ArrayType(class_file.constant_pool[self._index].get_actual_type())
-        # if not isinstance(self.type, ArrayType):
-        #     self.type = ArrayType(self.type)
+        self.type = class_file.constant_pool[self._index].get_actual_type()
+        if isinstance(self.type, ArrayType):
+            self.type = ArrayType(self.type.element_type, self.type.dimension + 1)
+        else:
+            self.type = ArrayType(self.type)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         if isinstance(self.type.element_type, ClassOrInterfaceType) and self.type.dimension == 1:
             self._index = class_file.constant_pool.add(Class_(self.type.element_type.name))
         else:
-            self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type.element_type)))
+            self._index = class_file.constant_pool.add(Class_(
+                descriptor.to_descriptor(ArrayType(self.type.element_type, self.type.dimension - 1)),
+            ))
         super().write(class_file, buffer, wide)
 
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
-            errors.append(Error(source, "expected type int, got %s" % entry.type))
+            errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
         state.push(source, self.type, parents=(entry,))
 
 
-class MultiANewArrayInstruction(ANewArrayInstruction, ABC):
+class MultiANewArrayInstruction(Instruction, ABC):
     """
     Creates a new multidimensional array with the given reference type.
     """
 
-    __slots__ = ("dimension",)
+    operands = {"_index": ">H", "dimension": ">B"}
 
-    operands = {"_index": ">H", "_dimension": ">B"}
+    def __init__(self, type_: Union[ArrayType, ReferenceType], dimension: int) -> None:
+        """
+        :param type_: Either the array type, or the element type in the array.
+        :param dimension: The dimensions of the array to initialise.
+        """
+
+        if not isinstance(type_, ArrayType):
+            type_ = ArrayType(type_)
+
+        self.type = type_
+        self.dimension = dimension
+
+    def __repr__(self) -> str:
+        return "<ANewArrayInstruction(opcode=0x%x, mnemonic=%s, type=%r, dimension=%i) at %x>" % (
+            self.opcode, self.mnemonic, self.type, self.dimension, id(self),
+        )
+
+    def __str__(self) -> str:
+        return "%s %s dimension %i" % (self.mnemonic, self.type, self.dimension)
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            (isinstance(other, MetaInstruction) and other == self.__class__) or
+            (other.__class__ == self.__class__ and other.type == self.type and other.dimension == self.dimension)
+        )
+
+    def copy(self) -> "MultiANewArrayInstruction":
+        return self.__class__(self.type, self.dimension)
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
-        self.type = ArrayType(class_file.constant_pool[self._index].get_actual_type(), self._dimension)
-        # if not isinstance(self.type, ArrayType):
-        #     self.type = ArrayType(self.type, self._dimension)
-        # TODO: Need to verify dimensions of the target array?
+        self.type = class_file.constant_pool[self._index].get_actual_type()
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type)))
-        self._dimension = self.type.dimension
         super().write(class_file, buffer, wide)
 
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        if self.dimension > self.type.dimension:
+            errors.append(Error(
+                source, "instruction dimension exceeds array dimension", "%i > %i" % (self.dimension, self.type.dimension),
+            ))
+
         entries = []
-        for index in range(self.type.dimension):
+        for index in range(self.dimension):
             entry = state.pop(source)
             entries.append(entry)
             if not checker.check_merge(types.int_t, entry.type):
-                errors.append(Error(source, "expected type int, got %s" % entry.type))
+                errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
 
         state.push(source, self.type, parents=tuple(entries))

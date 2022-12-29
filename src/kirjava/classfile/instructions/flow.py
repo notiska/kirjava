@@ -99,7 +99,7 @@ class RetInstruction(JumpInstruction, ABC):
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.get(source, self.index)
         if not checker.check_merge(types.return_address_t, entry.type):
-            errors.append(Error(source, "expected type returnAddress, got %s" % entry.type))
+            errors.append(Error(source, "expected type returnAddress", "got %s (via %s)" % (entry.type, entry.source)))
 
 
 class ConditionalJumpInstruction(JumpInstruction, ABC):
@@ -129,12 +129,14 @@ class UnaryComparisonJumpInstruction(ConditionalJumpInstruction, ABC):
         if self.type_ is None:
             entry = state.pop(source)
             if not checker.check_reference(entry.type):
-                errors.append(Error(source, "expected reference type, got %s" % entry.type))
+                errors.append(Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source)))
         else:
             entry, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
 
             if not checker.check_merge(self.type_, entry.type):
-                errors.append(Error(source, "expected type %s, got %s" % (self.type_, entry.type)))
+                errors.append(Error(
+                    source, "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source),
+                ))
 
 
 class BinaryComparisonJumpInstruction(ConditionalJumpInstruction, ABC):
@@ -157,9 +159,13 @@ class BinaryComparisonJumpInstruction(ConditionalJumpInstruction, ABC):
             entry_b, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
 
         if not checker.check_merge(self.type_, entry_a.type):
-            errors.append(Error(source, "expected type %s, got %s" % (self.type_, entry_a.type)))
+            errors.append(Error(
+                source, "expected type %s" % self.type_, "got %s (via %s)" % (entry_a.type, entry_a.source),
+            ))
         if not checker.check_merge(self.type_, entry_b.type):
-            errors.append(Error(source, "expected type %s, got %s" % (self.type_, entry_b.type)))
+            errors.append(Error(
+                source, "expected type %s" % self.type_, "got %s (via %s)" % (entry_b.type, entry_b.source),
+            ))
 
 
 class TableSwitchInstruction(Instruction, ABC):
@@ -221,7 +227,7 @@ class TableSwitchInstruction(Instruction, ABC):
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
-            errors.append(Error(source, "expected type int, got %s" % entry.type))
+            errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
 
 
 class LookupSwitchInstruction(Instruction, ABC):  # FIXME: Sorting required?
@@ -281,4 +287,4 @@ class LookupSwitchInstruction(Instruction, ABC):  # FIXME: Sorting required?
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
-            errors.append(Error(source, "expected type int, got %s" % entry.type))
+            errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))

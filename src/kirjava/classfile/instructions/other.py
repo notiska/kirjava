@@ -30,11 +30,15 @@ class ReturnInstruction(Instruction, ABC):
             if self.type_ is None:
                 entry = state.pop(source)
                 if not checker.check_reference(entry.type):
-                    errors.append(Error(source, "expected reference type, got %s" % entry.type))
+                    errors.append(Error(
+                        source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source),
+                    ))
             else:
                 entry, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
                 if not checker.check_merge(self.type_, entry.type):
-                    errors.append(Error(source, "expected type %s, got %s" % (self.type_, entry.type)))
+                    errors.append(Error(
+                        source, "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source),
+                    ))
 
         # if state.stack:
         #     raise ValueError("Stack is not empty after return.")
@@ -56,7 +60,9 @@ class AThrowInstruction(Instruction, ABC):
 
         # TODO: We might be able to work out the lower bound from the exception ranges?
         if not checker.check_merge(types.throwable_t, entry.type):
-            errors.append(Error(source, "expected type java/lang/Throwable, got %s" % entry.type))
+            errors.append(Error(
+                source, "expected type java/lang/Throwable", "got %s (via %s)" % (entry.type, entry.source),
+            ))
             state.push(source, checker.merge(types.throwable_t, entry.type), parents=entry.parents, merges=(entry,))
         elif entry.type == types.null_t:  # FIXME: This might throw things off the in the future?
             state.push(source, types.nullpointerexception_t, parents=(entry,))
@@ -76,7 +82,7 @@ class MonitorEnterInstruction(Instruction, ABC):
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_reference(entry.type):
-            errors.append(Error(source, "expected reference type, got %s" % entry.type))
+            errors.append(Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source)))
 
 
 class MonitorExitInstruction(Instruction, ABC):
@@ -92,4 +98,4 @@ class MonitorExitInstruction(Instruction, ABC):
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_reference(entry.type):
-            errors.append(Error(source, "expected reference type, got %s" % entry.type))
+            errors.append(Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source)))

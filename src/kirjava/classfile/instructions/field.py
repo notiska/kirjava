@@ -85,12 +85,12 @@ class FieldInstruction(Instruction, ABC):
         if not self.get:
             entry, *_ = state.pop(source, type_.internal_size, tuple_=True)
             if not checker.check_merge(type_, entry.type):
-                errors.append(Error(source, "expected type %s, got %s" % (type_, entry.type)))
+                errors.append(Error(source, "expected type %s" % type_, "got %s (via %s)" % (entry.type, entry.source)))
 
         if not self.static:
             entry = state.pop(source)
             if not checker.check_reference(entry.type):
-                errors.append(Error(source, "expected reference type, got %s" % entry.type))
+                errors.append(Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source)))
 
             if self.get:
                 state.push(source, type_, parents=(entry,))

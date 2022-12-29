@@ -10,7 +10,7 @@ Class abstraction.
 
 import typing
 from abc import abstractmethod, ABC
-from typing import Tuple, Union
+from typing import Dict, Tuple, Union
 
 from ..types import BaseType
 from ..types.reference import ClassOrInterfaceType
@@ -259,6 +259,40 @@ class Class(ABC):
         ...
 
     @abstractmethod
+    def add_method(
+            self,
+            name: str,
+            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+            **access_flags: Dict[str, bool],
+    ) -> "Method":
+        """
+        Adds a method to this class given the provided information about it.
+
+        :param name: The name of the method.
+        :param descriptor: The descriptor of the method.
+        :param access_flags: Any access flags to have on the method.
+        :return: The method that was created.
+        """
+
+        ...
+
+    @abstractmethod
+    def remove_method(
+            self,
+            name_or_method: Union[str, "Method"],
+            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+    ) -> bool:
+        """
+        Removes a method from this class.
+
+        :param name_or_method: The name of the method, or the method.
+        :param descriptor: The descriptor of the method.
+        :return: Was the method removed?
+        """
+
+        ...
+
+    @abstractmethod
     def get_field(self, name: str, descriptor: Union[BaseType, str, None] = None) -> "Field":
         """
         Gets a field in this class.
@@ -266,6 +300,33 @@ class Class(ABC):
         :param name: The name of the field.
         :param descriptor: The descriptor of the field, if None, the first field with the name is returned.
         :return: The field.
+        """
+
+        ...
+
+    @abstractmethod
+    def add_field(
+            self, name: str, descriptor: Union[BaseType, str, None] = None, **access_flags: Dict[str, bool],
+    ) -> "Field":
+        """
+        Adds a field to this class.
+
+        :param name: The name of the field to add.
+        :param descriptor: The descriptor of the field to add.
+        :param access_flags: Any access flags to have on the field.
+        :return: The field that was added.
+        """
+
+        ...
+
+    @abstractmethod
+    def remove_field(self, name_or_field: Union[str, "Field"], descriptor: Union[BaseType, str, None] = None) -> bool:
+        """
+        Removes a field from this class.
+
+        :param name_or_field: The name of the field or the field.
+        :param descriptor: The descriptor of the field.
+        :return: Was the field removed?
         """
 
         ...

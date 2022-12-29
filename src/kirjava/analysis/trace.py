@@ -11,10 +11,10 @@ Stack and local state tracing.
 
 import logging
 import typing
-from frozendict import frozendict
+from frozendict import frozendict, FrozenOrderedDict
 from typing import Any, Dict, FrozenSet, List, Set, Tuple, Union
 
-from ._edge import _DummyEdge, ExceptionEdge
+from ._edge import _DummyEdge, ExceptionEdge, JsrJumpEdge, JsrFallthroughEdge, RetEdge
 from .verifier import BasicTypeChecker
 from .. import types
 from ..abc import Edge, Error, Source, TypeChecker
@@ -48,7 +48,10 @@ class BlockInstruction(Source):
         )
 
     def __str__(self) -> str:
-        return "%s @ %s:%i" % (self.instruction, self.block, self.index)
+        return "%s @ %i:%s" % (self.instruction, self.index, self.block)
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, BlockInstruction) and other.block == self.block and other.index == self.index
 
 
 class Entry:
@@ -108,22 +111,23 @@ class State:
     """
 
     __slots__ = (
-        "_id", "_top",
+        "_id", "errors", "_top",
         "stack", "locals",
         "local_accesses",
         "max_stack", "max_locals",
     )
 
     @classmethod
-    def initial(cls, method: MethodInfo) -> "State":
+    def initial(cls, method: MethodInfo, errors: Union[List[Error], None] = None) -> "State":
         """
         Creates the initial stack state for a given method.
 
         :param method: The method to create the initial state for.
+        :param errors: The errors to add to.
         :return: The new state.
         """
 
-        state = cls(0)
+        state = cls(0, errors)
 
         offset = 0
         if not method.is_static:
@@ -158,8 +162,17 @@ class State:
         self._id += 1
         return id_
 
-    def __init__(self, id_: int) -> None:
+    def __init__(self, id_: int, errors: Union[List[Error], None] = None) -> None:
+        """
+        :param id_: The starting entry ID for this state.
+        :param errors: The list of errors to add to.
+        """
+
         self._id = id_
+        self.errors = errors
+
+        if self.errors is None:
+            self.errors = []
 
         self._top = Entry(-65536, None, types.top_t)
 
@@ -207,7 +220,7 @@ class State:
         :return: The copied state.
         """
 
-        state = State(self._id if id_ is None else id_)
+        state = State(self._id if id_ is None else id_, self.errors)
 
         state.stack.extend(self.stack)
         state.locals.update(self.locals)
@@ -260,8 +273,22 @@ class State:
         """
 
         if amount == 1 and not tuple_:
-            return self.stack.pop()
-        return tuple([self.stack.pop() for index in range(amount)])
+            try:
+                return self.stack.pop()
+            except IndexError:
+                self.errors.append(Error(source, "stack underflow, -1 entries"))
+                return Entry(self.id, source, types.top_t)
+
+        entries = []
+        try:
+            for index in range(amount):
+                entries.append(self.stack.pop())
+        except IndexError:
+            self.errors.append(Error(source, "stack underflow, %i entries" % (len(entries) - amount)))
+            for index in range(amount - len(entries)):
+                entries.append(Entry(self.id, source, types.top_t))
+
+        return tuple(entries)
 
     def push(
             self,
@@ -364,7 +391,7 @@ class State:
             self._top = state._top
 
             self.stack: Tuple[Entry, ...] = tuple(state.stack)
-            self.locals: Dict[int, Entry] = frozendict(state.locals)
+            self.locals: FrozenOrderedDict[int, Entry] = frozendict(state.locals)
 
             self.max_stack = state.max_stack
             self.max_locals = state.max_locals
@@ -418,7 +445,7 @@ class Trace:
 
     __slots__ = (
         "graph", "states", "errors",
-        "leaf_edges", "back_edges",
+        "leaf_edges", "back_edges", "subroutines",
         "max_stack", "max_locals",
     )
 
@@ -459,8 +486,10 @@ class Trace:
         :return: The trace.
         """
 
+        errors: List[Error] = []
+
         start = _DummyEdge(graph.entry_block, graph.entry_block)
-        state = State.initial(graph.method)
+        state = State.initial(graph.method, errors)
 
         traversed: List[InsnBlock] = []  # Iterative DFS stack
         to_visit: List[Tuple[Edge, State, List[Edge]]] = [(None, state, [start])]
@@ -468,13 +497,12 @@ class Trace:
 
         leaf_edges: Set[Edge] = set()
         back_edges: Set[Edge] = set()
+        subroutines: Dict[JsrJumpEdge, Set[RetEdge]] = {}
 
         max_stack = state.max_stack
         max_locals = state.max_locals
 
-        # id_ = state.id
         states: Dict[InsnBlock, Dict[State.Frozen, State.Frozen]] = {}
-        errors: List[Error] = []
 
         while to_visit:
             root, state, edges = to_visit[-1]
@@ -489,7 +517,72 @@ class Trace:
                 continue
 
             edge = edges.pop()
+            if isinstance(edge, JsrFallthroughEdge):  # Don't handle these here, they are really only placeholders
+                continue
             block = edge.to
+
+            do_traverse = True
+
+            if block is None:
+                if not graph.is_opaque(edge):
+                    errors.append(Error(edge, "unknown opaque edge"))
+                    continue
+
+                if isinstance(edge, RetEdge):
+                    return_address = state.locals.get(edge.jump.index, None)
+                    if return_address is None or return_address.type != types.return_address_t:
+                        errors.append(Error(edge, "cannot resolve subroutine origin due to invalid local"))
+                        continue  # Really nothing else we can do here
+
+                    # Find the corresponding jsr jump and fallthrough edges
+                    jsr_jump_edge: Union[JsrJumpEdge, None] = None
+                    jsr_fallthrough_edge: Union[JsrFallthroughEdge, None] = None
+
+                    for edge_ in graph.out_edges(return_address.source.block):
+                        if isinstance(edge_, JsrJumpEdge):
+                            if jsr_jump_edge is not None:
+                                # Even if handling multi-entry subroutines, we can't allow multiple jsr edges on a block.
+                                errors.append(Error(
+                                    return_address.source.block, "multiple jsr jump edges found on block",
+                                ))
+                            jsr_jump_edge = edge_
+
+                        elif isinstance(edge_, JsrFallthroughEdge):
+                            if jsr_fallthrough_edge is not None:
+                                errors.append(Error(
+                                    return_address.source.block, "multiple jsr fallthrough edges found on block",
+                                ))
+                            jsr_fallthrough_edge = edge_
+
+                    if jsr_jump_edge is None:
+                        errors.append(Error(block, "ret edge to block with no jsr jump edge"))
+                        # We can still handle this technically, we'll just count it as an absolute jump though, the error
+                        # should also be sufficient.
+                        subroutine_edges = set()
+                    else:
+                        subroutine_edges = subroutines.setdefault(jsr_jump_edge, set())
+
+                    if jsr_fallthrough_edge is None:
+                        errors.append(Error(block, "ret edge to block with no jsr fallthrough edge"))
+                        # If this is the case, there's nothing we can do about this subroutine as we don't know where
+                        # to fall through to. We can mark it as a subroutine though, it'll just be a partial one.
+                        subroutine_edges.add(edge)
+                        continue
+
+                    # Overwrite the old edge with out new resolved edge
+                    edge = RetEdge(edge.from_, jsr_fallthrough_edge.to, edge.jump)
+                    block = edge.to
+                    subroutine_edges.add(edge)
+
+                    # A sidenote on subroutines: we can also handle multi-exit subroutines with this, even though they
+                    # are not allowed in Java. I'm planning to keep this functionality because it allows us to do
+                    # analysis on unverifiable code, which is nice.
+
+                else:
+                    # This is an internal error, so raise
+                    raise ValueError("Don't know how to handle opaque edge %r." % edge)
+
+            # print(root, edge, ", ".join(map(str, traversed + [block])))
 
             state = state.copy(deep=False)
 
@@ -499,15 +592,13 @@ class Trace:
             is_back_edge = block in traversed
             is_adjacent_visited = edge in adjacent
 
-            # print(", ".join(map(str, traversed)) + ",", block)
-
             # Special handling for exception edges. A valid stack state is one in which there is only one item on the
             # stack, that being the exception that was thrown.
             if isinstance(edge, ExceptionEdge):
                 state.stack.clear()
                 if not checker.check_merge(types.throwable_t, edge.throwable):
                     errors.append(Error(
-                        edge, "expected type java/lang/Throwable for exception edge, got %s" % edge.throwable,
+                        edge, "expected type java/lang/Throwable for exception edge", "got %s" % edge.throwable,
                     ))
                     state.push(None, checker.merge(types.throwable_t, edge.throwable))
                 else:
@@ -521,27 +612,51 @@ class Trace:
 
                 # Check the locals more specifically, taking into account if any of the locals actually used in
                 # the block are different.
-                stack = tuple(map(lambda entry: entry.type, state.stack)) 
                 for entry, exit in constraints.items():
                     overwritten: Set[int] = set()
                     for index, _, _, read in exit.local_accesses:
-                        if not read:
+                        if not read or index in overwritten:
                             overwritten.add(index)
-                        if not index in overwritten and state.locals[index].type != entry.locals[index].type:
+                            continue
+
+                        entry_a = state.locals[index]
+                        entry_b = state.locals[index]
+
+                        if entry_a.type != entry_b.type:
                             break  # Breaks out of the inner, which continues the outer loop
+                        # More specific checks for returnAddress origins
+                        elif (
+                            entry_a.type == types.return_address_t and
+                            entry_b.type == types.return_address_t and
+                            entry_a.source != entry_b.source
+                        ):
+                            break
                     else:
                         # The locals that aren't overwritten can still be used later in the method, so double check
                         # that they're all valid too.
-                        for index, local in state.locals.items():
+                        for index, entry_a in state.locals.items():
                             if index in overwritten or not index in entry.locals:
                                 continue
-                            if local.type != entry.locals[index].type:
+                            entry_b = entry.locals[index]
+                            if entry_a.type != entry_b.type:
+                                break
+                            elif (
+                                entry_a.type == types.return_address_t and
+                                entry_b.type == types.return_address_t and
+                                entry_a.source != entry_b.source
+                            ):
                                 break
                         else:
                             # Now we also need to check if the stacks are equal, because they may not be
-                            if len(stack) == len(entry.stack):
-                                for type_a, entry_b in zip(stack, entry.stack):
-                                    if type_a != entry_b.type:
+                            if len(state.stack) == len(entry.stack):
+                                for entry_a, entry_b in zip(state.stack, entry.stack):
+                                    if entry_a.type != entry_b.type:
+                                        break
+                                    elif (
+                                        entry_a.type == types.return_address_t and
+                                        entry_b.type == types.return_address_t and
+                                        entry_a.source != entry_b.source
+                                    ):
                                         break
                                 else:
                                     found = True
@@ -561,7 +676,6 @@ class Trace:
             for index, instruction in enumerate(block.instructions):
                 instruction.trace(BlockInstruction(block, instruction, index), state, errors, checker)
             constraints[entry] = state.freeze()
-            # id_ = state.id
 
             # Adjust stack and local maxes too
             if state.max_stack > max_stack:
@@ -569,28 +683,13 @@ class Trace:
             if state.max_locals > max_locals:
                 max_locals = state.max_locals
 
-            # if is_adjacent_visited:
-            #     edges.append(edge)  # FIXME: Necessary? The adjacent edges are already getting visited again.
-            #     print(edge)
-
-            # if is_adjacent_visited:
-            #     print(", ".join(map(str, state.locals.values())))
-            #     if edge in adjacent:
-            #         adjacent.remove(edge)
-            #     if edge in visited:
-            #         del visited[edge]
-            #     for edge in out_edges:
-            #         if edge in visited:
-            #             del visited[edge]
-
             traversed.append(block)
             to_visit.append((edge, state, list(graph.out_edges(block))))
 
-        # print(len(leaf_edges))
-        # print(len(back_edges))
-
         for block, constraints in states.items():
             states[block] = frozendict(constraints)
+        for edge, edges in subroutines.items():
+            subroutines[edge] = frozenset(edges)
 
         return cls(  # Ughhh the formatting, not sure how to make this look pretty lol
             graph,
@@ -598,6 +697,7 @@ class Trace:
             tuple(errors),
             frozenset(leaf_edges),
             frozenset(back_edges),
+            frozendict(subroutines),
             max_stack,
             max_locals,
         )
@@ -613,10 +713,11 @@ class Trace:
     def __init__(
             self,
             graph: "InsnGraph",
-            states: Dict["InsnBlock", Dict["State.Frozen", "State.Frozen"]],
+            states: FrozenOrderedDict["InsnBlock", FrozenOrderedDict["State.Frozen", "State.Frozen"]],
             errors: Tuple[Error, ...],
             leaf_edges: FrozenSet[Edge],
             back_edges: FrozenSet[Edge],
+            subroutines: FrozenOrderedDict[Edge, FrozenSet[Edge]],
             max_stack: int,
             max_locals: int,
     ) -> None:
@@ -628,6 +729,7 @@ class Trace:
 
         self.leaf_edges = leaf_edges
         self.back_edges = back_edges
+        self.subroutines = subroutines
 
         self.max_stack = max_stack
         self.max_locals = max_locals

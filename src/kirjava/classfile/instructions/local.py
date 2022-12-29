@@ -53,9 +53,9 @@ class LoadLocalInstruction(Instruction, ABC):
         error = None
         if self.type_ is None:
             if not checker.check_reference(entry.type):
-                error = Error(source, "expected reference type, got %s" % entry.type)
+                error = Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source))
         elif not checker.check_merge(self.type_, entry.type):
-            error = Error(source, "expected type %s, got %s" % (self.type_, entry.type))
+            error = Error(source, "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source))
 
         if error is not None:
             errors.append(error)
@@ -135,12 +135,15 @@ class StoreLocalInstruction(Instruction, ABC):
         if self.type_ is not None:
             entry, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
             if not checker.check_merge(self.type_, entry.type):
-                error = Error(source, "expected type %s, got %s" % (self.type_, entry.type))
+                error = Error(source, "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source))
         else:
             entry = state.pop(source)
             if not checker.check_merge(types.return_address_t, entry.type):  # Can also be used for returnAddresses
                 if not checker.check_reference(entry.type):
-                    error = Error(source, "expected reference type or returnAddress type, got %s" % entry.type)
+                    error = Error(
+                        source, "expected reference type or returnAddress type",
+                        "got %s (via %s)" % (entry.type, entry.source),
+                    )
 
         if error is not None:
             errors.append(error)
@@ -218,5 +221,5 @@ class IncrementLocalInstruction(Instruction, ABC):
     def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.get(source, self.index)
         if not checker.check_merge(types.int_t, entry.type):
-            errors.append(Error(source, "expected type int, got %s" % entry.type))
+            errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
         state.set(source, self.index, types.int_t, parents=(entry,))

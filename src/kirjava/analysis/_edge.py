@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "FallthroughEdge", "JumpEdge", "JsrEdge", "RetEdge", "SwitchEdge", "ExceptionEdge",
+    "FallthroughEdge",
+    "JumpEdge",
+    "JsrJumpEdge", "JsrFallthroughEdge",
+    "RetEdge",
+    "SwitchEdge",
+    "ExceptionEdge",
 )
 
 import typing
@@ -76,29 +81,36 @@ class JumpEdge(Edge):
         return hash((self.from_, self.to, self.jump.opcode))
 
 
-class JsrEdge(JumpEdge):
+class JsrJumpEdge(JumpEdge):
     """
     A handle for a jsr instruction jump edge.
     """
 
     __slots__ = ("return_",)
 
-    def __init__(self, from_: "InsnBlock", to: "InsnBlock", return_: "InsnBlock", jump: "JsrInstruction") -> None:
-        """
-        :param return_: The return block to jump back to after the subroutine is done.
-        """
-
+    def __init__(self, from_: "InsnBlock", to: "InsnBlock", jump: "JsrInstruction") -> None:
         super().__init__(from_, to, jump)
 
-        self.return_ = return_
-
     def __repr__(self) -> str:
-        return "<JsrEdge(from=%r, to=%r, return=%r, jump=%s) at %x>" % (
-            self.from_, self.to, self.return_, self.jump, id(self),
-        )
+        return "<JsrJumpEdge(from=%r, to=%r, jump=%s) at %x>" % (self.from_, self.to, self.jump, id(self))
 
     def __str__(self) -> str:
-        return "%s %s -> %s (-> %s)" % (self.jump, self.from_, self.to, self.return_)
+        return "%s %s -> %s" % (self.jump, self.from_, self.to)
+
+
+class JsrFallthroughEdge(JumpEdge):
+    """
+    A handle for a jsr instruction fallthrough edge.
+    """
+
+    def __init__(self, from_: "InsnBlock", to: "InsnBlock", jump: "JsrInstruction") -> None:
+        super().__init__(from_, to, jump)
+
+    def __repr__(self) -> str:
+        return "<JsrFallthroughEdge(from=%r, to=%r, jump=%s) at %x>" % (self.from_, self.to, self.jump, id(self))
+
+    def __str__(self) -> str:
+        return "fallthrough %s %s (-> %s)" % (self.jump, self.from_, self.to)
 
 
 class RetEdge(JumpEdge):
@@ -163,10 +175,15 @@ class ExceptionEdge(Edge):
     An edge between a block and its exception handler.
     """
 
-    __slots__ = ("throwable",)
+    __slots__ = ("priority", "throwable", "inline_coverage")
 
     def __init__(
-            self, from_: "InsnBlock", to: "InsnBlock", priority: int, throwable: Union[ClassOrInterfaceType, None] = None,
+            self,
+            from_: "InsnBlock",
+            to: "InsnBlock",
+            priority: int,
+            throwable: Union[ClassOrInterfaceType, None] = None,
+            inline_coverage: bool = False,
     ) -> None:
         """
         :param priority: The priority of this exception handler, lower values mean higher priority.
@@ -175,17 +192,21 @@ class ExceptionEdge(Edge):
 
         super().__init__(from_, to)
 
+        if throwable is None:
+            throwable = types.throwable_t
+
         self.priority = priority
         self.throwable = throwable
-        if throwable is None:
-            self.throwable = types.throwable_t
+        self.inline_coverage = inline_coverage
 
     def __repr__(self) -> str:
-        return "<ExceptionEdge(from=%r, to=%r, priority=%i, throwable=%s) at %x>" % (
-            self.from_, self.to, self.priority, self.throwable, id(self),
+        return "<ExceptionEdge(from=%r, to=%r, priority=%i, throwable=%s, inline_coverage=%s) at %x>" % (
+            self.from_, self.to, self.priority, self.throwable, self.inline_coverage, sid(self),
         )
 
     def __str__(self) -> str:
+        if self.inline_coverage:
+            return "catch %s priority %i %s (+inlined) -> %s" % (self.throwable, self.priority, self.from_, self.to)
         return "catch %s priority %i %s -> %s" % (self.throwable, self.priority, self.from_, self.to)
 
     def __eq__(self, other: Any) -> bool:

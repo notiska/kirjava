@@ -10,7 +10,7 @@ A bytecode verifier implementation.
 
 import typing
 from abc import abstractmethod, ABC
-from typing import List, Tuple, Union
+from typing import Any, List, Tuple, Union
 
 from . import Source
 
@@ -24,11 +24,21 @@ class VerifyError(Exception):
     """
 
     def __init__(self, errors: List["Error"]) -> None:
-        super().__init__("%i verification error(s):\n%s" % (
-            len(errors), "\n".join([" - %s" % error for error in errors]),
-        ))
+        self.errors = []
 
-        self.errors = errors.copy()
+        for error in errors:
+            if not error in self.errors:
+                self.errors.append(error)
+
+        super().__init__("%i verification error(s)" % len(self.errors))
+
+    def __repr__(self) -> str:
+        return "<VerifyError(errors=%i) at %x>" % (len(self.errors), id(self))
+
+    def __str__(self) -> str:
+        return "%i verification error(s):\n%s" % (
+            len(self.errors), "\n".join(" - %s" % error for error in self.errors),
+        )
 
 
 class Error:
@@ -36,22 +46,25 @@ class Error:
     An error that has occurred during the bytecode analysis, typically due to invalid bytecode.
     """
 
-    def __init__(self, source: Union[Source, None], *message: Tuple[object, ...]) -> None:
+    def __init__(self, source: Union[Source, None], *messages: Tuple[object, ...]) -> None:
         """
         :param source: The source of the error (typically an instruction).
         :param message: Information about the error that occurred.
         """
 
         self.source = source
-        self.message = " ".join(map(str, message))
+        self.messages = messages
 
     def __repr__(self) -> str:
-        return "<Error(source=%r, message=%r) at %x>" % (self.source, self.message, id(self))
+        return "<Error(source=%r, messages=%r) at %x>" % (self.source, self.message, id(self))
 
     def __str__(self) -> str:
         if self.source is None:
-            return "error: %r" % self.message
-        return "error at %r: %r" % (str(self.source), self.message)
+            return "error: %r" % (", ".join(map(str, self.messages)))
+        return "error at %r: %r" % (str(self.source), ", ".join(map(str, self.messages)))
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, Error) and other.source == self.source and other.messages == self.messages
 
 
 class TypeChecker(ABC):

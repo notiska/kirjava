@@ -2,7 +2,11 @@
 
 __all__ = (
     "InsnBlock", "InsnReturnBlock", "InsnRethrowBlock",
-    "JumpEdge", "FallthroughEdge", "ExceptionEdge",
+    "FallthroughEdge",
+    "JumpEdge",
+    "JsrJumpEdge", "JsrFallthroughEdge",
+    "RetEdge",
+    "ExceptionEdge",
     "InsnGraph",
 )
 
@@ -73,8 +77,6 @@ class InsnGraph(Graph):
         jump_targets: Set[int] = set()
         handler_targets: Set[int] = set()
         exception_bounds: Set[int] = set()
-
-        # has_subroutines = False
 
         for offset, instruction in code.instructions.items():
             if isinstance(instruction, JumpInstruction):  # Add jump offsets for jump instructions
@@ -168,16 +170,15 @@ class InsnGraph(Graph):
                 if isinstance(instruction, JsrInstruction):
                     to = starting.get(offset + instruction.offset, None)
                     if to is not None:
-                        graph.connect(JsrEdge(previous, to, block, instruction))
+                        graph.connect(JsrJumpEdge(previous, to, instruction))
                     else:
                         forward_jumps.setdefault(offset + instruction.offset, []).append(
-                            JsrEdge(previous, None, block, instruction),
+                            JsrJumpEdge(previous, None, instruction),
                         )
+                    graph.connect(JsrFallthroughEdge(previous, block, instruction))
 
                 elif isinstance(instruction, ConditionalJumpInstruction):
                     graph.connect(FallthroughEdge(previous, block))
-
-                instruction.offset = None  # It doesn't make sense for a jump to have an offset at this point
 
             elif instruction == instructions.tableswitch:
                 to = starting.get(offset + instruction.default, None)
@@ -196,9 +197,6 @@ class InsnGraph(Graph):
                         forward_jumps.setdefault(offset + offset_, []).append(
                             SwitchEdge(block, None, instruction, index),
                         )
-
-                instruction.default = None
-                instruction.offsets.clear()
 
                 block = InsnBlock(graph, block.label + 1)
 
@@ -220,12 +218,8 @@ class InsnGraph(Graph):
                             SwitchEdge(block, None, instruction, value),
                         )
 
-                instruction.default = None
-                instruction.offsets.clear()
-
                 block = InsnBlock(graph, block.label + 1)
 
-            # FIXME: Exception coverage issues with empty blocks and the return + athrow instructions themselves
             elif isinstance(instruction, ReturnInstruction):
                 block.instructions.pop()  # Don't include the return instruction
                 graph.connect(FallthroughEdge(block, graph._return_block))
@@ -243,13 +237,36 @@ class InsnGraph(Graph):
             if unbound:
                 logger.debug(" - %i unbound forward jump(s)!" % unbound)
 
+        # Remove offsets from bound jumps and switches and find blocks with inline coverage (blocks that have edges to
+        # inline blocks).
+
+        inline_coverage: Set[InsnBlock] = set()
+
+        for edge in graph.edges:
+            if edge.to is not None and edge.to.inline:  # FIXME: Only applicable for certain edges
+                inline_coverage.add(edge.from_)
+
+            if isinstance(edge, SwitchEdge):
+                if edge.value is None:
+                    edge.jump.default = None
+                elif edge.jump == instructions.tableswitch:
+                    # FIXME: Remove individual offsets, might have unbound switch edges
+                    edge.jump.offsets.clear()
+                elif edge.jump == instructions.lookupswitch:
+                    if edge.value in edge.jump.offsets:
+                        del edge.jump.offsets[edge.value]
+            elif isinstance(edge, JumpEdge):
+                edge.jump.offset = None
+
         # Add exception edges via the code's exception table
 
         for start, block in starting.items():
             for index, handler in enumerate(code.exception_table):
                 if handler.start_pc <= start < handler.end_pc:
                     type_ = handler.catch_type.get_actual_type() if handler.catch_type is not None else None
-                    graph.connect(ExceptionEdge(block, starting[handler.handler_pc], index, type_))
+                    graph.connect(ExceptionEdge(
+                        block, starting[handler.handler_pc], index, type_, inline_coverage=block in inline_coverage,
+                    ))
 
         # Remove any empty blocks that might have been generated (due to return insns, etc...)
 
@@ -267,7 +284,7 @@ class InsnGraph(Graph):
                 cant_remove_yet = False
 
                 for edge in graph.out_edges(block):
-                    if isinstance(edge, ExceptionEdge):
+                    if isinstance(edge, ExceptionEdge) and not edge.inline_coverage:
                         continue
                     elif edge.to != block and edge.to in to_remove:  
                         cant_remove_yet = True
@@ -289,7 +306,7 @@ class InsnGraph(Graph):
                 # Reconnect the in edges with their new to block being the to block from the out edge (lol I should 
                 # probably use better/correct terminology, I need to touch up on my graph theory I guess).
                 for edge in graph.in_edges(block):
-                    graph.disconnect(edge)
+                    graph.disconnect(edge, handle_jsrs=False)
                     edge.to = target  # Kinda evil doing this, but it's faster than creating a new edge
                     graph.connect(edge)
 
@@ -416,12 +433,18 @@ class InsnGraph(Graph):
         multiple_jumps = False
         has_out_edges = False
 
-        fallthrough: Union[FallthroughEdge, None] = None
+        fallthrough: Union[FallthroughEdge, JsrFallthroughEdge, None] = None
         jump: Union[JumpEdge, None] = None
         switches_: List[SwitchEdge] = []
 
         for edge in self._forward_edges.get(block, ()):
             if isinstance(edge, FallthroughEdge):
+                if fallthrough is not None:
+                    multiple_fallthroughs = True
+                fallthrough = edge
+                has_out_edges = True
+
+            elif isinstance(edge, JsrFallthroughEdge):
                 if fallthrough is not None:
                     multiple_fallthroughs = True
                 fallthrough = edge
@@ -496,7 +519,10 @@ class InsnGraph(Graph):
             else:
                 errors.append(Error(block, "expected jump instruction %s at end of block" % jump.jump))
 
-            if is_conditional and fallthrough is None:
+            if isinstance(jump, JsrJumpEdge):
+                if not isinstance(fallthrough, JsrFallthroughEdge):
+                    errors.append(Error(block, "jsr jump edge with no jsr fallthrough edge on block"))
+            elif is_conditional and fallthrough is None:
                 errors.append(Error(block, "conditional jump edge with no fallthrough edge on block"))
             elif not is_conditional and fallthrough is not None:
                 errors.append(Error(block, "unconditional jump edge with a fallthrough edge on block"))
@@ -602,8 +628,7 @@ class InsnGraph(Graph):
 
         if self.entry_block is None:
             raise ValueError("Cannot assemble as the entry block is None.")
-        if self._opaque_edges:
-            raise NotImplementedError("Cannot yet assemble a method with opaque edges.")
+        compute_frames = compute_frames and self.method.class_.version >= StackMapTable.since
 
         logger.debug("Assembling method %r:" % str(self.method))
 
@@ -614,7 +639,13 @@ class InsnGraph(Graph):
         errors.extend(trace.errors)
 
         code = Code(self.method, trace.max_stack, trace.max_locals)
-        logger.debug(" - Max stack: %i, max locals: %i." % (code.max_stack, code.max_locals))
+
+        logger.debug(" - Method trace information:")
+        logger.debug("    - %i error(s)." % len(trace.errors))
+        logger.debug("    - %i leaf edge(s), %i back edge(s), %i subroutine(s)." % (
+            len(trace.leaf_edges), len(trace.back_edges), sum(map(len, trace.subroutines.values())),
+        ))
+        logger.debug("    - max stack: %i, max locals: %i." % (trace.max_stack, trace.max_locals))
 
         # Write blocks and record the offsets they were written at, as well as keeping track of jump, switch and
         # exception offsets for later adjustment, as we don't know all the offsets while we're writing.
@@ -629,7 +660,7 @@ class InsnGraph(Graph):
         jumps: Dict[int, JumpEdge] = {}
         switches: Dict[int, List[SwitchEdge]] = {}
         exceptions: List[ExceptionEdge] = []
-        inlined: Dict[FallthroughEdge, Tuple[int, int]] = {}
+        inlined: Dict[Edge, Tuple[int, int]] = {}
 
         logger.debug(" - Writing %i block(s):" % len(self._blocks))
 
@@ -668,11 +699,11 @@ class InsnGraph(Graph):
             )
 
         if temporary:
-            logger.debug(" - Generated %i temporary block(s) while writing." % len(temporary))
+            logger.debug("    - %i temporary block(s) generated while writing." % len(temporary))
             for block in temporary:
                 self.remove(block)
         if inlined:
-            logger.debug(" - Inlined %i block(s)." % len(inlined))
+            logger.debug("    - %i block(s) inlined." % len(inlined))
 
         dead_frames: Dict[InsnBlock, State] = {}
 
@@ -686,7 +717,7 @@ class InsnGraph(Graph):
                 state = State(0)
                 state.push(None, types.throwable_t)
 
-            logger.debug(" - %i dead block(s):")
+            logger.debug(" - %i dead block(s):" % len(dead))
             for block in dead:
                 if not block in offsets:
                     logger.debug("    - %s (unwritten)" % block)
@@ -702,14 +733,31 @@ class InsnGraph(Graph):
                         last = end - 1
                         offset = start
                         while offset < last:
+                            if offset in jumps:
+                                del jumps[offset]
+                            if offset in switches:
+                                del switches[offset]
                             code.instructions[offset] = instructions.nop()
                             offset += 1
                         code.instructions[last] = instructions.athrow()
+
+        if compute_frames:
+            for edge in jumps.values():
+                if isinstance(edge, JsrJumpEdge):
+                    # We can't compute frames if we find any live jsr edge at all, even if it's not part of a
+                    # subroutine. This is because at the jump target, the stackmap frame will contain the return address
+                    # in the stack, which isn't valid. We still need to write the stackmap table attribute though.
+                    compute_frames = False
+                    break
+            if not compute_frames:
+                logger.debug(" - Not computing frames as live jsr edges were found.")
 
         # Adjust jumps and switches to the correct positions, if needs be.
 
         for offset, edge in jumps.items():
             if edge.jump.offset is not None:  # Already computed the jump offset
+                continue
+            elif edge.to is None:  # Opaque edge, can't compute offset
                 continue
             start = min(map(lambda item: item[0], offsets[edge.to]), key=lambda offset_: abs(offset - offset_))
             code.instructions[offset].offset = start - offset
@@ -734,13 +782,20 @@ class InsnGraph(Graph):
 
         for edge in sorted(exceptions, key=lambda edge_: edge_.priority):
             for start, end, _ in offsets[edge.from_]:
+                # If there are multiple offsets for the exception handler, simply just pick the first one.
                 (handler, _, _), *extra = offsets[edge.to]
                 if extra:
-                    errors.append(Error(edge, "multiple exception handler targets (is the handler inlined?)"))
-                # If there are multiple offsets for the exception handler, simply just pick the first one.
+                    errors.append(Error(edge, "multiple exception handler targets", "is the handler inlined?"))
+
+                if edge.inline_coverage:
+                    for edge_, (_, end_) in inlined.items():
+                        if edge_.from_ == edge.from_ and end_ > end:
+                            end = end_  # Adjust the end offset for this exception handler
+
                 code.exception_table.append(Code.ExceptionHandler(
                     start, end, handler, Class_(edge.throwable.name),
                 ))
+
         if simplify_exception_ranges:
             ...  # TODO
         if code.exception_table:
@@ -815,8 +870,10 @@ class InsnGraph(Graph):
                                 ),
                             ))
 
+                        # FIXME: Multiple sources for uninitialised type? Need to improve how offsets are calculated.
+
                         merged = checker.merge(entry_a.type, entry_b.type)
-                        if merged != entry_a.type:  # Has the merge changed the entry?
+                        if merged != entry_a.type or merged != entry_b.type:  # Has the merge changed the entry?
                             base.stack[index] = Entry(-base.id, None, merged, parents=(), merges=(entry_a, entry_b))
 
                     for index in liveness.entries[block]:
@@ -855,7 +912,7 @@ class InsnGraph(Graph):
                             ))
 
                         merged = checker.merge(entry_a.type, entry_b.type)
-                        if merged != entry_a.type:
+                        if merged != entry_a.type or merged != entry_b.type:
                             base.locals[index] = Entry(-base.id, None, merged, parents=(), merges=(entry_a, entry_b))
 
                 for start, _, _ in offsets_:
@@ -976,7 +1033,7 @@ class InsnGraph(Graph):
                 prev_max_actual = max_actual
 
             if stackmap_table.frames:
-                code.attributes[stackmap_table.name] = (stackmap_table,)
+                code.stackmap_table = stackmap_table
                 logger.debug(" - Generated %i stackmap frame(s)." % len(stackmap_table.frames))
 
         if errors:
@@ -998,28 +1055,41 @@ class InsnGraph(Graph):
                              already in it.
         """
 
-        if isinstance(edge, FallthroughEdge) and handle_fallthroughs:
+        if handle_fallthroughs and isinstance(edge, FallthroughEdge):
             # Ensure that blocks only have one fallthrough edge
             for edge_ in self._forward_edges.get(edge.from_, []).copy():
                 if isinstance(edge_, FallthroughEdge):
                     self.disconnect(edge_)
 
-        elif isinstance(edge, JumpEdge) and handle_jumps:
+        elif handle_jumps and isinstance(edge, JumpEdge):
             for edge_ in self._forward_edges.get(edge.from_, []).copy():
                 if isinstance(edge_, JumpEdge) and edge_.jump != edge.jump:
                     self.disconnect(edge_)
+
+            # if edge.jump.offset is None:
+            #     while edge.from_.instructions[-1] != edge.jump and edge.jump in edge.from_.instructions:
+            #         edge.from_.instructions.remove(edge.jump)
 
             if not edge.jump in edge.from_.instructions:  # Add to the instructions in the block we're jumping from
                 edge.from_.instructions.append(edge.jump)
 
         super().connect(edge)
 
-    def disconnect(self, edge: Edge, handle_jumps: bool = True) -> None:
+    def disconnect(self, edge: Edge, handle_jumps: bool = True, handle_jsrs: bool = True) -> None:
         """
         :param handle_jumps: Removes jump instructions from the block if this edge is the last edge that references them.
+        :param handle_jsrs: Removes the jsr jump and fallthrough edges if only one of them is removed.
         """
 
-        if isinstance(edge, JumpEdge) and handle_jumps:
+        if handle_jsrs and (isinstance(edge, JsrJumpEdge) or isinstance(edge, JsrFallthroughEdge)):
+            # Disconnect all jsr edges for the block, should only be one set per jsr instruction, so if we remove,
+            # multiple, that's not our problem. Also shouldn't be an issue calling disconnect another time on the same
+            # edge, as that's handled.
+            for edge_ in self._forward_edges.get(edge.from_, set()).copy():
+                if isinstance(edge_, JsrJumpEdge) or isinstance(edge_, JsrFallthroughEdge):
+                    super().disconnect(edge_)
+
+        if handle_jumps and isinstance(edge, JumpEdge):
             # Remove the jump instruction if there are no more edges referencing the jump
             for edge_ in self._forward_edges.get(edge.from_, ()):
                 if isinstance(edge_, JumpEdge):
@@ -1029,6 +1099,17 @@ class InsnGraph(Graph):
                     edge.from_.instructions.remove(edge.jump)
 
         super().disconnect(edge)
+
+    # def out_edges(self, block: InsnBlock, ignore_jsr_fallthroughs: bool = False) -> Tuple[Edge, ...]:
+    #     """
+    #     :param ignore_jsr_fallthroughs: Doesn't return any jsr fallthrough edges.
+    #     """
+
+    #     if ignore_jsr_fallthroughs:
+    #         return tuple(filter(
+    #             lambda edge: not isinstance(edge, JsrFallthroughEdge), self._forward_edges.get(block, ()),
+    #         ))
+    #     return tuple(self._forward_edges.get(block, ()))
 
     def fallthrough(self, from_: InsnBlock, to: InsnBlock) -> FallthroughEdge:
         """

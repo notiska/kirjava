@@ -192,6 +192,14 @@ class Graph(ABC):
             edges.extend(edges_)
         return tuple(edges)
 
+    @property
+    def opaque_edges(self) -> Tuple[Edge, ...]:
+        """
+        :return: All the opaque edges (edges whose to blocks we don't yet know).
+        """
+
+        return tuple(self._opaque_edges)
+
     # @property
     # def leaves(self) -> Tuple[Block, ...]:
     #     """
@@ -220,14 +228,6 @@ class Graph(ABC):
 
         return self._rethrow_block
 
-    @property
-    def has_opaque_edges(self) -> bool:
-        """
-        :return: Does this graph contain opaque edges?
-        """
-
-        return bool(self._opaque_edges)
-
     def __init__(self, method: Method, return_block: ReturnBlock, rethrow_block: RethrowBlock) -> None:
         """
         :param method: The method that this graph represents.
@@ -242,7 +242,7 @@ class Graph(ABC):
         self._return_block = return_block
         self._rethrow_block = rethrow_block
 
-        self._blocks: List[Block] = []
+        self._blocks: List[Block] = [return_block, rethrow_block]
         self._forward_edges: Dict[Block, Set[Edge]] = {}  # Blocks to their out edges (faster lookup)
         self._backward_edges: Dict[Block, Set[Edge]] = {}  # Blocks to their in edges
         self._opaque_edges: Set[Edge] = set()  # Edges whose jump targets we don't know yet
@@ -455,6 +455,16 @@ class Graph(ABC):
                 backward.remove(edge)
         else:
             self._opaque_edges.remove(edge)
+
+    def is_opaque(self, edge: Edge) -> bool:
+        """
+        Checks if the given edge is opaque.
+
+        :param edge: The edge to check.
+        :return: Is this edge opaque?
+        """
+
+        return edge in self._opaque_edges
 
     def successors(self, block: Block) -> Tuple[Block, ...]:
         """

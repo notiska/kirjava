@@ -11,7 +11,7 @@ Java class skeletons in case we haven't loaded any Java libraries (rt.jar specif
 import json
 import logging
 import os
-from typing import List, Tuple, Union
+from typing import Dict,List, Tuple, Union
 
 from .. import _argument
 from ..abc import Class, Field, Method
@@ -252,6 +252,21 @@ class _SkeletonClass(Class):
             ))
         raise LookupError("Method %r was not found." % ("%s#%s" % (self.name, name)))
 
+    def add_method(
+            self,
+            name: str,
+            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+            **access_flags: Dict[str, bool],
+    ) -> None:
+        raise AttributeError("Can't add method to skeleton class.")
+
+    def remove_method(
+            self,
+            name_or_method: Union[str, "_SkeletonMethod"],
+            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+    ) -> None:
+        raise AttributeError("Can't remove method from skeleton class.")
+
     def get_field(self, name: str, descriptor: Union[BaseType, str, None] = None) -> "_SkeletonField":
         """
         Gets a field in this class.
@@ -276,6 +291,16 @@ class _SkeletonClass(Class):
                 "%s#%s %s" % (self.name, descriptor, name),
             ))
         raise LookupError("Field %r was not found." % ("%s#%s" % (self.name, name)))
+
+    def add_field(
+            self, name: str, descriptor: Union[BaseType, str, None] = None, **access_flags: Dict[str, bool],
+    ) -> None:
+        raise AttributeError("Can't add field to skeleton class.")
+
+    def remove_field(
+            self, name_or_field: Union[str, "_SkeletonField"], descriptor: Union[BaseType, str, None] = None,
+    ) -> None:
+        raise AttributeError("Can't remove field from skeleton class.")
 
 
 class _SkeletonField(Field):

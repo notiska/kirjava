@@ -6,6 +6,7 @@ import typing
 from typing import Dict, IO, Tuple, Union
 
 from . import descriptor
+from .. import _argument
 from ..abc import Field, Method
 from ..types import BaseType
 
@@ -254,10 +255,9 @@ class MethodInfo(Method):
 
     def __init__(
             self,
+            class_: "ClassFile",
             name: str,
-            argument_types: Tuple[BaseType, ...],
-            return_type: BaseType,
-            class_: Union["ClassFile", None] = None,
+            *descriptor_: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
             is_public: bool = False,
             is_private: bool = False,
             is_protected: bool = False,
@@ -271,15 +271,14 @@ class MethodInfo(Method):
             is_synthetic: bool = False,
     ) -> None:
         """
+        :param class_: The classfile that this method belongs to.
         :param name: The name of the method.
         :param argument_types: The argument types of this method.
         :param return_type: The return type of this method.
-        :param class_: The classfile that this method belongs to.
         """
 
         self._name = name
-        self._argument_types = argument_types
-        self._return_type = return_type
+        self._argument_types, self._return_type = _argument.get_method_descriptor(*descriptor_)
         self._class = class_
 
         if class_ is not None and not self in class_._methods:
@@ -516,9 +515,9 @@ class FieldInfo(Field):
 
     def __init__(
             self,
+            class_: "ClassFile",
             name: str,
-            type_: BaseType,
-            class_: Union["ClassFile", None] = None,
+            type_: Union[BaseType, str],
             is_public: bool = False,
             is_private: bool = False,
             is_protected: bool = False,
@@ -530,13 +529,13 @@ class FieldInfo(Field):
             is_enum: bool = False,
     ) -> None:
         """
+        :param class_: The class that this field belongs to.
         :param name: The name of this field.
         :param type_: The type of this field.
-        :param class_: The class that this field belongs to.
         """
 
         self._name = name
-        self._type = type_
+        self._type = _argument.get_field_descriptor(type_)
         self._class = class_
 
         if class_ is not None and not self in class_._fields:

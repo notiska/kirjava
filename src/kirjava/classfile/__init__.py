@@ -326,6 +326,8 @@ class ClassFile(Class_):
     def __repr__(self) -> str:
         return "<ClassFile(name=%r) at %x>" % (self._this.name, id(self))
 
+    # ------------------------------ Methods ------------------------------ #
+
     def get_method(
             self,
             name: str,
@@ -355,6 +357,47 @@ class ClassFile(Class_):
             ))
         raise LookupError("Method %r was not found." % ("%s#%s" % (self.name, name)))
 
+    def add_method(
+            self,
+            name: str,
+            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+            **access_flags: Dict[str, bool],
+    ) -> "MethodInfo":
+        """
+        Adds a method to this class given the provided information about it.
+
+        :param name: The name of the method.
+        :param descriptor: The descriptor of the method.
+        :param access_flags: Any access flags for the method
+        :return: The method that was created.
+        """
+
+        # It's added to self._methods for us in the MethodInfo constructor, so we can return it directly
+        return MethodInfo(self, name, *descriptor, **access_flags)
+
+    def remove_method(
+            self,
+            name_or_method: Union[str, "MethodInfo"],
+            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+    ) -> bool:
+        """
+        Removes a method from this class.
+
+        :param name_or_method: The name of the method, or the method.
+        :param descriptor: The descriptor of the method.
+        :return: Was the method removed?
+        """
+
+        if not isinstance(name_or_method, MethodInfo):
+            method = self.get_method(name_or_method, *descriptor)
+        if not method in self._methods:
+            raise ValueError("Method %r was not found, and therefore cannot be removed." % str(method))
+
+        while method in self._methods:
+            self._methods.remove(method)
+
+    # ------------------------------ Fields ------------------------------ #
+
     def get_field(self, name: str, descriptor: Union[BaseType, str, None] = None) -> "FieldInfo":
         """
         Gets a field in this class.
@@ -379,6 +422,39 @@ class ClassFile(Class_):
                 "%s#%s %s" % (self.name, descriptor, name),
             ))
         raise LookupError("Field %r was not found." % ("%s#%s" % (self.name, name)))
+
+    def add_field(
+            self, name: str, descriptor: Union[BaseType, str, None] = None, **access_flags: Dict[str, bool],
+    ) -> "FieldInfo":
+        """
+        Adds a field to this class.
+
+        :param name: The name of the field to add.
+        :param descriptor: The descriptor of the field to add.
+        :param access_flags: Any access flags for the field.
+        :return: The field that was added.
+        """
+
+        return FieldInfo(self, name, descriptor, **access_flags)
+
+    def remove_field(self, name_or_field: Union[str, "FieldInfo"], descriptor: Union[BaseType, str, None] = None) -> bool:
+        """
+        Removes a field from this class.
+
+        :param name_or_field: The name of the field or the field.
+        :param descriptor: The descriptor of the field.
+        :return: Was the field removed?
+        """
+
+        if not isinstance(name_or_field, FieldInfo):
+            field = self.get_field(name_or_field, descriptor)
+        if not field in self._fields:
+            raise ValueError("Field %r was not found, and therefore cannot be removed." % str(field))
+
+        while field in self._fields:  # May be duplicates (cos we allow that), so remove all
+            self._fields.remove(field)
+
+    # ------------------------------ IO ------------------------------ #
 
     def write(self, buffer: IO[bytes]) -> None:
         """
