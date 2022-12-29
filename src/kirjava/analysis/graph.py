@@ -787,7 +787,7 @@ class InsnGraph(Graph):
                 if extra:
                     errors.append(Error(edge, "multiple exception handler targets", "is the handler inlined?"))
 
-                if edge.inline_coverage:
+                if edge.inline_coverage:  # FIXME: Inlined blocks on inlined blocks
                     for edge_, (_, end_) in inlined.items():
                         if edge_.from_ == edge.from_ and end_ > end:
                             end = end_  # Adjust the end offset for this exception handler

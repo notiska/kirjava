@@ -620,7 +620,7 @@ class Trace:
                             continue
 
                         entry_a = state.locals[index]
-                        entry_b = state.locals[index]
+                        entry_b = entry.locals[index]
 
                         if entry_a.type != entry_b.type:
                             break  # Breaks out of the inner, which continues the outer loop

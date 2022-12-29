@@ -133,9 +133,7 @@ class FullTypeChecker(BasicTypeChecker):
 
                 except LookupError as error:
                     # FIXME: Warning?
-                    logger.warning("Couldn't resolve common supertype for %r and %r." % (
-                        expected.name, actual.name, error,
-                    ))
+                    logger.warning("Couldn't resolve common supertype for %r and %r." % (expected.name, actual.name))
                     logger.debug(error, exc_info=True)
 
                 if common is not None:
