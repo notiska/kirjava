@@ -22,7 +22,8 @@ from typing import Dict, List, Set, Tuple, Union
 from ._block import *
 from ._edge import *
 from .liveness import Liveness
-from .trace import BlockInstruction, Entry, State, Trace
+from .source import InstructionAtOffset, InstructionInBlock
+from .trace import Entry, State, Trace
 from .verifier import FullTypeChecker
 from .. import _argument, types
 from ..abc import Class, Edge, Error, Graph, VerifyError
@@ -334,8 +335,8 @@ class InsnGraph(Graph):
             code: Code,
             errors: List[Error],
             offsets: Dict[InsnBlock, List[Tuple[int, int, Dict[int, int]]]],
-            jumps: Dict[int, JumpEdge],
-            switches: Dict[int, List[SwitchEdge]],
+            jumps: Dict[int, Union[JumpEdge, None]],
+            switches: Dict[int, Union[List[SwitchEdge], None]],
             exceptions: List[ExceptionEdge],
             temporary: Set[InsnBlock],
             inlined: Dict[Edge, Tuple[int, int]],
@@ -384,11 +385,18 @@ class InsnGraph(Graph):
 
             wide = False
             for index, instruction in enumerate(block.instructions):
-                instructions_[offset] = instruction.copy()
-                if instruction == instructions.new:
-                    new_offsets[index] = offset
-                offset += instruction.get_size(offset, wide)
+                instructions_[offset] = instruction.copy()  # Copy, so we don't modify the original
 
+                if isinstance(instruction, JumpInstruction):
+                    jumps[offset] = None
+                elif instruction == instructions.tableswitch:
+                    switches[offset] = None
+                elif instruction == instructions.lookupswitch:
+                    switches[offset] = None
+                elif instruction == instructions.new:
+                    new_offsets[index] = offset
+
+                offset += instruction.get_size(offset, wide)
                 wide = instruction == instructions.wide
 
             # Is the method is large enough that we may need to consider generating intermediary blocks to account for
@@ -657,8 +665,8 @@ class InsnGraph(Graph):
         offsets: Dict[InsnBlock, List[Tuple[int, int, Dict[int, int]]]] = {}
         dead: Set[InsnBlock] = set()
 
-        jumps: Dict[int, JumpEdge] = {}
-        switches: Dict[int, List[SwitchEdge]] = {}
+        jumps: Dict[int, Union[JumpEdge, None]] = {}
+        switches: Dict[int, Union[List[SwitchEdge], None]] = {}
         exceptions: List[ExceptionEdge] = []
         inlined: Dict[Edge, Tuple[int, int]] = {}
 
@@ -672,7 +680,7 @@ class InsnGraph(Graph):
             if remove_dead_blocks and not block in trace.states:
                 dead.add(block)
                 continue
-            if block in (self._return_block, self._rethrow_block):
+            if block.inline:
                 continue
 
             offset = self._write_block(
@@ -681,11 +689,11 @@ class InsnGraph(Graph):
 
         # We may need to write the return and rethrow blocks if we have direct jumps to them that weren't, this can
         # occur, for example, when the only exit path from a method is via a conditional directly to the return block.
-        for block in (self._return_block, self._rethrow_block):
+        for block in (self._return_block, self._rethrow_block):  # FIXME: Check all inline blocks?
             if block in offsets:  # Has already been written, so we don't need to worry about it
                 continue
             for edge in itertools.chain(jumps.values(), *switches.values(), exceptions):
-                if edge.to == block:
+                if edge is not None and edge.to == block:
                     offset = self._write_block(
                         offset, block, code, errors, offsets, jumps, switches, exceptions, temporary, inlined,
                     )
@@ -755,17 +763,29 @@ class InsnGraph(Graph):
         # Adjust jumps and switches to the correct positions, if needs be.
 
         for offset, edge in jumps.items():
-            if edge.jump.offset is not None:  # Already computed the jump offset
+            instruction = code.instructions[offset]
+
+            if edge is None:
+                errors.append(Error(InstructionAtOffset(code, instruction, offset), "unbound jump"))
+                continue
+            elif instruction.offset is not None:  # Already computed the jump offset
                 continue
             elif edge.to is None:  # Opaque edge, can't compute offset
                 continue
+
             start = min(map(lambda item: item[0], offsets[edge.to]), key=lambda offset_: abs(offset - offset_))
             code.instructions[offset].offset = start - offset
+
         if jumps:
             logger.debug(" - Adjusted %i jump(s)." % len(jumps))
 
         for offset, edges in switches.items():
             instruction = code.instructions[offset]
+
+            if edges is None:
+                errors.append(Error(InstructionAtOffset(code, instruction, offset), "unbound switch"))
+                continue
+
             for edge in edges:
                 start = min(map(lambda item: item[0], offsets[edge.to]), key=lambda offset_: abs(offset - offset_))
                 value = edge.value
@@ -824,6 +844,8 @@ class InsnGraph(Graph):
             # states from different paths.
 
             for edge in itertools.chain(jumps.values(), *switches.values(), exceptions):
+                if edge is None:
+                    continue
                 block = edge.to
                 base: Union[State, None] = None
 
@@ -947,7 +969,7 @@ class InsnGraph(Graph):
                             if (
                                 isinstance(entry.type, Uninitialized) and
                                 entry.type != types.uninit_this_t and
-                                isinstance(entry.source, BlockInstruction)
+                                isinstance(entry.source, InstructionInBlock)
                             ):
                                 done = False
                                 for _, _, new_offsets in offsets[entry.source.block]:
@@ -973,7 +995,7 @@ class InsnGraph(Graph):
                     elif (
                         isinstance(entry.type, Uninitialized) and
                         entry.type != types.uninit_this_t and
-                        isinstance(entry.source, BlockInstruction)
+                        isinstance(entry.source, InstructionInBlock)
                     ):
                         done = False
                         for _, _, new_offsets in offsets[entry.source.block]:

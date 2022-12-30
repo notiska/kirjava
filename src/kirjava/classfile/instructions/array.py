@@ -9,8 +9,8 @@ from typing import List, Union
 
 from . import Instruction
 from ... import types
-from ...abc import Error, TypeChecker
-from ...analysis.trace import BlockInstruction, State
+from ...abc import Error, Source, TypeChecker
+from ...analysis.trace import State
 from ...types import BaseType
 from ...types.reference import ArrayType
 
@@ -27,7 +27,7 @@ class ArrayLoadInstruction(Instruction, ABC):
 
     type_: Union[BaseType, None] = ...
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         index_entry, array_entry = state.pop(source, 2)
 
         # Check initial types (array and int)
@@ -78,7 +78,7 @@ class ArrayStoreInstruction(Instruction, ABC):
 
     type_: Union[BaseType, None] = ...
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         # Check the array type matches what the instruction expects
         if self.type_ is not None:
             type_ = self.type_.to_verification_type()
@@ -126,7 +126,7 @@ class ArrayLengthInstruction(Instruction, ABC):
 
     throws = (types.nullpointerexception_t,)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_array(entry.type):
             errors.append(Error(source, "expected array type", "got %s (via %s)" % (entry.type, entry.source)))

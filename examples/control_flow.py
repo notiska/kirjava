@@ -7,17 +7,12 @@ An example usage of Kirjava that creates a class named ControlFlow with some bas
 import kirjava
 
 
-def make_main() -> None:
+def make_main(control_flow: kirjava.ClassFile) -> None:
     """
     Creates the main method in the class.
     """
 
-    global control_flow
-
-    main = kirjava.MethodInfo(
-        control_flow, "main", (kirjava.types.string_array_t,), kirjava.types.void_t, is_public=True, is_static=True,
-    )
-
+    main = control_flow.add_method("main", "([Ljava/lang/String;)V", is_public=True, is_static=True)
     graph = kirjava.analysis.InsnGraph(main)
 
     # Set up the blocks that we'll need
@@ -53,17 +48,14 @@ def make_main() -> None:
     main.code = graph.assemble()
 
 
-def make_conditionals() -> None:
+def make_conditionals(control_flow: kirjava.ClassFile) -> None:
     """
     Makes the testConditionals method.
     """
 
-    global control_flow
-
-    test_conditionals = kirjava.MethodInfo(
-        control_flow, "testConditionals", (kirjava.types.string_t,), kirjava.types.void_t, is_private=True, is_static=True,
+    test_conditionals = control_flow.add_method(
+        "testConditionals", "(Ljava/lang/String;)V", is_private=True, is_static=True,
     )
-
     graph = kirjava.analysis.InsnGraph(test_conditionals)
  
     graph.entry_block = kirjava.analysis.InsnBlock(graph)
@@ -102,18 +94,14 @@ def make_conditionals() -> None:
     test_conditionals.code = graph.assemble()
 
 
-def make_loop() -> None:
+def make_loop(control_flow: kirjava.ClassFile) -> None:
     """
     Makes the testLoop method.
     """
 
-    global control_flow
-
-    test_loop = kirjava.MethodInfo(
-        control_flow, "testLoop", (kirjava.types.string_t, kirjava.types.string_t,), kirjava.types.void_t,
-        is_private=True, is_static=True,
+    test_loop = control_flow.add_method(
+        "testLoop", "(Ljava/lang/String;Ljava/lang/String;)V", is_private=True, is_static=True,
     )
-
     graph = kirjava.analysis.InsnGraph(test_loop)
 
     graph.entry_block   = kirjava.analysis.InsnBlock(graph)
@@ -176,9 +164,10 @@ if __name__ == "__main__":
     kirjava.initialise()
 
     control_flow = kirjava.ClassFile("ControlFlow", is_public=True)
-    make_main()
-    make_conditionals()
-    make_loop()
+
+    make_main(control_flow)
+    make_conditionals(control_flow)
+    make_loop(control_flow)
 
     with open("ControlFlow.class", "wb") as stream:
         control_flow.write(stream)

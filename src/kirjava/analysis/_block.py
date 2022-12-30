@@ -64,19 +64,25 @@ class InsnBlock(Block):
 
         return new_block
 
-    def add(self, instruction: Union[MetaInstruction, Instruction], to: Union["InsnBlock", None] = None) -> Instruction:
+    def add(
+            self,
+            instruction: Union[MetaInstruction, Instruction],
+            to: Union["InsnBlock", None] = None,
+            handle_jumps: bool = True,
+    ) -> Instruction:
         """
         Adds an instruction to this block.
 
         :param instruction: The instruction to add.
         :param to: The block to jump to, if adding a jump instruction.
+        :param handle_jumps: Should jump edges be added when a jump instruction is added?
         :return: The same instruction.
         """
 
         if isinstance(instruction, MetaInstruction):
             instruction = instruction()  # Should throw at this point, if invalid
 
-        if isinstance(instruction, JumpInstruction):
+        if handle_jumps and isinstance(instruction, JumpInstruction):
             if to is None:
                 raise ValueError("Expected a value for parameter 'block' if adding a jump instruction.")
             self.jump(to, instruction)

@@ -11,8 +11,8 @@ from . import Instruction, MetaInstruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_, FieldRef, NameAndType
 from ... import _argument, types
-from ...abc import Class, Error, TypeChecker
-from ...analysis.trace import BlockInstruction, State
+from ...abc import Class, Error, Source, TypeChecker
+from ...analysis.trace import State
 from ...types import BaseType, ReferenceType
 from ...types import ClassOrInterfaceType
 
@@ -79,7 +79,7 @@ class FieldInstruction(Instruction, ABC):
 
         super().write(class_file, buffer, wide)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         type_ = self.type.to_verification_type()
 
         if not self.get:

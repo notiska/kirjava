@@ -15,7 +15,7 @@ from ...abc import Error, Source, TypeChecker
 from ...types.reference import ClassOrInterfaceType
 
 if typing.TYPE_CHECKING:
-    from ...analysis.trace import BlockInstruction, State
+    from ...analysis.trace import State
 
 
 class MetaInstruction(ABCMeta):
@@ -160,7 +160,7 @@ class Instruction(Source, metaclass=MetaInstruction):
         return 1 + sum(map(struct.calcsize, (self.operands if not wide else self.operands_wide).values()))
 
     # @abstractmethod
-    def trace(self, source: "BlockInstruction", state: "State", errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: "State", errors: List[Error], checker: TypeChecker) -> None:
         """
         Steps through this instruction (for stackmap frame generation and verification purposes).
 

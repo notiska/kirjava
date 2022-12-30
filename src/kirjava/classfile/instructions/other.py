@@ -10,8 +10,8 @@ from typing import List
 
 from . import Instruction
 from ... import types
-from ...abc import Error, TypeChecker
-from ...analysis.trace import BlockInstruction, State
+from ...abc import Error, Source, TypeChecker
+from ...analysis.trace import State
 from ...types import BaseType
 
 
@@ -24,7 +24,7 @@ class ReturnInstruction(Instruction, ABC):
 
     type_: BaseType = ...
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         # TODO: Check method return type too?
         if self.type_ != types.void_t:  # Void returns accept no value
             if self.type_ is None:
@@ -54,7 +54,7 @@ class AThrowInstruction(Instruction, ABC):
         types.nullpointerexception_t,
     )
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         state.stack.clear()
 
@@ -79,7 +79,7 @@ class MonitorEnterInstruction(Instruction, ABC):
         types.nullpointerexception_t,
     )
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_reference(entry.type):
             errors.append(Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source)))
@@ -95,7 +95,7 @@ class MonitorExitInstruction(Instruction, ABC):
         types.nullpointerexception_t,
     )
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_reference(entry.type):
             errors.append(Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source)))

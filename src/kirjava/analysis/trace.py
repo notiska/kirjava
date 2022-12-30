@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "BlockInstruction",
     "Trace", "Entry", "State",
 )
 
@@ -15,6 +14,7 @@ from frozendict import frozendict, FrozenOrderedDict
 from typing import Any, Dict, FrozenSet, List, Set, Tuple, Union
 
 from ._edge import _DummyEdge, ExceptionEdge, JsrJumpEdge, JsrFallthroughEdge, RetEdge
+from .source import InstructionInBlock
 from .verifier import BasicTypeChecker
 from .. import types
 from ..abc import Edge, Error, Source, TypeChecker
@@ -28,30 +28,6 @@ if typing.TYPE_CHECKING:
     from .graph import InsnGraph
 
 logger = logging.getLogger("kirjava.analysis.trace")
-
-
-class BlockInstruction(Source):
-    """
-    A source that contains the exact location of an instruction via the block it's in an the index it's at in the block.
-    """
-
-    __slots__ = ("block", "instruction", "index")
-
-    def __init__(self, block: "InsnBlock", instruction: Instruction, index: int) -> None:
-        self.block = block
-        self.instruction = instruction
-        self.index = index
-
-    def __repr__(self) -> str:
-        return "<BlockInstruction(block=%r, instruction=%s, index=%i) at %x>" % (
-            self.block, self.instruction, self.index, id(self),
-        )
-
-    def __str__(self) -> str:
-        return "%s @ %i:%s" % (self.instruction, self.index, self.block)
-
-    def __eq__(self, other: Any) -> bool:
-        return isinstance(other, BlockInstruction) and other.block == self.block and other.index == self.index
 
 
 class Entry:
@@ -674,7 +650,7 @@ class Trace:
             # print(root, edge)
             entry = state.freeze()
             for index, instruction in enumerate(block.instructions):
-                instruction.trace(BlockInstruction(block, instruction, index), state, errors, checker)
+                instruction.trace(InstructionInBlock(block, instruction, index), state, errors, checker)
             constraints[entry] = state.freeze()
 
             # Adjust stack and local maxes too

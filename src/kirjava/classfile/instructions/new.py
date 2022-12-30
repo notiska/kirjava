@@ -11,8 +11,8 @@ from . import Instruction, MetaInstruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_
 from ... import _argument, types
-from ...abc import Class, Error, TypeChecker
-from ...analysis.trace import BlockInstruction, State
+from ...abc import Class, Error, Source, TypeChecker
+from ...analysis.trace import State
 from ...types import PrimitiveType, ReferenceType
 from ...types.reference import ArrayType, ClassOrInterfaceType
 from ...types.verification import Uninitialized
@@ -62,7 +62,7 @@ class NewInstruction(Instruction, ABC):
             self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type)))
         super().write(class_file, buffer, wide)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         state.push(source, Uninitialized(class_=self.type))
 
 
@@ -131,7 +131,7 @@ class NewArrayInstruction(Instruction, ABC):
         self._atype = self._BACKWARD_TYPES[self.type.element_type]
         super().write(class_file, buffer, wide)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
             errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
@@ -192,7 +192,7 @@ class ANewArrayInstruction(Instruction, ABC):
             ))
         super().write(class_file, buffer, wide)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
             errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
@@ -243,7 +243,7 @@ class MultiANewArrayInstruction(Instruction, ABC):
         self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type)))
         super().write(class_file, buffer, wide)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         if self.dimension > self.type.dimension:
             errors.append(Error(
                 source, "instruction dimension exceeds array dimension", "%i > %i" % (self.dimension, self.type.dimension),

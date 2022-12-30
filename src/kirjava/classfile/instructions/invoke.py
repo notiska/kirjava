@@ -11,8 +11,8 @@ from . import Instruction, MetaInstruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_, InterfaceMethodRef, InvokeDynamic, MethodRef, NameAndType
 from ... import _argument, types
-from ...abc import Class, Error, TypeChecker
-from ...analysis.trace import BlockInstruction, Entry, State
+from ...abc import Class, Error, Source, TypeChecker
+from ...analysis.trace import Entry, State
 from ...types import BaseType, ReferenceType
 from ...types.reference import ClassOrInterfaceType
 from ...types.verification import This, Uninitialized
@@ -85,7 +85,7 @@ class InvokeInstruction(Instruction, ABC):
 
         super().write(class_file, buffer, wide)
 
-    def _trace_arguments(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> List[Entry]:
+    def _trace_arguments(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> List[Entry]:
         """
         Partial tracing for the arguments this instruction should accept.
         """
@@ -118,7 +118,7 @@ class InvokeVirtualInstruction(InvokeInstruction, ABC):
         types.unsatisfiedlinkerror_t,
     )
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         argument_entries = self._trace_arguments(source, state, errors, checker)
         entry = state.pop(source)
 
@@ -143,7 +143,7 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction, ABC):
         types.unsatisfiedlinkerror_t,
     )
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         argument_entries = self._trace_arguments(source, state, errors, checker)
         entry = state.pop(source)
 
@@ -169,7 +169,7 @@ class InvokeStaticInstruction(InvokeInstruction, ABC):
     An instruction that invokes a static method.
     """
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         argument_entries = self._trace_arguments(source, state, errors, checker)
         if self.return_type != types.void_t:
             state.push(source, self.return_type.to_verification_type(), parents=tuple(argument_entries))

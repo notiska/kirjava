@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "graph", "ir", "liveness", "reconstruct", "trace", "verifier",
+    "graph", "ir", "liveness", "reconstruct", "source", "trace", "verifier",
     "InsnBlock", "InsnReturnBlock", "InsnRethrowBlock",
     "JumpEdge", "FallthroughEdge", "ExceptionEdge",
     "InsnGraph",
@@ -13,7 +13,7 @@ __all__ = (
 Bytecode analysis stuff.
 """
 
-from . import graph, ir, liveness, trace, reconstruct, verifier
+from . import graph, ir, liveness, source, trace, reconstruct, verifier
 from .graph import *
 from .ir import *
 from .liveness import *

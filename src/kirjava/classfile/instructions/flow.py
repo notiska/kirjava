@@ -11,8 +11,8 @@ from typing import Any, Dict, IO, Iterable, List, Union
 from . import Instruction, MetaInstruction
 from .. import ClassFile
 from ... import types
-from ...abc import Error, TypeChecker
-from ...analysis.trace import BlockInstruction, State
+from ...abc import Error, Source, TypeChecker
+from ...analysis.trace import State
 from ...types import BaseType
 
 
@@ -56,7 +56,7 @@ class JsrInstruction(JumpInstruction, ABC):
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         state.push(source, types.return_address_t)
 
 
@@ -96,7 +96,7 @@ class RetInstruction(JumpInstruction, ABC):
     def copy(self) -> "RetInstruction":
         return self.__class__(self.index)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.get(source, self.index)
         if not checker.check_merge(types.return_address_t, entry.type):
             errors.append(Error(source, "expected type returnAddress", "got %s (via %s)" % (entry.type, entry.source)))
@@ -125,7 +125,7 @@ class UnaryComparisonJumpInstruction(ConditionalJumpInstruction, ABC):
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         if self.type_ is None:
             entry = state.pop(source)
             if not checker.check_reference(entry.type):
@@ -151,7 +151,7 @@ class BinaryComparisonJumpInstruction(ConditionalJumpInstruction, ABC):
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         if self.type_ is None:
             entry_a, entry_b = state.pop(source, 2)
         else:
@@ -224,13 +224,13 @@ class TableSwitchInstruction(Instruction, ABC):
     def get_size(self, offset: int, wide: bool = False) -> int:
         return 1 + 3 - offset % 4 + 12 + 4 * len(self.offsets)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
             errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
 
 
-class LookupSwitchInstruction(Instruction, ABC):  # FIXME: Sorting required?
+class LookupSwitchInstruction(Instruction, ABC):
     """
     Continues execution at the address in the jump table, given a key match on the top of the stack.
     """
@@ -284,7 +284,7 @@ class LookupSwitchInstruction(Instruction, ABC):  # FIXME: Sorting required?
     def get_size(self, offset: int, wide: bool = False) -> int:
         return 1 + 3 - offset % 4 + 8 + 8 * len(self.offsets)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
             errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))

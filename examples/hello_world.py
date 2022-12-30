@@ -11,17 +11,11 @@ if __name__ == "__main__":
     kirjava.initialise()
 
     hello_world = kirjava.ClassFile("HelloWorld", is_public=True)
-    # A note on array types, if the array type does not exist in kirjava.types, you can just wrap it with
-    # kirjava.types.ArrayType. With this, you can specify dimensions too.
-    main = hello_world.add_method("main", (kirjava.types.string_array_t,), kirjava.types.void_t)
-    main.is_public = True
-    main.is_static = True
+    main = hello_world.add_method("main", "([Ljava/lang/String;)V", is_public=True, is_static=True)
 
     graph = kirjava.analysis.InsnGraph(main)
-    graph.entry_block = kirjava.analysis.InsnBlock(graph)  # Block with label 0, that belongs to the given graph
+    graph.entry_block = kirjava.analysis.InsnBlock(graph)
 
-    # Types can be specified as descriptors to be parsed, when instantiating certain instructions. You can also use the
-    # kirjava.types package to specify them, as with the main method above.
     graph.entry_block.add(kirjava.instructions.getstatic("java/lang/System", "out", "Ljava/io/PrintStream;"))
     graph.entry_block.add(kirjava.instructions.ldc(kirjava.constants.String("Hello world.")))
     graph.entry_block.add(kirjava.instructions.invokevirtual("java/io/PrintStream", "println", "(Ljava/lang/Object;)V"))

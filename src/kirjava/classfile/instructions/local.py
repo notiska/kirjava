@@ -10,8 +10,8 @@ from typing import Any, IO, List, Union
 from . import Instruction, MetaInstruction
 from .. import ClassFile
 from ... import types
-from ...abc import Error, TypeChecker
-from ...analysis.trace import BlockInstruction, State
+from ...abc import Error, Source, TypeChecker
+from ...analysis.trace import State
 from ...types import BaseType
 
 
@@ -47,7 +47,7 @@ class LoadLocalInstruction(Instruction, ABC):
     def copy(self) -> "LoadLocalInstruction":
         return self.__class__(self.index)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.get(source, self.index)
 
         error = None
@@ -130,7 +130,7 @@ class StoreLocalInstruction(Instruction, ABC):
     def copy(self) -> "StoreLocalInstruction":
         return self.__class__(self.index)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         error = None
         if self.type_ is not None:
             entry, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
@@ -218,7 +218,7 @@ class IncrementLocalInstruction(Instruction, ABC):
     def copy(self) -> "IncrementLocalInstruction":
         return self.__class__(self.index, self.value)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.get(source, self.index)
         if not checker.check_merge(types.int_t, entry.type):
             errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))

@@ -11,8 +11,8 @@ from . import Instruction, MetaInstruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_
 from ... import _argument, types
-from ...abc import Class, Error, TypeChecker
-from ...analysis.trace import BlockInstruction, State
+from ...abc import Class, Error, Source, TypeChecker
+from ...analysis.trace import State
 from ...types import PrimitiveType, ReferenceType
 from ...types.reference import ClassOrInterfaceType
 
@@ -30,7 +30,7 @@ class ConversionInstruction(Instruction, ABC):
             self.opcode, self.mnemonic, self.type_in, self.type_out, id(self),
         )
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry, *_ = state.pop(source, self.type_in.internal_size, tuple_=True)
         if not checker.check_merge(self.type_in, entry.type):
             errors.append(Error(
@@ -97,7 +97,7 @@ class CheckCastInstruction(Instruction, ABC):
             self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type)))
         super().write(class_file, buffer, wide)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_reference(entry.type):
             errors.append(Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source)))
@@ -153,7 +153,7 @@ class InstanceOfInstruction(Instruction, ABC):
             self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type)))
         super().write(class_file, buffer, wide)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_reference(entry.type):
             errors.append(Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source)))

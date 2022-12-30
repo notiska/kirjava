@@ -9,8 +9,8 @@ from typing import List
 
 from . import Instruction
 from ... import types
-from ...abc import Error, TypeChecker
-from ...analysis.trace import BlockInstruction, State
+from ...abc import Error, Source, TypeChecker
+from ...analysis.trace import State
 from ...types import BaseType
 
 
@@ -21,7 +21,7 @@ class UnaryOperationInstruction(Instruction, ABC):
 
     type_: BaseType = ...
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
         if not checker.check_merge(self.type_, entry.type):
             errors.append(Error(
@@ -38,7 +38,7 @@ class BinaryOperationInstruction(Instruction, ABC):
     type_a: BaseType = ...
     type_b: BaseType = ...
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry_a, *_ = state.pop(source, self.type_a.internal_size, tuple_=True)
         entry_b, *_ = state.pop(source, self.type_b.internal_size, tuple_=True)
 
@@ -62,7 +62,7 @@ class ComparisonInstruction(BinaryOperationInstruction, ABC):
     Compares two values on the stack.
     """
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry_a, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
         entry_b, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
 

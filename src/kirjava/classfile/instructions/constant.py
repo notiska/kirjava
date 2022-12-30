@@ -11,8 +11,8 @@ from . import Instruction, MetaInstruction
 from .. import ClassFile
 from ..constants import Constant, Integer
 from ... import types
-from ...abc import Error, TypeChecker
-from ...analysis.trace import BlockInstruction, State
+from ...abc import Error, Source, TypeChecker
+from ...analysis.trace import State
 
 
 class ConstantInstruction(Instruction, ABC):
@@ -46,7 +46,7 @@ class ConstantInstruction(Instruction, ABC):
     def copy(self) -> "ConstantInstruction":
         return self.__class__(self.constant)
 
-    def trace(self, source: BlockInstruction, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         try:
             state.push(source, self.constant.get_type())
         except TypeError:
