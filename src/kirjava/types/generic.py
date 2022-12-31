@@ -46,7 +46,7 @@ class TypeParameter(TypeArgument):
         )
         
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, TypeParameter):
+        if other.__class__ is TypeParameter:
             return (
                 other.identifier == self.identifier and 
                 other.upper_bound == self.upper_bound and 
@@ -89,7 +89,7 @@ class Wildcard(TypeArgument):
         return "? extends %s" % self.upper_bound
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, Wildcard) and other.upper_bound == self.upper_bound and other.lower_bound == self.lower_bound
+        return other.__class__ is Wildcard and other.upper_bound == self.upper_bound and other.lower_bound == self.lower_bound
 
     def __hash__(self) -> int:
         return hash((self.upper_bound, self.lower_bound))

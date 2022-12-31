@@ -37,10 +37,7 @@ class JumpInstruction(Instruction, ABC):
         return "%s %+i" % (self.mnemonic, self.offset)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or
-            (other.__class__ == self.__class__ and other.offset == self.offset)
-        )
+        return (other.__class__ is self.__class__ and other.offset == self.offset) or other is self.__class__
 
     def copy(self) -> "JumpInstruction":
         return self.__class__(self.offset)
@@ -88,10 +85,7 @@ class RetInstruction(JumpInstruction, ABC):
         return "%s %i" % (self.mnemonic, self.index)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or
-            (other.__class__ == self.__class__ and other.index == self.index)
-        )
+        return (other.__class__ is self.__class__ and other.index == self.index) or other is self.__class__
 
     def copy(self) -> "RetInstruction":
         return self.__class__(self.index)
@@ -195,8 +189,8 @@ class TableSwitchInstruction(Instruction, ABC):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return (isinstance(other, MetaInstruction) and other == self.__class__) or (
-            other.__class__ == self.__class__ and
+        return other is self.__class__ or (
+            other.__class__ is self.__class__ and
             other.default == self.default and
             other.low == self.low and
             other.high == self.high and
@@ -255,8 +249,8 @@ class LookupSwitchInstruction(Instruction, ABC):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return (isinstance(other, MetaInstruction) and other == self.__class__) or (
-            other.__class__ == self.__class__ and
+        return other is self.__class__ or (
+            other.__class__ is self.__class__ and
             other.default == self.default and
             other.offsets == self.offsets
         )

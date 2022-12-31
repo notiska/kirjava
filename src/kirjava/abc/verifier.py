@@ -64,7 +64,9 @@ class Error:
         return "error at %r: %r" % (str(self.source), ", ".join(map(str, self.messages)))
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, Error) and other.source == self.source and other.messages == self.messages
+        if other is self:
+            return True
+        return other.__class__ is Error and other.source == self.source and other.messages == self.messages
 
 
 class TypeChecker(ABC):

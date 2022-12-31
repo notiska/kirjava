@@ -40,7 +40,7 @@ class InstructionAtOffset(Source):
         return "%s @ %i:%s" % (self.instruction, self.offset, self.code.parent)
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, InstructionAtOffset) and other.code == self.code and other.offset == self.offset
+        return other.__class__ is InstructionAtOffset and other.code == self.code and other.offset == self.offset
 
 
 class InstructionInBlock(Source):
@@ -64,4 +64,4 @@ class InstructionInBlock(Source):
         return "%s @ %i:%s" % (self.instruction, self.index, self.block)
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, InstructionInBlock) and other.block == self.block and other.index == self.index
+        return other.__class__ is InstructionInBlock and other.block == self.block and other.index == self.index

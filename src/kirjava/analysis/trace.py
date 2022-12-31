@@ -68,7 +68,9 @@ class Entry:
         return str(self.type)
 
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, Entry) and other.id == self.id and other.type == self.type:
+        if other is self:
+            return True
+        elif other.__class__ is Entry and other.id == self.id and other.type == self.type:
             return True
         for merge in self.merges:
             if merge is self:  # Avoid any recursion here
@@ -165,10 +167,12 @@ class State:
         self.local_accesses: List[Tuple[int, Union[Entry, None], Entry, bool]] = []
 
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, State.Frozen):
+        if other is self:
+            return True
+        elif other.__class__ is State.Frozen:
             return other.__eq__(self)
         return (
-            isinstance(other, State) and
+            other.__class__ is State and
             other.stack == self.stack and
             other.locals == self.locals and
             other.max_stack == self.max_stack and
@@ -375,7 +379,9 @@ class State:
             self.local_accesses: Tuple[Tuple[int, Union[Instruction, None], Entry, bool], ...] = tuple(state.local_accesses)
 
         def __eq__(self, other: Any) -> bool:
-            if isinstance(other, State):
+            if other is self:
+                return True
+            elif other.__class__ is State:
                 return (
                     tuple(other.stack) == self.stack and
                     other.locals == self.locals and
@@ -383,7 +389,7 @@ class State:
                     other.max_locals == self.max_locals
                 )
             return (
-                isinstance(other, State.Frozen) and
+                other.__class__ is State.Frozen and
                 other.stack == self.stack and
                 other.locals == self.locals and
                 other.max_stack == self.max_stack and

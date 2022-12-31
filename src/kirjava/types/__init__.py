@@ -127,7 +127,7 @@ class InvalidType(BaseType):
         return "invalid"
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, InvalidType) and other.descriptor == self.descriptor
+        return other.__class__ is InvalidType and other.descriptor == self.descriptor
 
     def __hash__(self) -> int:
         return hash(self.descriptor)
@@ -151,7 +151,7 @@ class PrimitiveType(BaseType, ABC):
         return self.name
 
     def __eq__(self, other: Any) -> bool:
-        return other.__class__ == self.__class__
+        return other is self or other.__class__ is self.__class__
 
 
 class ReferenceType(BaseType, ABC):
@@ -163,7 +163,7 @@ class ReferenceType(BaseType, ABC):
         return "<%s() at %x>" % (self.__class__.__name__, id(self))
 
     def __eq__(self, other: Any) -> bool:
-        return other.__class__ == self.__class__
+        return other is self or other.__class__ is self.__class__
 
 
 # ------------------------------ Primitives ------------------------------ #

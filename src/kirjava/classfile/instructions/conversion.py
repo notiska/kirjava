@@ -78,10 +78,7 @@ class CheckCastInstruction(Instruction, ABC):
         return "%s %s" % (self.mnemonic, self.type)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or
-            (other.__class__ == self.__class__ and other.type == self.type)
-        )
+        return (other.__class__ is self.__class__ and other.type == self.type) or other is self.__class__
 
     def copy(self) -> "CheckCastInstruction":
         return self.__class__(self.type)
@@ -134,10 +131,7 @@ class InstanceOfInstruction(Instruction, ABC):
         return "%s %s" % (self.mnemonic, self.type)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or
-            (other.__class__ == self.__class__ and other.type == self.type)
-        )
+        return (other.__class__ is self.__class__ and other.type == self.type) or other is self.__class__
 
     def copy(self) -> "InstanceOfInstruction":
         return self.__class__(self.type)

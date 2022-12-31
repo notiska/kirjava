@@ -43,10 +43,7 @@ class NewInstruction(Instruction, ABC):
         return "%s %s" % (self.mnemonic, self.type)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or
-            (other.__class__ == self.__class__ and other.type == self.type)
-        )
+        return (other.__class__ is self.__class__ and other.type == self.type) or other is self.__class__
 
     def copy(self) -> "NewInstruction":
         return self.__class__(self.type)
@@ -115,10 +112,7 @@ class NewArrayInstruction(Instruction, ABC):
         return "%s %s" % (self.mnemonic, self.type)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or
-            (other.__class__ == self.__class__ and other.type == self.type)
-        )
+        return (other.__class__ is self.__class__ and other.type == self.type) or other is self.__class__
 
     def copy(self) -> "NewArrayInstruction":
         return self.__class__(self.type)
@@ -167,10 +161,7 @@ class ANewArrayInstruction(Instruction, ABC):
         return "%s %s" % (self.mnemonic, self.type)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or
-            (other.__class__ == self.__class__ and other.type == self.type)
-        )
+        return (other.__class__ is self.__class__ and other.type == self.type) or other is self.__class__
 
     def copy(self) -> "ANewArrayInstruction":
         return self.__class__(self.type)
@@ -228,9 +219,10 @@ class MultiANewArrayInstruction(Instruction, ABC):
 
     def __eq__(self, other: Any) -> bool:
         return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or
-            (other.__class__ == self.__class__ and other.type == self.type and other.dimension == self.dimension)
-        )
+            other.__class__ is self.__class__ and
+            other.dimension == self.dimension and
+            other.type == self.type
+        ) or other is self.__class__
 
     def copy(self) -> "MultiANewArrayInstruction":
         return self.__class__(self.type, self.dimension)

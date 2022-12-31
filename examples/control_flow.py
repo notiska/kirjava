@@ -16,9 +16,8 @@ def make_main(control_flow: kirjava.ClassFile) -> None:
     graph = kirjava.analysis.InsnGraph(main)
 
     # Set up the blocks that we'll need
-    graph.entry_block  = kirjava.analysis.InsnBlock(graph)
-    error_block        = kirjava.analysis.InsnBlock(graph)
-    invoke_block       = kirjava.analysis.InsnBlock(graph)
+    error_block  = kirjava.analysis.InsnBlock(graph)
+    invoke_block = kirjava.analysis.InsnBlock(graph)
 
     graph.entry_block.add(kirjava.instructions.aload_0())
     graph.entry_block.add(kirjava.instructions.arraylength())
@@ -29,7 +28,7 @@ def make_main(control_flow: kirjava.ClassFile) -> None:
     error_block.add(kirjava.instructions.getstatic("java/lang/System", "out", "Ljava/io/PrintStream;"))
     error_block.add(kirjava.instructions.ldc(kirjava.constants.String("Please enter 3 or more arguments!")))
     error_block.add(kirjava.instructions.invokevirtual("java/io/PrintStream", "println", "(Ljava/lang/Object;)V"))
-    error_block.fallthrough(graph.return_block)
+    error_block.return_()
 
     invoke_block.add(kirjava.instructions.aload_0())
     invoke_block.add(kirjava.instructions.dup())
@@ -43,7 +42,7 @@ def make_main(control_flow: kirjava.ClassFile) -> None:
     invoke_block.add(kirjava.instructions.iconst_2())
     invoke_block.add(kirjava.instructions.aaload())
     invoke_block.add(kirjava.instructions.invokestatic("ControlFlow", "testLoop", "(Ljava/lang/String;Ljava/lang/String;)V"))
-    invoke_block.fallthrough(graph.return_block)
+    invoke_block.return_()
 
     main.code = graph.assemble()
 
@@ -58,11 +57,10 @@ def make_conditionals(control_flow: kirjava.ClassFile) -> None:
     )
     graph = kirjava.analysis.InsnGraph(test_conditionals)
  
-    graph.entry_block = kirjava.analysis.InsnBlock(graph)
-    doesnt_contain_a  = kirjava.analysis.InsnBlock(graph)
-    length_check      = kirjava.analysis.InsnBlock(graph)
-    longer_than_5     = kirjava.analysis.InsnBlock(graph)
-    shorter_than_5    = kirjava.analysis.InsnBlock(graph)
+    doesnt_contain_a = kirjava.analysis.InsnBlock(graph)
+    length_check     = kirjava.analysis.InsnBlock(graph)
+    longer_than_5    = kirjava.analysis.InsnBlock(graph)
+    shorter_than_5   = kirjava.analysis.InsnBlock(graph)
 
     graph.entry_block.add(kirjava.instructions.aload_0())
     graph.entry_block.add(kirjava.instructions.ldc(kirjava.constants.String("a")))
@@ -73,7 +71,7 @@ def make_conditionals(control_flow: kirjava.ClassFile) -> None:
     doesnt_contain_a.add(kirjava.instructions.getstatic("java/lang/System", "out", "Ljava/io/PrintStream;"))
     doesnt_contain_a.add(kirjava.instructions.ldc(kirjava.constants.String("First argument doesn't contain 'a' character.")))
     doesnt_contain_a.add(kirjava.instructions.invokevirtual("java/io/PrintStream", "println", "(Ljava/lang/Object;)V"))
-    doesnt_contain_a.fallthrough(graph.return_block)
+    doesnt_contain_a.return_()
 
     length_check.add(kirjava.instructions.aload_0())
     length_check.add(kirjava.instructions.invokevirtual("java/lang/String", "length", "()I"))
@@ -84,12 +82,12 @@ def make_conditionals(control_flow: kirjava.ClassFile) -> None:
     longer_than_5.add(kirjava.instructions.getstatic("java/lang/System", "out", "Ljava/io/PrintStream;"))
     longer_than_5.add(kirjava.instructions.ldc(kirjava.constants.String("First argument is 5 characters or longer.")))
     longer_than_5.add(kirjava.instructions.invokevirtual("java/io/PrintStream", "println", "(Ljava/lang/Object;)V"))
-    longer_than_5.fallthrough(graph.return_block)
+    longer_than_5.return_()
 
     shorter_than_5.add(kirjava.instructions.getstatic("java/lang/System", "out", "Ljava/io/PrintStream;"))
     shorter_than_5.add(kirjava.instructions.ldc(kirjava.constants.String("First argument is shorter than 5 characters.")))
     shorter_than_5.add(kirjava.instructions.invokevirtual("java/io/PrintStream", "println", "(Ljava/lang/Object;)V"))
-    shorter_than_5.fallthrough(graph.return_block)
+    shorter_than_5.return_()
 
     test_conditionals.code = graph.assemble()
 
@@ -104,11 +102,11 @@ def make_loop(control_flow: kirjava.ClassFile) -> None:
     )
     graph = kirjava.analysis.InsnGraph(test_loop)
 
-    graph.entry_block   = kirjava.analysis.InsnBlock(graph)
     exponent_loop_body  = kirjava.analysis.InsnBlock(graph)
     result_check        = kirjava.analysis.InsnBlock(graph)
     infinite_loop_entry = kirjava.analysis.InsnBlock(graph)
     infinite_loop_body  = kirjava.analysis.InsnBlock(graph)
+    return_block        = kirjava.analysis.InsnBlock(graph)
 
     # Decode the arguments into integers, if possible
     graph.entry_block.add(kirjava.instructions.aload_1())
@@ -148,7 +146,7 @@ def make_loop(control_flow: kirjava.ClassFile) -> None:
     result_check.add(kirjava.instructions.iload_1())
     result_check.add(kirjava.instructions.sipush(kirjava.constants.Integer(1024)))
     result_check.jump(infinite_loop_entry, kirjava.instructions.if_icmpgt)
-    result_check.fallthrough(graph.return_block)
+    result_check.fallthrough(return_block)
 
     infinite_loop_entry.add(kirjava.instructions.getstatic("java/lang/System", "out", "Ljava/io/PrintStream;"))
     infinite_loop_entry.add(kirjava.instructions.ldc(kirjava.constants.String("Result is greater than 1024, entering infinite loop...")))
@@ -156,6 +154,8 @@ def make_loop(control_flow: kirjava.ClassFile) -> None:
     infinite_loop_entry.fallthrough(infinite_loop_body)
 
     infinite_loop_body.jump(infinite_loop_body)  # goto is used by default, so we don't need to specify anything
+
+    return_block.return_()
 
     test_loop.code = graph.assemble()
 

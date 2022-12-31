@@ -34,7 +34,7 @@ class InsnBlock(Block):
             add: bool = True,
     ) -> None:
         """
-        :param instructions_: Java instructions to initialise this block with.
+        :param instructions_: JVM instructions to initialise this block with.
         """
 
         super().__init__(graph, label, add)
@@ -68,21 +68,27 @@ class InsnBlock(Block):
             self,
             instruction: Union[MetaInstruction, Instruction],
             to: Union["InsnBlock", None] = None,
-            handle_jumps: bool = True,
+            fix_edges: bool = True,
     ) -> Instruction:
         """
         Adds an instruction to this block.
 
         :param instruction: The instruction to add.
         :param to: The block to jump to, if adding a jump instruction.
-        :param handle_jumps: Should jump edges be added when a jump instruction is added?
+        :param fix_edges: Should jump edges be added when a jump instruction is added?
         :return: The same instruction.
         """
 
         if isinstance(instruction, MetaInstruction):
             instruction = instruction()  # Should throw at this point, if invalid
 
-        if handle_jumps and isinstance(instruction, JumpInstruction):
+        if fix_edges and isinstance(instruction, JumpInstruction):
+            for edge in self.out_edges:
+                # The required jump edge already exists, so nothing to do.
+                if isinstance(edge, JumpEdge) and (to is None or edge.to == to) and edge.instruction == instructions:
+                    if self.instruction[-1] != instruction:
+                        self.instruction.append(instruction)
+                    return instruction
             if to is None:
                 raise ValueError("Expected a value for parameter 'block' if adding a jump instruction.")
             self.jump(to, instruction)
@@ -91,7 +97,7 @@ class InsnBlock(Block):
         self.instructions.append(instruction)  # Otherwise, just add directly to the instructions
         return instruction
 
-    def fallthrough(self, to: "InsnBlock") -> "FallthroughEdge":
+    def fallthrough(self, to: "InsnBlock", fix: bool = True) -> "FallthroughEdge":
         """
         Creates a fallthrough edge from this block to another block.
 
@@ -99,18 +105,24 @@ class InsnBlock(Block):
         :return: The fallthrough edge that was created.
         """
 
-        return self.graph.fallthrough(self, to)
+        return self.graph.fallthrough(self, to, fix)
 
-    def jump(self, to: "InsnBlock", jump: Union[MetaInstruction, Instruction] = instructions.goto) -> "JumpEdge":
+    def jump(
+            self,
+            to: "InsnBlock",
+            jump: Union[MetaInstruction, Instruction] = instructions.goto,
+            fix: bool = True,
+    ) -> "JumpEdge":
         """
         Creates a jump edge from this block to another block.
 
         :param to: The block to jump to.
         :param jump: The jump instruction to use.
+        :param fix: Automatically fixes jumps by removing their offsets and adding them to the end of the block.
         :return: The created jump edge.
         """
 
-        return self.graph.jump(self, to, jump)
+        return self.graph.jump(self, to, jump, fix)
 
     def catch(
             self,
@@ -129,56 +141,37 @@ class InsnBlock(Block):
 
         return self.graph.catch(self, to, priority, exception)
 
+    def return_(self, fix: bool = True) -> "FallthroughEdge":
+        """
+        Creates a fallthrough edge to the return block, and adds the return instruction if necessary.
+
+        :param fix: Removes any already existing fallthrough edges and adds the return instruction if not already present.
+        :return: The fallthrough edge to the return block that was created.
+        """
+
+        return self.graph.return_(self, fix)
+
+    def throw(self, fix: bool = True) -> "FallthroughEdge":
+        """
+        Creates a fallthrough edge to the rethrow block, and adds the athrow instruction if necessary.
+
+        :parma fix: Removes already existing fallthrough edges and adds the athrow instruction if not already present.
+        :return: The fallthrough edge to the athrow block that was created.
+        """
+
+        return self.graph.throw(self, fix)
+
 
 class InsnReturnBlock(ReturnBlock, InsnBlock):
     """
-    The return block for a method. Contains only the return instruction.
+    The return block for a method. Should contain no instructions.
     """
 
-    @property
-    def return_(self) -> ReturnInstruction:
-        """
-        :return: The return instruction in this block.
-        """
-
-        return self.instructions[0]
-
-    @return_.setter
-    def return_(self, value: ReturnInstruction) -> None:
-        self.instructions[0] = value
-
-    def __init__(self, graph: "InsnGraph", return_: Union[ReturnInstruction, None] = None) -> None:
-        """
-        :param return_: The return instruction for the method, if None, this is determined automatically.
-        """
-
+    def __init__(self, graph: "InsnGraph") -> None:
         super().__init__(graph)
 
-        self.inline = True  # We obviously want to inline return instructions rather than generating gotos
-
-        if return_ is None:
-            type_ = graph.method.return_type
-            if type_ != types.void_t:
-                type_ = type_.to_verification_type()
-
-                if type_ == types.int_t:
-                    return_ = instructions.ireturn()
-                elif type_ == types.long_t:
-                    return_ = instructions.lreturn()
-                elif type_ == types.float_t:
-                    return_ = instructions.freturn()
-                elif type_ == types.double_t:
-                    return_ = instructions.dreturn()
-                else:
-                    return_ = instructions.areturn()
-
-            else:
-                return_ = instructions.return_()
-
-        self.instructions.append(return_)
-
     def __repr__(self) -> str:
-        return "<InsnReturnBlock(return=%s) at %x>" % (self.instructions[0], id(self))
+        return "<InsnReturnBlock() at %x>" % id(self)
 
 
 class InsnRethrowBlock(RethrowBlock, InsnBlock):
@@ -188,9 +181,6 @@ class InsnRethrowBlock(RethrowBlock, InsnBlock):
 
     def __init__(self, graph: "InsnGraph") -> None:
         super().__init__(graph)
-
-        self.inline = True
-        self.instructions.append(instructions.athrow())
 
     def __repr__(self) -> str:
         return "<InsnRethrowBlock() at %x>" % id(self)

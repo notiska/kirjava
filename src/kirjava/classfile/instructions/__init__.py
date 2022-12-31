@@ -91,7 +91,7 @@ class Instruction(Source, metaclass=MetaInstruction):
         return self.mnemonic
 
     def __eq__(self, other: Any) -> bool:
-        return other == self.__class__ or other.__class__ == self.__class__
+        return other is self or other.__class__ is self.__class__ or other is self.__class__
 
     def __hash__(self) -> int:
         return hash((self.opcode, self.mnemonic))

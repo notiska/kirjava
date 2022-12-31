@@ -7,7 +7,7 @@ use_plugin("python.distutils")
 
 
 name = "kirjava"
-version = "0.1.1"
+version = "0.1.2"
 summary = "A Java bytecode manipulation library for Python."
 authors = (
     Author("node3112 (Iska)", "node3112@protonmail.com"),

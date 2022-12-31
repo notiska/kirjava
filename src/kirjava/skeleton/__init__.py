@@ -11,7 +11,7 @@ Java class skeletons in case we haven't loaded any Java libraries (rt.jar specif
 import json
 import logging
 import os
-from typing import Dict,List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 from .. import _argument
 from ..abc import Class, Field, Method

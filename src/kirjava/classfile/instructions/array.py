@@ -47,11 +47,11 @@ class ArrayLoadInstruction(Instruction, ABC):
             else:
                 type_ = array_entry.type.element_type.to_verification_type()
         else:
-            type_ = array_entry.type.to_verification_type()  # Best we can do I guess
+            type_ = array_entry.type  # Best we can do I guess
 
         if self.type_ is not None:
             type__ = self.type_.to_verification_type()
-            if not checker.check_merge(type__, type_):
+            if type_ != types.null_t and not checker.check_merge(type__, type_):
                 errors.append(Error(
                     source, "expected type %s" % type__, "got %s (via %s)" % (type_, array_entry.source),
                 ))

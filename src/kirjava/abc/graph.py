@@ -80,7 +80,11 @@ class Block(Source, ABC):
         return "block %i" % self.label
 
     def __eq__(self, other: Any) -> bool:
-        return other.__class__ == self.__class__ and other.graph == self.graph and other.label == self.label
+        # Actually going to be slower with the line below, __eq__ for blocks is mainly used in dicts, and Python already
+        # does the is check in native code, so we don't want to repeat it.
+        # if other is self:
+        #     return True
+        return other.__class__ is self.__class__ and other.label == self.label and other.graph == self.graph
 
     def __hash__(self) -> int:
         return hash(self.label)
@@ -155,7 +159,9 @@ class Edge(Source, ABC):
         return "%s -> %s" % (self.from_, self.to)
 
     def __eq__(self, other: Any) -> bool:
-        return other.__class__ == self.__class__ and other.from_ == self.from_ and other.to == self.to
+        if other is self:
+            return True
+        return other.__class__ is self.__class__ and other.from_ == self.from_ and other.to == self.to
 
     def __hash__(self) -> int:
         return hash((self.from_, self.to))
@@ -228,9 +234,12 @@ class Graph(ABC):
 
         return self._rethrow_block
 
-    def __init__(self, method: Method, return_block: ReturnBlock, rethrow_block: RethrowBlock) -> None:
+    def __init__(
+            self, method: Method, entry_block: Block, return_block: ReturnBlock, rethrow_block: RethrowBlock,
+    ) -> None:
         """
         :param method: The method that this graph represents.
+        :param entry_block: The entry block in this graph.
         :param return_block: The return block for this graph.
         :param rethrow_block: The rethrow block for this graph.
         """
@@ -238,11 +247,11 @@ class Graph(ABC):
         self.method = method
 
         # Special kinds of blocks
-        self.entry_block: Union[Block, None] = None
+        self.entry_block = entry_block
         self._return_block = return_block
         self._rethrow_block = rethrow_block
 
-        self._blocks: List[Block] = [return_block, rethrow_block]
+        self._blocks: List[Block] = [return_block, rethrow_block, entry_block]
         self._forward_edges: Dict[Block, Set[Edge]] = {}  # Blocks to their out edges (faster lookup)
         self._backward_edges: Dict[Block, Set[Edge]] = {}  # Blocks to their in edges
         self._opaque_edges: Set[Edge] = set()  # Edges whose jump targets we don't know yet
@@ -430,6 +439,13 @@ class Graph(ABC):
 
         :param edge: The edge to add to this graph.
         """
+
+        if edge.to == self.entry_block:
+            raise ValueError("Cannot create an edge to the entry block.")
+        elif edge.from_ == self._return_block:
+            raise ValueError("Cannot create an edge from the return block.")
+        elif edge.from_ == self._rethrow_block:
+            raise ValueError("Cannot create an edge from the rethrow block.")
 
         forward = self._forward_edges.setdefault(edge.from_, set()).add(edge)
 

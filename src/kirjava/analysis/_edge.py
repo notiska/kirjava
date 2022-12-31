@@ -75,7 +75,14 @@ class JumpEdge(Edge):
         return "%s %s -> %s" % (self.jump, self.from_, self.to)
 
     def __eq__(self, other: Any) -> bool:
-        return super().__eq__(other) and other.jump == self.jump
+        if other is self:
+            return True
+        return (
+            other.__class__ is self.__class__ and
+            other.from_ == self.from_ and
+            other.to == self.to and
+            other.jump == self.jump
+        )
 
     def __hash__(self) -> int:
         return hash((self.from_, self.to, self.jump.opcode))
@@ -164,7 +171,14 @@ class SwitchEdge(JumpEdge):
         return "switch %s default %s -> %s" % (self.jump, self.from_, self.to)
 
     def __eq__(self, other: Any) -> bool:
-        return super().__eq__(other) and other.value == self.value
+        if other is self:
+            return True
+        return (
+            other.__class__ is SwitchEdge and
+            other.from_ == self.from_ and
+            other.to == self.to and
+            other.value == self.value
+        )
 
     def __hash__(self) -> int:
         return hash((self.from_, self.to, self.value))
@@ -210,7 +224,15 @@ class ExceptionEdge(Edge):
         return "catch %s priority %i %s -> %s" % (self.throwable, self.priority, self.from_, self.to)
 
     def __eq__(self, other: Any) -> bool:
-        return super().__eq__(other) and other.priority == self.priority and other.throwable == self.throwable
+        if other is self:
+            return True
+        return (
+            other.__class__ is ExceptionEdge and
+            other.from_ == self.from_ and
+            other.to == self.to and
+            other.priority == self.priority and
+            other.throwable == self.throwable
+        )
 
     def __hash__(self) -> int:
         return hash((self.from_, self.to, self.priority, self.throwable))

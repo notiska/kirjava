@@ -43,8 +43,10 @@ class Constant(ABC):
         return repr(self.value)
 
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, Constant):
-            return other.__class__ == self.__class__ and other.value == self.value
+        if other is self:
+            return True
+        elif isinstance(other, Constant):
+            return other.__class__ is self.__class__ and other.value == self.value
 
         return other == self.value
 

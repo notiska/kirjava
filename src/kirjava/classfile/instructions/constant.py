@@ -38,10 +38,7 @@ class ConstantInstruction(Instruction, ABC):
         return "%s %s" % (self.mnemonic, self.constant)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or
-            (other.__class__ == self.__class__ and other.constant == self.constant)
-        )
+        return (other.__class__ is self.__class__ and other.constant == self.constant) or other is self.__class__
 
     def copy(self) -> "ConstantInstruction":
         return self.__class__(self.constant)
@@ -68,7 +65,7 @@ class FixedConstantInstruction(ConstantInstruction, ABC):
         return self.mnemonic
 
     def __eq__(self, other: Any) -> bool:
-        return other == self.__class__ or other.__class__ == self.__class__
+        return other.__class__ is self.__class__ or other is self.__class__
 
     def copy(self) -> "FixedConstantInstruction":
         return self  # Immutable type technically

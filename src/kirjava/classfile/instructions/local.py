@@ -39,10 +39,7 @@ class LoadLocalInstruction(Instruction, ABC):
         return "%s %i" % (self.mnemonic, self.index)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or
-            (other.__class__ == self.__class__ and other.index == self.index)
-        )
+        return (other.__class__ is self.__class__ and other.index == self.index) or other is self.__class__
 
     def copy(self) -> "LoadLocalInstruction":
         return self.__class__(self.index)
@@ -86,7 +83,7 @@ class LoadLocalFixedInstruction(LoadLocalInstruction, ABC):
         return self.mnemonic
 
     def __eq__(self, other: Any) -> bool:
-        return other == self.__class__ or other.__class__ == self.__class__
+        return other.__class__ is self.__class__ or other is self.__class__
 
     def copy(self) -> "LoadLocalFixedInstruction":
         return self
@@ -122,10 +119,7 @@ class StoreLocalInstruction(Instruction, ABC):
         return "%s %i" % (self.mnemonic, self.index)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            (isinstance(other, MetaInstruction) and other == self.__class__) or
-            (other.__class__ == self.__class__ and other.index == self.index)
-        )
+        return (other.__class__ is self.__class__ and other.index == self.index) or other is self.__class__
 
     def copy(self) -> "StoreLocalInstruction":
         return self.__class__(self.index)
@@ -174,7 +168,7 @@ class StoreLocalFixedInstruction(StoreLocalInstruction, ABC):
         return self.mnemonic
 
     def __eq__(self, other: Any) -> bool:
-        return other == self.__class__ or other.__class__ == self.__class__
+        return other.__class__ is self.__class__ or other is self.__class__
 
     def copy(self) -> "StoreLocalFixedInstruction":
         return self
@@ -209,11 +203,11 @@ class IncrementLocalInstruction(Instruction, ABC):
         return "%s %i by %i" % (self.mnemonic, self.index, self.value)
 
     def __eq__(self, other: Any) -> bool:
-        return (isinstance(other, MetaInstruction) and other == self.__class__) or (
-            other.__class__ == self.__class__ and
+        return (
+            other.__class__ is self.__class__ and
             other.index == self.index and
             other.value == self.value
-        )
+        ) or other is self.__class__
 
     def copy(self) -> "IncrementLocalInstruction":
         return self.__class__(self.index, self.value)

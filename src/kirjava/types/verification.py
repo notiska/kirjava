@@ -26,7 +26,7 @@ class Top(VerificationType):
         return "top"
         
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, Top)  # FIXME: Speed improvements: other is self?
+        return other is self or other.__class__ is Top
 
     def __hash__(self) -> int:
         return 7630704
@@ -50,7 +50,7 @@ class Null(Constant, VerificationType):  # Yes, it's a constant too, cos compati
         return "null"
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, Null)
+        return other is self or other.__class__ is Null
 
     def __hash__(self) -> int:
         return 1853189228
@@ -84,7 +84,9 @@ class This(VerificationType):
         return "this"
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, This) and (self.class_ is None or other.class_ is None or other.class_ == self.class_)
+        if other is self:
+            return True
+        return other.__class__ is This and (self.class_ is None or other.class_ is None or other.class_ == self.class_)
 
     def __hash__(self) -> int:
         return 1952999795
@@ -128,7 +130,9 @@ class Uninitialized(VerificationType):
         return string
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, Uninitialized) and other.offset == self.offset and other.class_ == self.class_
+        if other is self:
+            return True
+        return other.__class__ is Uninitialized and other.offset == self.offset and other.class_ == self.class_
 
     def __hash__(self) -> int:
         return hash((8388342899208250724, self.offset, self.class_))
@@ -149,7 +153,9 @@ class UninitializedThis(Uninitialized):
         return "uninitializedThis"
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, UninitializedThis) and (
+        if other is self:
+            return True
+        return other.__class__ is UninitializedThis and (
             self.class_ is None or other.class_ is None or other.class_ == self.class_
         )
 

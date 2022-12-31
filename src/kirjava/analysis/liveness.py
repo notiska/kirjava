@@ -83,6 +83,8 @@ class Liveness:
                 live.update(entries.get(previous, ()))
 
                 before = entries.get(block, None)
+                if before is None:
+                    entries[block] = set()
                 live = live.copy()
 
                 # Check if the block was visited, if not, we don't need to worry about the liveness for it
@@ -102,9 +104,9 @@ class Liveness:
                 if isinstance(edge, ExceptionEdge):
                     live.update(entries.get(previous, ()))
 
-                # print(block, before, live)
-                if live != before:
-                    entries.setdefault(block, set()).update(live)
+                live.update(entries[block])
+                if live != before and (before is None or len(live) > len(before)):
+                    entries[block] = live
                     to_visit.append(iter(trace.graph.in_edges(block)))
 
         for block, live in entries.items():

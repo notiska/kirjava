@@ -87,7 +87,9 @@ class Version:
         return "<Version(name=%r, major=%i) at %x>" % (self.name, self.major, id(self))
 
     def __eq__(self, other: Any) -> bool:
-        if other.__class__ == Version:
+        if other is self:
+            return True
+        elif other.__class__ is Version:
             return other.major == self.major and (self.major > 45 or other.minor == self.minor)
         elif isinstance(other, int):
             return other == self.major
@@ -100,7 +102,7 @@ class Version:
         return hash((self.major, self.minor))
 
     def __gt__(self, other: Any) -> bool:
-        if other.__class__ == Version:
+        if other.__class__ is Version:
             return self.major > other.major or (self.major == other.major and self.minor > other.minor)
         elif isinstance(other, int):
             return self.major > other
@@ -113,7 +115,7 @@ class Version:
         return self == other or self > other
 
     def __lt__(self, other: Any) -> bool:
-        if other.__class__ == Version:
+        if other.__class__ is Version:
             return self.major < other.major or (self.major == other.major and self.minor < other.minor)
         elif isinstance(other, int):
             return self.major < other

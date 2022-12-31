@@ -54,13 +54,13 @@ class InvokeInstruction(Instruction, ABC):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return (isinstance(other, MetaInstruction) and other == self.__class__) or (
-            other.__class__ == self.__class__ and
+        return (
+            other.__class__ is self.__class__ and
             other.class_ == self.class_ and
             other.name == self.name and
             other.argument_types == self.argument_types and
             other.return_type == self.return_type
-        )
+        ) or other is self.__class__
 
     def copy(self) -> "InvokeInstruction":
         return self.__class__(self.class_, self.name, self.argument_types, self.return_type)
@@ -250,13 +250,13 @@ class InvokeDynamicInstruction(InvokeStaticInstruction, ABC):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return (isinstance(other, MetaInstruction) and other == self.__class__) or (
-            other.__class__ == self.__class__ and
+        return (
+            other.__class__ is self.__class__ and
             other.bootstrap_method_attr_index == self.bootstrap_method_attr_index and
             other.name == self.name and
             other.argument_types == self.argument_types and
             other.return_type == self.return_type
-        )
+        ) or other is self.__class__
 
     def copy(self) -> "InvokeDynamicInstruction":
         return self.__class__(self.bootstrap_method_attr_index, self.name, self.argument_types, self.return_type)

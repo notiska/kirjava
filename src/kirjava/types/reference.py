@@ -64,9 +64,9 @@ class ClassOrInterfaceType(ReferenceType, VerificationType):
         return "%s%s.%s%s" % (self.name, self.type_arguments, self.inner_name, self.inner_type_arguments)
 
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, str):
-            return other == self.name
-        elif isinstance(other, ClassOrInterfaceType):
+        if other is self:
+            return True
+        elif other.__class__ is ClassOrInterfaceType:
             return (
                 other.name == self.name and 
                 # Do we both have type arguments, and are they the same?
@@ -77,7 +77,9 @@ class ClassOrInterfaceType(ReferenceType, VerificationType):
                 ((not other.inner_type_arguments or not self.inner_type_arguments) or
                  other.inner_type_arguments == self.inner_type_arguments)
             )
-            
+        elif isinstance(other, str):
+            return other == self.name
+
         return False
 
     def __hash__(self) -> int:
@@ -113,7 +115,9 @@ class ArrayType(ReferenceType, VerificationType):
         return str(self.element_type) + ("[]" * self.dimension)
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, ArrayType) and other.dimension == self.dimension and other.element_type == self.element_type
+        if other is self:
+            return True
+        return other.__class__ is ArrayType and other.dimension == self.dimension and other.element_type == self.element_type
 
     def __hash__(self) -> int:
         return hash((self.element_type, self.dimension))
@@ -144,10 +148,10 @@ class TypeVariable(ReferenceType, TypeBound):
         return self.identifier
 
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, str):
-            return other == self.identifier
-        elif isinstance(other, TypeVariable):
+        if other.__class__ is TypeVariable:
             return other.identifier == self.identifier
+        elif isinstance(other, str):
+            return other == self.identifier
 
         return False
 

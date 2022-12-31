@@ -51,12 +51,12 @@ class FieldInstruction(Instruction, ABC):
         return "%s %s#%s %s" % (self.mnemonic, self.class_, self.type, self.name)
 
     def __eq__(self, other: Any) -> bool:
-        return (isinstance(other, MetaInstruction) and other == self.__class__) or (
-            other.__class__ == self.__class__ and
+        return (
+            other.__class__ is self.__class__ and
             other.class_ == self.class_ and
             other.type == self.type and
             other.name == self.name
-        )
+        ) or other is self.__class__
 
     def copy(self) -> "FieldInstruction":
         return self.__class__(self.class_, self.name, self.type)
