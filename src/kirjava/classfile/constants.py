@@ -583,7 +583,7 @@ class ConstantPool:
         return len(self._forward_entries)
 
     def __contains__(self, item: Any) -> bool:
-        if isinstance(item, int):
+        if item.__class__ is int:
             return item in self._forward_entries
         elif isinstance(item, Constant):
             return item in self._backward_entries
@@ -591,13 +591,14 @@ class ConstantPool:
         return False
 
     def __getitem__(self, item: Any) -> Union[Constant, int]:
-        if isinstance(item, int):
-            if item in self._forward_entries:
-                return self._forward_entries[item]
+        if item.__class__ is int:
+            constant = self._forward_entries.get(item, None)
+            if constant is not None:
+                return constant
             return Index(item)
 
         elif isinstance(item, Constant):
-            if isinstance(item, Index):
+            if item.__class__ is Index:
                 return item.value
             return self._backward_entries[item]
 
@@ -605,7 +606,7 @@ class ConstantPool:
 
     def __setitem__(self, index: int, item: Any) -> None:
         if isinstance(item, Constant):
-            if isinstance(item, Index):
+            if item.__class__ is Index:
                 return  # Nothing to do here
 
             self._forward_entries[index] = item
@@ -655,8 +656,9 @@ class ConstantPool:
         :return: The constant at that index.
         """
 
-        if index in self._forward_entries:
-            return self._forward_entries[index]
+        constant = self._forward_entries.get(index, None)
+        if constant is not None:
+            return constant
         if default is not None:
             return default
         return Index(index)
@@ -675,7 +677,7 @@ class ConstantPool:
             if default is not None:
                 return default
             raise ValueError("Index %i not in constant pool." % index)
-        if not isinstance(constant, UTF8):
+        elif constant.__class__ is not UTF8:
             if default is not None:
                 return default
             raise TypeError("Index %i is not a valid UTF-8 constant." % index)
@@ -691,19 +693,22 @@ class ConstantPool:
         self._forward_entries.clear()
         self._backward_entries.clear()
 
-    def add(self, constant: Constant) -> int:
+    def add(self, constant: Union[Constant, str]) -> int:
         """
         Adds a constant to this constant pool.
 
-        :param constant: The constant to add.
+        :param constant: The constant to add, could also be a string (in this case it'll be added as a UTF8 constant).
         :return: The index of the added constant.
         """
 
-        if isinstance(constant, Index):
+        if constant.__class__ is str:
+            constant = UTF8(constant)
+        elif constant.__class__ is Index:
             return constant.value
 
-        if constant in self._backward_entries:
-            return self._backward_entries[constant]
+        index = self._backward_entries.get(constant, None)
+        if index is not None:
+            return index
 
         self._forward_entries[self._index] = constant
         self._backward_entries[constant] = self._index
@@ -720,10 +725,10 @@ class ConstantPool:
         Adds a UTF8 constant to this constant pool.
 
         :param value: The value of the UTF8 constant.
-        :return: The idnex of the added constant.
+        :return: The index of the added constant.
         """
 
-        return self.add(UTF8(value))
+        return self.add(value)
 
     def add_class(self, name: str) -> int:
         """

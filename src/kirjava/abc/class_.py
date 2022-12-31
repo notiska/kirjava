@@ -12,12 +12,12 @@ import typing
 from abc import abstractmethod, ABC
 from typing import Dict, Tuple, Union
 
-from ..types import BaseType
 from ..types.reference import ClassOrInterfaceType
 
 if typing.TYPE_CHECKING:
     from .field import Field
     from .method import Method
+    from .._argument import FieldDescriptor, MethodDescriptor
 
 
 class Class(ABC):
@@ -243,11 +243,7 @@ class Class(ABC):
         ...
 
     @abstractmethod
-    def get_method(
-            self,
-            name: str,
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
-    ) -> "Method":
+    def get_method(self, name: str, *descriptor: "MethodDescriptor") -> "Method":
         """
         Gets a method in this class.
 
@@ -259,12 +255,7 @@ class Class(ABC):
         ...
 
     @abstractmethod
-    def add_method(
-            self,
-            name: str,
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
-            **access_flags: Dict[str, bool],
-    ) -> "Method":
+    def add_method(self, name: str, *descriptor: "MethodDescriptor", **access_flags: Dict[str, bool]) -> "Method":
         """
         Adds a method to this class given the provided information about it.
 
@@ -277,11 +268,7 @@ class Class(ABC):
         ...
 
     @abstractmethod
-    def remove_method(
-            self,
-            name_or_method: Union[str, "Method"],
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
-    ) -> bool:
+    def remove_method(self, name_or_method: Union[str, "Method"], *descriptor: "MethodDescriptor") -> bool:
         """
         Removes a method from this class.
 
@@ -293,7 +280,7 @@ class Class(ABC):
         ...
 
     @abstractmethod
-    def get_field(self, name: str, descriptor: Union[BaseType, str, None] = None) -> "Field":
+    def get_field(self, name: str, descriptor: Union["FieldDescriptor", None] = None) -> "Field":
         """
         Gets a field in this class.
 
@@ -306,7 +293,7 @@ class Class(ABC):
 
     @abstractmethod
     def add_field(
-            self, name: str, descriptor: Union[BaseType, str, None] = None, **access_flags: Dict[str, bool],
+            self, name: str, descriptor: Union["FieldDescriptor", None] = None, **access_flags: Dict[str, bool],
     ) -> "Field":
         """
         Adds a field to this class.
@@ -320,7 +307,7 @@ class Class(ABC):
         ...
 
     @abstractmethod
-    def remove_field(self, name_or_field: Union[str, "Field"], descriptor: Union[BaseType, str, None] = None) -> bool:
+    def remove_field(self, name_or_field: Union[str, "Field"], descriptor: Union["FieldDescriptor", None] = None) -> bool:
         """
         Removes a field from this class.
 

@@ -215,7 +215,7 @@ class ExceptionEdge(Edge):
 
     def __repr__(self) -> str:
         return "<ExceptionEdge(from=%r, to=%r, priority=%i, throwable=%s, inline_coverage=%s) at %x>" % (
-            self.from_, self.to, self.priority, self.throwable, self.inline_coverage, sid(self),
+            self.from_, self.to, self.priority, self.throwable, self.inline_coverage, id(self),
         )
 
     def __str__(self) -> str:

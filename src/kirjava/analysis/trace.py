@@ -256,7 +256,7 @@ class State:
             try:
                 return self.stack.pop()
             except IndexError:
-                self.errors.append(Error(source, "stack underflow, -1 entries"))
+                self.errors.append(Error(source, "stack underflow", "-1 entries"))
                 return Entry(self.id, source, types.top_t)
 
         entries = []
@@ -264,7 +264,7 @@ class State:
             for index in range(amount):
                 entries.append(self.stack.pop())
         except IndexError:
-            self.errors.append(Error(source, "stack underflow, %i entries" % (len(entries) - amount)))
+            self.errors.append(Error(source, "stack underflow", "%i entries" % (len(entries) - amount)))
             for index in range(amount - len(entries)):
                 entries.append(Entry(self.id, source, types.top_t))
 
@@ -309,7 +309,10 @@ class State:
         :return: The local variable entry.
         """
 
-        entry = self.locals[index]
+        entry = self.locals.get(index, None)
+        if entry is None:
+            self.errors.append(Error(source, "local variable at index %i not found" % index))
+            entry = Entry(self.id, source, types.top_t)
         self.local_accesses.append((index, None, entry, True))
         return entry
 
@@ -341,8 +344,7 @@ class State:
         if isinstance(entry_or_type, Entry):
             entry = entry_or_type
         else:
-            entry = Entry(self._id, source, entry_or_type, parents, merges)
-            self._id += 1
+            entry = Entry(self.id, source, entry_or_type, parents, merges)
 
         self.local_accesses.append((index, previous, entry, False))
         self.locals[index] = entry
@@ -473,7 +475,7 @@ class Trace:
         start = _DummyEdge(graph.entry_block, graph.entry_block)
         state = State.initial(graph.method, errors)
 
-        traversed: List[InsnBlock] = []  # Iterative DFS stack
+        traversed: List[InsnBlock] = []  # Iterative DFS stack so we can detect loops
         to_visit: List[Tuple[Edge, State, List[Edge]]] = [(None, state, [start])]
         visited: Dict[Edge, Set[Edge]] = {}
 
@@ -499,18 +501,16 @@ class Trace:
                 continue
 
             edge = edges.pop()
-            if isinstance(edge, JsrFallthroughEdge):  # Don't handle these here, they are really only placeholders
+            if edge.__class__ is JsrFallthroughEdge:  # Don't handle these here, they are really only placeholders
                 continue
             block = edge.to
-
-            do_traverse = True
 
             if block is None:
                 if not graph.is_opaque(edge):
                     errors.append(Error(edge, "unknown opaque edge"))
                     continue
 
-                if isinstance(edge, RetEdge):
+                if edge.__class__ is RetEdge:
                     return_address = state.locals.get(edge.jump.index, None)
                     if return_address is None or return_address.type != types.return_address_t:
                         errors.append(Error(edge, "cannot resolve subroutine origin due to invalid local"))
@@ -521,7 +521,7 @@ class Trace:
                     jsr_fallthrough_edge: Union[JsrFallthroughEdge, None] = None
 
                     for edge_ in graph.out_edges(return_address.source.block):
-                        if isinstance(edge_, JsrJumpEdge):
+                        if edge_.__class__ is JsrJumpEdge:
                             if jsr_jump_edge is not None:
                                 # Even if handling multi-entry subroutines, we can't allow multiple jsr edges on a block.
                                 errors.append(Error(
@@ -529,7 +529,7 @@ class Trace:
                                 ))
                             jsr_jump_edge = edge_
 
-                        elif isinstance(edge_, JsrFallthroughEdge):
+                        elif edge_.__class__ is JsrFallthroughEdge:
                             if jsr_fallthrough_edge is not None:
                                 errors.append(Error(
                                     return_address.source.block, "multiple jsr fallthrough edges found on block",
@@ -576,7 +576,7 @@ class Trace:
 
             # Special handling for exception edges. A valid stack state is one in which there is only one item on the
             # stack, that being the exception that was thrown.
-            if isinstance(edge, ExceptionEdge):
+            if edge.__class__ is ExceptionEdge:
                 state.stack.clear()
                 if not checker.check_merge(types.throwable_t, edge.throwable):
                     errors.append(Error(
@@ -595,11 +595,16 @@ class Trace:
                 # Check the locals more specifically, taking into account if any of the locals actually used in
                 # the block are different.
                 for entry, exit in constraints.items():
+                    live: Set[int] = set()
                     overwritten: Set[int] = set()
                     for index, _, _, read in exit.local_accesses:
-                        if not read or index in overwritten:
+                        if not read:
                             overwritten.add(index)
                             continue
+                        elif index in live or index in overwritten:  # Already checked this, no need to again
+                            continue
+
+                        live.add(index)
 
                         entry_a = state.locals[index]
                         entry_b = entry.locals[index]
@@ -617,9 +622,11 @@ class Trace:
                         # The locals that aren't overwritten can still be used later in the method, so double check
                         # that they're all valid too.
                         for index, entry_a in state.locals.items():
-                            if index in overwritten or not index in entry.locals:
+                            if index in live or index in overwritten or not index in entry.locals:
                                 continue
+
                             entry_b = entry.locals[index]
+
                             if entry_a.type != entry_b.type:
                                 break
                             elif (
@@ -628,6 +635,7 @@ class Trace:
                                 entry_a.source != entry_b.source
                             ):
                                 break
+
                         else:
                             # Now we also need to check if the stacks are equal, because they may not be
                             if len(state.stack) == len(entry.stack):
@@ -716,10 +724,8 @@ class Trace:
         self.max_stack = max_stack
         self.max_locals = max_locals
 
-        # TODO: Information about subroutines
-
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, Trace) and other.states == self.states
+        return other is self or (other.__class__ is Trace and other.states == self.states)
 
     def __hash__(self) -> int:
         return hash(self.states)

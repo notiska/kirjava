@@ -8,8 +8,9 @@ from abc import ABC
 from typing import List
 
 from . import Instruction
+from ... import types
 from ...abc import Error, Source, TypeChecker
-from ...analysis.trace import State
+from ...analysis.trace import Entry, State
 
 
 class PopInstruction(Instruction, ABC):
@@ -54,14 +55,24 @@ class DupX1Instruction(Instruction, ABC):
     """
 
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        entry = state.stack[-1]
+        try:
+            entry = state.stack[-1]
+        except IndexError:
+            errors.append(Error(source, "stack underflow", "-1 entries"))
+            entry = Entry(state.id, source, types.top_t)
+
         if not checker.check_category(entry.type, 1):
             errors.append(Error(source, "can't dup_x1 category 2 type %s (via %s)" % (entry.type, entry.source)))
-        if not checker.check_category(state.stack[-2].type, 1):
-            errors.append(Error(
-                source,
-                "can't dup_x1 around category 2 type %s (via %s)" % (state.stack[-2].type, state.stack[-2].source),
-            ))
+
+        try:
+            if not checker.check_category(state.stack[-2].type, 1):
+                errors.append(Error(
+                    source,
+                    "can't dup_x1 around category 2 type %s (via %s)" % (state.stack[-2].type, state.stack[-2].source),
+                ))
+        except IndexError:
+            errors.append(Error(source, "stack underflow", "-2 entries"))
+
         state.stack.insert(-2, entry)
 
 
@@ -71,13 +82,23 @@ class DupX2Instruction(Instruction, ABC):
     """
 
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        entry = state.stack[-1]
+        try:
+            entry = state.stack[-1]
+        except IndexError:
+            errors.append(Error(source, "stack underflow", "-1 entries"))
+            entry = Entry(state.id, source, types.top_t)
+
         if not checker.check_category(entry.type, 1):
             errors.append(Error(source, "can't dup_x2 category 2 type %s (via %s)" % (entry.type, entry.source)))
-        if not checker.check_category(state.stack[-3].type, 1):
-            errors.append(Error(
-                source, "can't dup_x2 around category 2 type %s (via %s)" % (state.stack[-3].type, state.stack[-1].source),
-            ))
+
+        try:
+            if not checker.check_category(state.stack[-3].type, 1):
+                errors.append(Error(
+                    source, "can't dup_x2 around category 2 type %s (via %s)" % (state.stack[-3].type, state.stack[-1].source),
+                ))
+        except IndexError:
+            errors.append(Error(source, "stack underflow", "-3 entries"))
+
         state.stack.insert(-3, entry)
 
 
@@ -87,8 +108,13 @@ class Dup2Instruction(Instruction, ABC):
     """
 
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        state.stack.append(state.stack[-2])
-        state.stack.append(state.stack[-2])  # Equivalent to state.stack[-1] before the first push
+        try:
+            state.stack.append(state.stack[-2])
+            state.stack.append(state.stack[-2])  # Equivalent to state.stack[-1] before the first push
+        except IndexError:
+            errors.append(Error(source, "stack underflow", "-2 entries"))
+            state.stack.append(Entry(state.id, source, types.top_t))
+            state.stack.append(Entry(state.id, source, types.top_t))
 
 
 class Dup2X1Instruction(Instruction, ABC):
@@ -97,14 +123,25 @@ class Dup2X1Instruction(Instruction, ABC):
     """
 
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        entry_a, entry_b = state.stack[-2:]
+        try:
+            entry_a, entry_b = state.stack[-2:]
+        except ValueError:
+            errors.append(Error(source, "stack underflow", "-2 entries"))
+            entry_a = Entry(state.id, source, types.top_t)
+            entry_b = Entry(state.id, source, types.top_t)
+
         if not checker.check_category(entry_a.type, 1):
             errors.append(Error(source, "can't dup2_x1 category 2 type %s (via %s)" % (entry_a.type, entry_a.source)))
-        if not checker.check_category(state.stack[-3].type, 1):
-            errors.append(Error(
-                source,
-                "can't dup2_x1 around category 2 type %s (via %s)" % (state.stack[-3].type, state.stack[-3].source),
-            ))
+
+        try:
+            if not checker.check_category(state.stack[-3].type, 1):
+                errors.append(Error(
+                    source,
+                    "can't dup2_x1 around category 2 type %s (via %s)" % (state.stack[-3].type, state.stack[-3].source),
+                ))
+        except IndexError:
+            errors.append(Error(source, "stack underflow", "-3 entries"))
+
         state.stack.insert(-3, entry_a)
         state.stack.insert(-3, entry_b)
 
@@ -115,14 +152,25 @@ class Dup2X2Instruction(Instruction, ABC):
     """
 
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        entry_a, entry_b = state.stack[-2:]
+        try:
+            entry_a, entry_b = state.stack[-2:]
+        except ValueError:
+            errors.append(Error(source, "stack underflow", "-2 entries"))
+            entry_a = Entry(state.id, source, types.top_t)
+            entry_b = Entry(state.id, source, types.top_t)
+
         if not checker.check_category(entry_a.type, 1):
             errors.append(Error(source, "can't dup2_x2 category 2 type %s (via %s)" % (entry_a.type, entry_a.source)))
-        if not checker.check_category(state.stack[-4].type, 1):
-            errors.append(Error(
-                source,
-                "can't dup2_x2 around category 2 type %s (via %s)" % (state.stack[-4].type, state.stack[-4].source),
-            ))
+
+        try:
+            if not checker.check_category(state.stack[-4].type, 1):
+                errors.append(Error(
+                    source,
+                    "can't dup2_x2 around category 2 type %s (via %s)" % (state.stack[-4].type, state.stack[-4].source),
+                ))
+        except IndexError:
+            errors.append(Error(source, "stack underflow", "-4 entries"))
+
         state.stack.insert(-4, entry_a)
         state.stack.insert(-4, entry_b)
 
@@ -133,12 +181,24 @@ class SwapInstruction(Instruction, ABC):
     """
 
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        entry = state.stack[-1]
+        try:
+            entry = state.stack[-1]
+        except IndexError:
+            errors.append(Error(source, "stack underflow", "-1 entries"))
+            entry = Entry(state.id, source, types.top_t)
+            state.stack.append(entry)
+
         if not checker.check_category(entry.type, 1):
             errors.append(Error(source, "can't swap category 2 type %s (via %s)" % (entry.type, entry.source)))
-        if not checker.check_category(state.stack[-2].type, 1):
-            errors.append(Error(
-                source, "can't swap category 2 type %s (via %s)" % (state.stack[-2].type, state.stack[-2].source),
-            ))
+
+        try:
+            if not checker.check_category(state.stack[-2].type, 1):
+                errors.append(Error(
+                    source, "can't swap category 2 type %s (via %s)" % (state.stack[-2].type, state.stack[-2].source),
+                ))
+        except IndexError:
+            errors.append(Error(source, "stack underflow", "-2 entries"))
+            state.stack.append(Entry(state.id, source, types.top_t))
+
         state.stack[-1] = state.stack[-2]
         state.stack[-2] = entry

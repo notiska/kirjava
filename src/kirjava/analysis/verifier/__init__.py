@@ -17,6 +17,27 @@ from ...types.verification import This, Uninitialized, UninitializedThis
 logger = logging.getLogger("kirjava.analysis.verifier")
 
 
+class NoTypeChecker(TypeChecker):
+    """
+    A type checker that does nothing (for no verification).
+    """
+
+    def check_merge(self, expected: Union[VerificationType, None], actual: "VerificationType") -> bool:
+        return True  # Always assignable
+
+    def check_reference(self, actual: VerificationType) -> bool:
+        return True
+
+    def check_array(self, actual: VerificationType) -> bool:
+        return True
+
+    def check_category(self, actual: VerificationType, category: int = 2) -> bool:
+        return True
+
+    def merge(self, expected: Union[VerificationType, None], actual: VerificationType) -> VerificationType:
+        return actual  # Assume that the actual type is always correct
+
+
 class BasicTypeChecker(TypeChecker):
     """
     Verifies that types are basically assignable, so doesn't check reference types thoroughly.
@@ -27,22 +48,31 @@ class BasicTypeChecker(TypeChecker):
             return self.check_reference(actual)
         elif expected.can_merge(actual):
             return True
-        elif isinstance(actual, This) and actual.class_ is not None:
-            return expected.can_merge(actual.class_)
-        elif isinstance(actual, Uninitialized) and actual.class_ is not None:
+        elif (
+            (
+                actual.__class__ is This or
+                actual.__class__ is Uninitialized or
+                actual.__class__ is UninitializedThis
+            ) and actual.class_ is not None
+        ):
             return expected.can_merge(actual.class_)
         return False
 
-    def check_reference(self, type_: VerificationType) -> bool:
-        if isinstance(type_, ReferenceType) or isinstance(type_, Uninitialized):
+    def check_reference(self, actual: VerificationType) -> bool:
+        if (
+            actual.__class__ is ClassOrInterfaceType or  # Faster checks for more common reference types
+            actual.__class__ is ArrayType or
+            actual.__class__ is Uninitialized or
+            isinstance(actual, ReferenceType)  # Just to be sure we didn't miss anything
+        ):
             return True
-        return type_ == types.null_t or type_ == types.this_t or type_ == types.uninit_this_t
+        return actual == types.null_t or actual == types.this_t or actual == types.uninit_this_t
 
-    def check_array(self, type_: VerificationType) -> bool:
-        return isinstance(type_, ArrayType) or type_ == types.null_t
+    def check_array(self, actual: VerificationType) -> bool:
+        return actual.__class__ is ArrayType or actual == types.null_t
 
-    def check_category(self, type_: VerificationType, category: int = 2) -> bool:
-        return type_.internal_size == category
+    def check_category(self, actual: VerificationType, category: int = 2) -> bool:
+        return actual.internal_size == category
 
     def merge(self, expected: Union[VerificationType, None], actual: VerificationType) -> VerificationType:
         if expected is None:
@@ -67,16 +97,9 @@ class FullTypeChecker(BasicTypeChecker):
             return actual
 
         elif self.check_merge(expected, actual):
-            # Merging null types
-
-            if expected == types.null_t:
-                return actual  # TODO: Specify that the type is nullable maybe?
-            elif actual == types.null_t:
-                return expected
-
             # Merging class types
 
-            if isinstance(expected, ClassOrInterfaceType) and isinstance(actual, ClassOrInterfaceType):
+            if expected.__class__ is ClassOrInterfaceType and actual.__class__ is ClassOrInterfaceType:
                 common: Union[ClassOrInterfaceType, None] = self._supertype_cache.get((expected.name, actual.name), None)
                 if common is not None:
                     return common
@@ -146,6 +169,13 @@ class FullTypeChecker(BasicTypeChecker):
                 # FIXME: We can do better than this, just needs more analysis of field and invocation instructions
                 self._supertype_cache[expected.name, actual.name] = types.object_t
                 return types.object_t  # java/lang/Object it is then :(
+
+            # Merging null types
+
+            if expected == types.null_t:
+                return actual  # TODO: Specify that the type is nullable maybe?
+            elif actual == types.null_t:
+                return expected
 
             # Merging this types
 

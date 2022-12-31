@@ -12,11 +12,11 @@ import logging
 import struct
 import typing
 from abc import abstractmethod, ABC
-from typing import IO, List, Tuple, Union
+from typing import IO, Iterable, List, Tuple, Union
 
 from . import AttributeInfo
 from .. import descriptor, ClassFile
-from ..constants import Class
+from ..constants import Class, UTF8
 from ... import types
 from ...types.verification import VerificationType, Uninitialized
 from ...types.reference import ArrayType, ClassOrInterfaceType
@@ -46,26 +46,28 @@ class StackMapTable(AttributeInfo):
         """
 
         tag = buffer.read(1)[0]
-        if tag == 0:
-            return types.top_t
+        # The tags are somewhat sorted by their occurrence frequency. Some of the less common types are harder to
+        # distinguish in terms of usage, but the most common types tend to be class, int and top, in that order.
+        if tag == 7:
+            class_index, = struct.unpack(">H", buffer.read(2))
+            return class_file.constant_pool[class_index].get_actual_type()
         elif tag == 1:
             return types.int_t
+        elif tag == 0:
+            return types.top_t
         elif tag == 2:
             return types.float_t
         elif tag == 3:
             return types.double_t
         elif tag == 4:
             return types.long_t
+        elif tag == 8:
+            offset, = struct.unpack(">H", buffer.read(2))
+            return Uninitialized(offset)
         elif tag == 5:
             return types.null_t
         elif tag == 6:
             return types.uninit_this_t
-        elif tag == 7:
-            class_index, = struct.unpack(">H", buffer.read(2))
-            return class_file.constant_pool[class_index].get_actual_type()
-        elif tag == 8:
-            offset, = struct.unpack(">H", buffer.read(2))
-            return Uninitialized(offset)
 
         raise ValueError("Invalid tag %i for verification type." % tag)
 
@@ -75,39 +77,47 @@ class StackMapTable(AttributeInfo):
         Writes a verification type to a buffer.
         """
 
-        if type_ == types.top_t:
-            buffer.write(bytes((0,)))
+        type_class = type_.__class__
+
+        if type_class is ClassOrInterfaceType:
+            buffer.write(bytes((7,)))
+            buffer.write(struct.pack(">H", class_file.constant_pool.add(Class(type_.name))))
+        elif type_ == types.this_t:
+            buffer.write(bytes((7,)))
+            buffer.write(struct.pack(">H", class_file.constant_pool.add(Class(type_.class_.name))))
         elif type_ == types.int_t:
             buffer.write(bytes((1,)))
+        elif type_ == types.top_t:
+            buffer.write(bytes((0,)))
+        elif type_class is ArrayType:
+            buffer.write(bytes((7,)))
+            buffer.write(struct.pack(">H", class_file.constant_pool.add(Class(descriptor.to_descriptor(type_)))))
         elif type_ == types.float_t:
             buffer.write(bytes((2,)))
         elif type_ == types.double_t:
             buffer.write(bytes((3,)))
         elif type_ == types.long_t:
             buffer.write(bytes((4,)))
+        elif type_class is Uninitialized:
+            buffer.write(bytes((8,)))
+            buffer.write(struct.pack(">H", type_.offset))
         elif type_ == types.null_t:
             buffer.write(bytes((5,)))
         elif type_ == types.uninit_this_t:
             buffer.write(bytes((6,)))
-        elif type_ == types.this_t:
-            buffer.write(bytes((7,)))
-            buffer.write(struct.pack(">H", class_file.constant_pool.add(Class(type_.class_.name))))
-        elif isinstance(type_, ClassOrInterfaceType):
-            buffer.write(bytes((7,)))
-            buffer.write(struct.pack(">H", class_file.constant_pool.add(Class(type_.name))))
-        elif isinstance(type_, ArrayType):
-            buffer.write(bytes((7,)))
-            buffer.write(struct.pack(">H", class_file.constant_pool.add(Class(descriptor.to_descriptor(type_)))))
-        elif isinstance(type_, Uninitialized):
-            buffer.write(bytes((8,)))
-            buffer.write(struct.pack(">H", type_.offset))
         else:
             raise TypeError("Invalid verification type %r." % type_)
 
-    def __init__(self, parent: "Code") -> None:
+    def __init__(self, parent: "Code", frames: Union[Iterable["StackMapTable.StackMapFrame"], None] = None) -> None:
+        """
+        :param frames: The stackmap frames in this table.
+        """
+
         super().__init__(parent, StackMapTable.name_)
 
         self.frames: List[StackMapTable.StackMapFrame] = []
+        if frames is not None:
+            self.frames.extend(frames)
 
     def __repr__(self) -> str:
         return "<StackMapTable(%r) at %x>" % (self.frames, id(self))
@@ -321,9 +331,9 @@ class StackMapTable(AttributeInfo):
         @classmethod
         def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.AppendFrame":
             offset_delta, = struct.unpack(">H", buffer.read(2))
-            locals_ = tuple([
+            locals_ = tuple(
                 StackMapTable._read_verification_type(class_file, buffer) for index in range(frame_type - 251)
-            ])
+            )
             return cls(offset_delta, locals_)
 
         def __init__(self, offset_delta: int, locals_: Tuple[VerificationType, ...]) -> None:
@@ -358,14 +368,14 @@ class StackMapTable(AttributeInfo):
         @classmethod
         def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.FullFrame":
             offset_delta, = struct.unpack(">H", buffer.read(2))
-            locals_ = tuple([
+            locals_ = tuple(
                 StackMapTable._read_verification_type(class_file, buffer)
                 for index in range(struct.unpack(">H", buffer.read(2))[0])
-            ])
-            stack = tuple([
+            )
+            stack = tuple(
                 StackMapTable._read_verification_type(class_file, buffer)
                 for index in range(struct.unpack(">H", buffer.read(2))[0])
-            ])
+            )
 
             return cls(offset_delta, locals_, stack)
 
@@ -421,10 +431,16 @@ class LineNumberTable(AttributeInfo):
     since = Version(45, 3)
     locations = ("Code",)
 
-    def __init__(self, parent: "Code") -> None:
+    def __init__(self, parent: "Code", entries: Union[Iterable["LineNumberTable.LineNumberEntry"], None] = None) -> None:
+        """
+        :param entries: The line number entries.
+        """
+
         super().__init__(parent, LineNumberTable.name_)
 
         self.entries: List[LineNumberTable.LineNumberEntry] = []
+        if entries is not None:
+            self.entries.extend(entries)
 
     def __repr__(self) -> str:
         return "<LineNumberTable(%r) at %x>" % (self.entries, id(self))
@@ -457,11 +473,10 @@ class LineNumberTable(AttributeInfo):
             :return: The read line number entry.
             """
 
-            entry = cls()
-            entry.start_pc, entry.line_number = struct.unpack(">HH", buffer.read(4))
-            return entry
+            start_pc, line_number = struct.unpack(">HH", buffer.read(4))
+            return cls(start_pc, line_number)
 
-        def __init__(self, start_pc: Union[int, None] = None, line_number: Union[int, None] = None) -> None:
+        def __init__(self, start_pc: int, line_number: int) -> None:
             """
             :param start_pc: The starting bytecode offset of the line.
             :param line_number: The source code line number.
@@ -495,10 +510,18 @@ class LocalVariableTable(AttributeInfo):
     since = Version(45, 3)
     locations = ("Code",)
 
-    def __init__(self, parent: "Code") -> None:
+    def __init__(
+            self, parent: "Code", entries: Union[Iterable["LocalVariableTable.LocalVariableEntry"], None] = None,
+    ) -> None:
+        """
+        :param entries: The local variable entries.
+        """
+
         super().__init__(parent, LocalVariableTable.name_)
 
         self.entries: List[LocalVariableTable.LocalVariableEntry] = []
+        if entries is not None:
+            self.entries.extend(entries)
 
     def __repr__(self) -> str:
         return "<LocalVariableTable(%r) at %x>" % (self.entries, id(self))
@@ -531,14 +554,18 @@ class LocalVariableTable(AttributeInfo):
             :return: The read local variable entry.
             """
 
-            entry = cls()
+            entry = cls.__new__(cls)
 
-            entry.start_pc, entry.length = struct.unpack(">HH", buffer.read(4))
+            (
+                entry.start_pc,
+                entry.length,
+                name_index,
+                descriptor_index,
+                entry.index,
+            ) = struct.unpack(">HHHHH", buffer.read(10))
 
-            name_index, descriptor_index = struct.unpack(">HH", buffer.read(4))
-            entry.name = class_file.constant_pool.get_utf8(name_index)
-            entry.descriptor = class_file.constant_pool.get_utf8(descriptor_index)
-            entry.index, = struct.unpack(">H", buffer.read(2))
+            entry.name = class_file.constant_pool[name_index]
+            entry.descriptor = class_file.constant_pool[descriptor_index]
 
             # try:
             #     self.type_ = descriptor.parse_field_descriptor(
@@ -556,26 +583,19 @@ class LocalVariableTable(AttributeInfo):
 
             return entry
 
-        def __init__(
-                self,
-                start_pc: Union[int, None] = None,
-                length: Union[int, None] = None,
-                name: Union[str, None] = None,
-                descriptor: Union[str, None] = None,
-                index: Union[int, None] = None,
-        ) -> None:
+        def __init__(self, start_pc: int, length: int, name: UTF8, descriptor_: UTF8, index: int) -> None:
             """
             :param start_pc: The starting bytecode offset that the local variable appears at.
             :param length: How many bytecodes the local variable persists for.
             :param name: The name of the local variable.
-            :param descriptor: The type descriptor of the local variable.
+            :param descriptor_: The type descriptor of the local variable.
             :param index: The local variable index.
             """
 
             self.start_pc = start_pc
             self.length = length
             self.name = name
-            self.descriptor = descriptor
+            self.descriptor = descriptor_
             self.index = index
 
         def __repr__(self) -> str:
@@ -591,11 +611,14 @@ class LocalVariableTable(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(">HH", self.start_pc, self.length))
             buffer.write(struct.pack(
-                ">HH", class_file.constant_pool.add_utf8(self.name), class_file.constant_pool.add_utf8(self.descriptor),
+                ">HHHHH",
+                self.start_pc,
+                self.length,
+                class_file.constant_pool.add(self.name),
+                class_file.constant_pool.add(self.descriptor),
+                self.index,
             ))
-            buffer.write(struct.pack(">H", self.index))
 
 
 class LocalVariableTypeTable(AttributeInfo):
@@ -609,10 +632,18 @@ class LocalVariableTypeTable(AttributeInfo):
     since = Version(49, 0)
     locations = ("Code",)
 
-    def __init__(self, parent: "Code") -> None:
+    def __init__(
+            self, parent: "Code", entries: Union[Iterable["LocalVariableTypeTable.LocalVariableTypeEntry"], None] = None,
+    ) -> None:
+        """
+        :param entries: The local variable type entries.
+        """
+
         super().__init__(parent, LocalVariableTypeTable.name_)
 
         self.entries: List[LocalVariableTypeTable.LocalVariableTypeEntry] = []
+        if entries is not None:
+            self.entries.extend(entries)
 
     def __repr__(self) -> str:
         return "<LocalVariableTypeTable(%r) at %x>" % (self.entries, id(self))
@@ -645,14 +676,18 @@ class LocalVariableTypeTable(AttributeInfo):
             :return: The entry that was read.
             """
 
-            entry = cls()
+            entry = cls.__new__(cls)
 
-            entry.start_pc, entry.length = struct.unpack(">HH", buffer.read(4))
+            (
+                entry.start_pc,
+                entry.length,
+                name_index,
+                signature_index,
+                entry.index,
+            ) = struct.unpack(">HHHHH", buffer.read(10))
 
-            name_index, signature_index = struct.unpack(">HH", buffer.read(4))
-            entry.name = class_file.constant_pool.get_utf8(name_index)
-            entry.signature = class_file.constant_pool.get_utf8(signature_index)
-            entry.index, = struct.unpack(">H", buffer.read(2))
+            entry.name = class_file.constant_pool[name_index]
+            entry.signature = class_file.constant_pool[signature_index]
 
             # try:
             #     self.type_ = signature.parse_field_signature(
@@ -670,14 +705,7 @@ class LocalVariableTypeTable(AttributeInfo):
 
             return entry
 
-        def __init__(
-                self,
-                start_pc: Union[int, None] = None,
-                length: Union[int, None] = None,
-                name: Union[str, None] = None,
-                signature: Union[str, None] = None,
-                index: Union[int, None] = None,
-        ) -> None:
+        def __init__(self, start_pc: int, length: int, name: UTF8, signature: UTF8, index: int) -> None:
             """
             :param start_pc: The starting bytecode offset that the local variable appears.
             :param length: How many bytecodes the local variable appears for.
@@ -705,8 +733,11 @@ class LocalVariableTypeTable(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(">HH", self.start_pc, self.length))
             buffer.write(struct.pack(
-                ">HH", class_file.constant_pool.add_utf8(self.name), class_file.constant_pool.add_utf8(self.signature),
+                ">HHHHH",
+                self.start_pc,
+                self.length,
+                class_file.constant_pool.add(self.name),
+                class_file.constant_pool.add(self.signature),
+                self.index,
             ))
-            buffer.write(struct.pack(">H", self.index))

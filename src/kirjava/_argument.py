@@ -8,13 +8,23 @@ from typing import Tuple, Union
 
 from . import types
 from .abc import Class
-from .classfile import descriptor
-from .classfile.constants import Class as Class_
-from .types import BaseType, ReferenceType
+from .classfile import constants, descriptor
+from .types import BaseType
 from .types.reference import ClassOrInterfaceType
 
 
-def get_class_constant(argument: Union[Class_, ReferenceType, Class, str]) -> Class_:
+# ------------------------------ Types ------------------------------ #
+
+ClassConstant = Union[types.ReferenceType, constants.Class, Class, str]
+FieldDescriptor = Union[BaseType, str]
+#                                       argument types              return type      full descriptor
+MethodDescriptor = Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]]
+ReferenceType = Union[types.ReferenceType, constants.Class, Class, str]
+
+
+# ------------------------------ Functions ------------------------------ #
+
+def get_class_constant(argument: ClassConstant) -> constants.Class:
     """
     Converts the argument into a class constant.
 
@@ -22,27 +32,29 @@ def get_class_constant(argument: Union[Class_, ReferenceType, Class, str]) -> Cl
     :return: The class constant.
     """
 
-    if isinstance(argument, Class_):
-        return argument
-    elif isinstance(argument, ClassOrInterfaceType):
-        return Class_(argument.name)
-    elif isinstance(argument, ReferenceType):
-        return Class_(descriptor.to_descriptor(argument))
-    elif isinstance(argument, Class):
-        return Class_(argument.name)
-    elif isinstance(argument, str):
+    argument_class = argument.__class__
+
+    if argument_class is str:
         try:
             type_ = descriptor.parse_field_descriptor(argument)
             if not isinstance(type_, ReferenceType):
                 raise Exception
             return get_class_constant(type_)
         except Exception:
-            return Class_(argument)
+            return constants.Class(argument)
+    elif argument_class is constants.Class:
+        return argument
+    elif argument_class is ClassOrInterfaceType:
+        return constants.Class(argument.name)
+    elif isinstance(argument, ReferenceType):
+        return constants.Class(descriptor.to_descriptor(argument))
+    elif isinstance(argument, Class):
+        return constants.Class(argument.name)
     else:
-        raise TypeError("Don't know how to convert %r into a class constant." % argument.__class__)
+        raise TypeError("Don't know how to convert %r into a class constant." % argument_class)
 
 
-def get_reference_type(argument: Union[ReferenceType, Class, Class_, str]) -> ReferenceType:
+def get_reference_type(argument: ReferenceType) -> types.ReferenceType:
     """
     Converts the argument into a reference type.
 
@@ -50,13 +62,9 @@ def get_reference_type(argument: Union[ReferenceType, Class, Class_, str]) -> Re
     :return: The reference type.
     """
 
-    if isinstance(argument, ReferenceType):
-        return argument
-    elif isinstance(argument, Class):
-        return argument.get_type()
-    elif isinstance(argument, Class_):  # Lol, I know :p
-        return argument.get_actual_type()
-    elif isinstance(argument, str):
+    argument_class = argument.__class__
+
+    if argument_class is str:
         try:
             type_ = descriptor.parse_field_descriptor(argument)
             if not isinstance(type_, ReferenceType):
@@ -64,11 +72,17 @@ def get_reference_type(argument: Union[ReferenceType, Class, Class_, str]) -> Re
             return type_
         except Exception:
             return ClassOrInterfaceType(argument)
+    elif argument_class is constants.Class:
+        return argument.get_actual_type()
+    elif isinstance(argument, ReferenceType):
+        return argument
+    elif isinstance(argument, Class):
+        return argument.get_type()
     else:
-        raise TypeError("Don't know how to convert %r into a reference type." % argument.__class__)
+        raise TypeError("Don't know how to convert %r into a reference type." % argument_class)
 
 
-def get_field_descriptor(argument: Union[BaseType, str]) -> BaseType:
+def get_field_descriptor(argument: FieldDescriptor) -> BaseType:
     """
     Gets a field descriptor type from an argument.
 
@@ -76,17 +90,15 @@ def get_field_descriptor(argument: Union[BaseType, str]) -> BaseType:
     :return: The field type.
     """
 
+    if argument.__class__ is str:
+        return descriptor.parse_field_descriptor(argument)
     if isinstance(argument, BaseType) and argument != types.void_t:
         return argument
-    elif isinstance(argument, str):
-        return descriptor.parse_field_descriptor(argument)
     else:
         raise TypeError("Don't know how to convert %r into a field descriptor type." % argument.__class__)
 
 
-def get_method_descriptor(
-        *arguments: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
-) -> Tuple[Tuple[BaseType, ...], BaseType]:
+def get_method_descriptor(*arguments: MethodDescriptor) -> Tuple[Tuple[BaseType, ...], BaseType]:
     """
     Gets a method descriptor from some arguments.
 
@@ -99,7 +111,7 @@ def get_method_descriptor(
 
     if len(arguments) == 1:
         argument, = arguments
-        if isinstance(argument, str):
+        if argument.__class__ is str:
             return descriptor.parse_method_descriptor(argument)
         else:
             raise TypeError(
@@ -108,7 +120,7 @@ def get_method_descriptor(
 
     argument_types, return_type, *_ = arguments
 
-    if isinstance(argument_types, tuple):
+    if argument_types.__class__ is tuple:
         argument_types_ = []
         for argument_type in argument_types:
             try:
@@ -120,15 +132,15 @@ def get_method_descriptor(
                     )
                 raise error
         argument_types = tuple(argument_types_)
-    elif isinstance(argument_types, str):
+    elif argument_types.__class__ is str:
         argument_types, _ = descriptor.parse_method_descriptor(argument_types + "V")
     else:
         raise TypeError("Don't know how to convert %r into method descriptor argument types." % argument_types.__class__)
 
-    if isinstance(return_type, BaseType):
-        return argument_types, return_type
-    elif isinstance(return_type, str):
+    if return_type.__class__ is str:
         _, return_type = descriptor.parse_method_descriptor("()" + return_type)
+        return argument_types, return_type
+    elif isinstance(return_type, BaseType):
         return argument_types, return_type
     else:
         raise TypeError("Don't know how to convert %r into a method descriptor return type." % return_type.__class__)

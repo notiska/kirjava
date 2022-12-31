@@ -37,8 +37,9 @@ class TypeParameter(TypeArgument):
             self.additional_bounds.extend(additional_bounds)
         
     def __repr__(self) -> str:
-        return "<TypeVariable(identifier=%s, bound=%r, additional_bounds=%r) at %x>" % \
-               (self.identifier, self.upper_bound, self.additional_bounds, id(self))
+        return "<TypeVariable(identifier=%s, bound=%r, additional_bounds=%r) at %x>" % (
+            self.identifier, self.upper_bound, self.additional_bounds, id(self),
+        )
         
     def __str__(self) -> str:
         return "%s extends %s%s" % (

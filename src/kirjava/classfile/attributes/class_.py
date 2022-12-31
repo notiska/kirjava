@@ -10,11 +10,11 @@ Attributes found exclusively in the ClassFile structure.
 """
 
 import struct
-from typing import Dict, IO, List, Union
+from typing import Dict, IO, Iterable, List, Tuple, Union
 
 from . import AttributeInfo
 from .. import attributes, ClassFile
-from ..constants import Constant, Class
+from ..constants import Constant, Class, MethodHandle, UTF8
 from ...version import Version
 
 
@@ -65,11 +65,12 @@ class BootstrapMethods(AttributeInfo):
             :return: The read bootstrap method info.
             """
 
-            bootstrap_method = cls()
+            bootstrap_method = cls.__new__(cls)
 
             bootstrap_method_index, = struct.unpack(">H", buffer.read(2))
             bootstrap_method.method_handle = class_file.constant_pool[bootstrap_method_index]
 
+            bootstrap_method.arguments = []
             bootstrap_arguments_count, = struct.unpack(">H", buffer.read(2))
             for index in range(bootstrap_arguments_count):
                 bootstrap_argument_index, = struct.unpack(">H", buffer.read(2))
@@ -77,8 +78,17 @@ class BootstrapMethods(AttributeInfo):
 
             return bootstrap_method
 
-        def __init__(self) -> None:  # TODO: Constructor
+        def __init__(self, method_handle: MethodHandle, arguments: Union[Iterable[Constant], None] = None) -> None:
+            """
+            :param method_handle: The method handle for this bootstrap method.
+            :param arguments: The bootstrap arguments used to resolve the call site.
+            """
+
+            self.method_handle = method_handle
             self.arguments: List[Constant] = []
+
+            if arguments is not None:
+                self.arguments.extend(arguments)
 
         def __repr__(self) -> str:
             return "<BootstrapMethod(handle=%r, arguments=%r) at %x>" % (self.method_handle, self.arguments, id(self))
@@ -91,8 +101,7 @@ class BootstrapMethods(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(">H", class_file.constant_pool.add(self.method_handle)))
-            buffer.write(struct.pack(">H", len(self.arguments)))
+            buffer.write(struct.pack(">HH", class_file.constant_pool.add(self.method_handle), len(self.arguments)))
             for bootstrap_argument in self.arguments:
                 buffer.write(struct.pack(">H", class_file.constant_pool.add(bootstrap_argument)))
 
@@ -108,9 +117,15 @@ class NestHost(AttributeInfo):
     since = Version(55, 0)
     locations = (ClassFile,)
     
-    def __init__(self, parent: ClassFile) -> None:  # TODO: Constructor
+    def __init__(self, parent: ClassFile, host_class: Union[Class, None] = None) -> None:
+        """
+        :param host_class: The host class of the nest that this class/interface belongs to.
+        """
+
         super().__init__(parent, NestHost.name_)
-        
+
+        self.host_class = host_class
+
     def __repr__(self) -> str:
         return "<NestHost(host=%r) at %x>" % (self.host_class, id(self))
         
@@ -133,10 +148,16 @@ class NestMembers(AttributeInfo):
     since = Version(55, 0)
     locations = (ClassFile,)
 
-    def __init__(self, parent: ClassFile) -> None:
+    def __init__(self, parent: ClassFile, classes: Union[Iterable[Class], None] = None) -> None:
+        """
+        :param classes: The classes/interfaces that belong to the nest that this class hosts.
+        """
+
         super().__init__(parent, NestMembers.name_)
 
         self.classes: List[Class] = []
+        if classes is not None:
+            self.classes.extend(classes)
 
     def __repr__(self) -> str:
         return "<NestMembers(classes=%r) at %x>" % (self.classes, id(self))
@@ -165,10 +186,16 @@ class PermittedSubclasses(AttributeInfo):
     since = Version(61, 0)
     locations = (ClassFile,)
 
-    def __init__(self, parent: ClassFile) -> None:
+    def __init__(self, parent: ClassFile, classes: Union[Iterable[Class], None] = None) -> None:
+        """
+        :param classes: The list of permitted subclasses.
+        """
+
         super().__init__(parent, PermittedSubclasses.name_)
 
         self.classes: List[Class] = []
+        if classes is not None:
+            self.classes.extend(classes)
 
     def __repr__(self) -> str:
         return "<PermittedSubclasses(classes=%r) at %x>" % (self.classes, id(self))
@@ -198,10 +225,16 @@ class InnerClasses(AttributeInfo):
     since = Version(45, 0)
     locations = (ClassFile,)
 
-    def __init__(self, parent: ClassFile) -> None:
+    def __init__(self, parent: ClassFile, classes: Union[Iterable["InnerClasses.InnerClass"], None] = None) -> None:
+        """
+        :param classes: Information about inner classes.
+        """
+
         super().__init__(parent, InnerClasses.name_)
 
         self.classes: List[InnerClasses.InnerClass] = []
+        if classes is not None:
+            self.classes.extend(classes)
 
     def __repr__(self) -> str:
         return "<InnerClasses(classes=%r) at %x>" % (self.classes, id(self))
@@ -234,15 +267,19 @@ class InnerClasses(AttributeInfo):
             :return: The read inner class.
             """
 
-            inner_class = cls()
+            inner_class = cls.__new__(cls)
 
-            inner_class_index, outer_class_index = struct.unpack(">HH", buffer.read(4))
+            (
+                inner_class_index,
+                outer_class_index,
+                inner_class_name_index,
+                inner_class.access_flags,
+            ) = struct.unpack(">HHHH", buffer.read(8))
+
             inner_class.inner_class = class_file.constant_pool[inner_class_index]
-            inner_class.outer_class = class_file.constant_pool[outer_class_index] if outer_class_index > 0 else None
-
-            inner_class_name_index, inner_class.access_flags = struct.unpack(">HH", buffer.read(4))
+            inner_class.outer_class = class_file.constant_pool[outer_class_index] if outer_class_index else None
             inner_class.inner_name = (
-                class_file.constant_pool.get_utf8(inner_class_name_index, None) if inner_class_name_index > 0 else None
+                class_file.constant_pool[inner_class_name_index] if inner_class_name_index else None
             )
 
             return inner_class
@@ -385,13 +422,10 @@ class InnerClasses(AttributeInfo):
             """
 
             buffer.write(struct.pack(
-                ">HH",
+                ">HHHH",
                 class_file.constant_pool.add(self.inner_class),
                 0 if self.outer_class is None else class_file.constant_pool.add(self.outer_class),
-            ))
-            buffer.write(struct.pack(
-                ">HH", 
-                0 if self.inner_name is None else class_file.constant_pool.add_utf8(self.inner_name),
+                0 if self.inner_name is None else class_file.constant_pool.add(self.inner_name),
                 self.access_flags,
             ))
 
@@ -417,7 +451,7 @@ class EnclosingMethod(AttributeInfo):
         class_index, method_index = struct.unpack(">HH", buffer.read(4))
         # No type information? Thanks Iska, really helpful!
         self.class_ = class_file.constant_pool[class_index]
-        self.method = class_file.constant_pool[method_index] if method_index > 0 else None
+        self.method = class_file.constant_pool[method_index] if method_index else None
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         buffer.write(struct.pack(
@@ -437,10 +471,16 @@ class Record(AttributeInfo):
     since = Version(60, 0)
     locations = (ClassFile,)
 
-    def __init__(self, parent: ClassFile) -> None:
+    def __init__(self, parent: ClassFile, components: Union[Iterable["Record.ComponentInfo"], None] = None) -> None:
+        """
+        :param components: The components of the record.
+        """
+
         super().__init__(parent, Record.name_)
 
         self.components: List[Record.ComponentInfo] = []
+        if components is not None:
+            self.components.extend(components)
 
     def __repr__(self) -> str:
         return "<Record(components=%r) at %x>" % (self.components, id(self))
@@ -473,25 +513,27 @@ class Record(AttributeInfo):
             :return: The read component info.
             """
 
-            component_info = cls()
+            component_info = cls.__new__(cls)
 
-            name_index, descriptor_index, = struct.unpack(">HH", buffer.read(4))
+            name_index, descriptor_index, attributes_count = struct.unpack(">HHH", buffer.read(6))
 
-            component_info.name = class_file.constant_pool.get_utf8(name_index)
-            component_info.descriptor = class_file.constant_pool.get_utf8(descriptor_index)
+            component_info.name = class_file.constant_pool[name_index]
+            component_info.descriptor = class_file.constant_pool[descriptor_index]
 
-            attributes_count, = struct.unpack(">H", buffer.read(2))
+            component_info.attributes = {}
             for index in range(attributes_count):
                 attribute_info = attributes.read_attribute(component_info, class_file, buffer)
-                component_info.attributes[attribute_info.name] = attribute_info
+                component_info.attributes[attribute_info.name] = (
+                    component_info.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
+                )
 
             return component_info
 
-        def __init__(self, name: Union[str, None] = None, descriptor: Union[str, None] = None) -> None:
+        def __init__(self, name: UTF8, descriptor: UTF8) -> None:
             self.name = name
             self.descriptor = descriptor
 
-            self.attributes: Dict[str, AttributeInfo] = {}
+            self.attributes: Dict[str, Tuple[AttributeInfo, ...]] = {}
 
         def __repr__(self) -> str:
             return "<ComponentInfo(name=%r, descriptor=%r) at %x>" % (self.name, self.descriptor, id(self))
@@ -505,10 +547,12 @@ class Record(AttributeInfo):
             """
 
             buffer.write(struct.pack(
-                ">HH", class_file.constant_pool.add_utf8(self.name), class_file.constant_pool.add_utf8(self.descriptor),
+                ">HHH",
+                class_file.constant_pool.add(self.name),
+                class_file.constant_pool.add(self.descriptor),
+                len(self.attributes),
             ))
 
-            buffer.write(struct.pack(">H", len(self.attributes)))
             for attribute in self.attributes.values():
                 attributes.write_attribute(attribute, class_file, buffer)
 
@@ -524,7 +568,7 @@ class SourceFile(AttributeInfo):
     since = Version(45, 0)
     locations = (ClassFile,)
 
-    def __init__(self, parent: ClassFile, source_file: Union[str, None] = None) -> None:
+    def __init__(self, parent: ClassFile, source_file: Union[UTF8, None] = None) -> None:
         """
         :param source_file: The name of the source file that generated the class.
         """
@@ -538,7 +582,7 @@ class SourceFile(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         source_file_index, = struct.unpack(">H", buffer.read(2))
-        self.source_file = class_file.constant_pool.get_utf8(source_file_index)
+        self.source_file = class_file.constant_pool[source_file_index]
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", class_file.constant_pool.add_utf8(self.source_file)))
+        buffer.write(struct.pack(">H", class_file.constant_pool.add(self.source_file)))

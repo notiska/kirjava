@@ -19,7 +19,6 @@ from typing import Dict, IO, List, Tuple, Union
 from .. import _argument, types
 from ..abc import Class as Class_
 from ..environment import Environment
-from ..types import BaseType, ReferenceType
 from ..version import Version
 
 if typing.TYPE_CHECKING:
@@ -79,9 +78,9 @@ class ClassFile(Class_):
         attributes_count, = struct.unpack(">H", buffer.read(2))
         for index in range(attributes_count):
             attribute_info = attributes.read_attribute(class_file, class_file, buffer)
-            if not attribute_info.name in class_file.attributes:
-                class_file.attributes[attribute_info.name] = ()
-            class_file.attributes[attribute_info.name] = class_file.attributes[attribute_info.name] + (attribute_info,)
+            class_file.attributes[attribute_info.name] = (
+                class_file.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
+            )
 
         logger.debug("Read classfile %r in %.1fms." % (class_file.name, (time.perf_counter_ns() - start) / 1_000_000))
 
@@ -275,8 +274,8 @@ class ClassFile(Class_):
     def __init__(
             self,
             name: str,
-            super_: Union["Class", ReferenceType, Class_, str, None] = types.object_t,
-            interfaces: Union[List[Union["Class", ReferenceType, Class_, str]], None] = None,
+            super_: _argument.ClassConstant = types.object_t,
+            interfaces: Union[List[_argument.ClassConstant], None] = None,
             version: Version = Version(52, 0),
             is_public: bool = False,
             is_final: bool = False,
@@ -328,131 +327,125 @@ class ClassFile(Class_):
 
     # ------------------------------ Methods ------------------------------ #
 
-    def get_method(
-            self,
-            name: str,
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
-    ) -> "MethodInfo":
+    def get_method(self, name: str, *descriptor_: _argument.MethodDescriptor) -> "MethodInfo":
         """
         Gets a method in this class.
 
         :param name: The name of the method.
-        :param descriptor: The descriptor of the method, if not given, the first method with the name is returned.
+        :param descriptor_: The descriptor of the method, if not given, the first method with the name is returned.
         :return: The method.
         """
 
-        if descriptor:
-            descriptor = _argument.get_method_descriptor(*descriptor)
+        if descriptor_:
+            descriptor_ = _argument.get_method_descriptor(*descriptor_)
 
         for method in self._methods:
             if method._name == name:
                 if not descriptor:
                     return method
-                if (method._argument_types, method._return_type) == descriptor:
+                if (method._argument_types, method._return_type) == descriptor_:
                     return method
 
-        if descriptor:
+        if descriptor_:
             raise LookupError("Method %r was not found." % (
-                "%s#%s %s(%s)" % (self.name, descriptor[1], name, ", ".join(map(str, descriptor[0]))),
+                "%s#%s %s(%s)" % (self.name, descriptor_[1], name, ", ".join(map(str, descriptor_[0]))),
             ))
         raise LookupError("Method %r was not found." % ("%s#%s" % (self.name, name)))
 
     def add_method(
-            self,
-            name: str,
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
-            **access_flags: Dict[str, bool],
+            self, name: str, *descriptor_: _argument.MethodDescriptor, **access_flags: Dict[str, bool],
     ) -> "MethodInfo":
         """
         Adds a method to this class given the provided information about it.
 
         :param name: The name of the method.
-        :param descriptor: The descriptor of the method.
+        :param descriptor_: The descriptor of the method.
         :param access_flags: Any access flags for the method
         :return: The method that was created.
         """
 
         # It's added to self._methods for us in the MethodInfo constructor, so we can return it directly
-        return MethodInfo(self, name, *descriptor, **access_flags)
+        return MethodInfo(self, name, *descriptor_, **access_flags)
 
     def remove_method(
-            self,
-            name_or_method: Union[str, "MethodInfo"],
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+            self, name_or_method: Union[str, "MethodInfo"], *descriptor_: _argument.MethodDescriptor,
     ) -> bool:
         """
         Removes a method from this class.
 
         :param name_or_method: The name of the method, or the method.
-        :param descriptor: The descriptor of the method.
+        :param descriptor_: The descriptor of the method.
         :return: Was the method removed?
         """
 
         if not isinstance(name_or_method, MethodInfo):
-            method = self.get_method(name_or_method, *descriptor)
-        if not method in self._methods:
-            raise ValueError("Method %r was not found, and therefore cannot be removed." % str(method))
+            name_or_method = self.get_method(name_or_method, *descriptor_)
 
-        while method in self._methods:
-            self._methods.remove(method)
+        if not name_or_method in self._methods:
+            raise ValueError("Method %r was not found, and therefore cannot be removed." % str(name_or_method))
+
+        while name_or_method in self._methods:
+            self._methods.remove(name_or_method)
 
     # ------------------------------ Fields ------------------------------ #
 
-    def get_field(self, name: str, descriptor: Union[BaseType, str, None] = None) -> "FieldInfo":
+    def get_field(self, name: str, descriptor_: Union[_argument.FieldDescriptor, None] = None) -> "FieldInfo":
         """
         Gets a field in this class.
 
         :param name: The name of the field.
-        :param descriptor: The descriptor of the field, if None, the first field with the name is returned.
+        :param descriptor_: The descriptor of the field, if None, the first field with the name is returned.
         :return: The field.
         """
 
-        if descriptor is not None:
-            descriptor = _argument.get_field_descriptor(descriptor)
+        if descriptor_ is not None:
+            descriptor_ = _argument.get_field_descriptor(descriptor_)
 
         for field in self._fields:
             if field._name == name:
-                if descriptor is None:
+                if descriptor_ is None:
                     return field
-                if field._type == descriptor:
+                if field._type == descriptor_:
                     return field
 
-        if descriptor is not None:
+        if descriptor_ is not None:
             raise LookupError("Field %r was not found." % (
-                "%s#%s %s" % (self.name, descriptor, name),
+                "%s#%s %s" % (self.name, descriptor_, name),
             ))
         raise LookupError("Field %r was not found." % ("%s#%s" % (self.name, name)))
 
     def add_field(
-            self, name: str, descriptor: Union[BaseType, str, None] = None, **access_flags: Dict[str, bool],
+            self, name: str, descriptor_: Union[_argument.FieldDescriptor, None] = None, **access_flags: Dict[str, bool],
     ) -> "FieldInfo":
         """
         Adds a field to this class.
 
         :param name: The name of the field to add.
-        :param descriptor: The descriptor of the field to add.
+        :param descriptor_: The descriptor of the field to add.
         :param access_flags: Any access flags for the field.
         :return: The field that was added.
         """
 
-        return FieldInfo(self, name, descriptor, **access_flags)
+        return FieldInfo(self, name, descriptor_, **access_flags)
 
-    def remove_field(self, name_or_field: Union[str, "FieldInfo"], descriptor: Union[BaseType, str, None] = None) -> bool:
+    def remove_field(
+            self, name_or_field: Union[str, "FieldInfo"], descriptor_: Union[_argument.FieldDescriptor, None] = None,
+    ) -> bool:
         """
         Removes a field from this class.
 
         :param name_or_field: The name of the field or the field.
-        :param descriptor: The descriptor of the field.
+        :param descriptor_: The descriptor of the field.
         :return: Was the field removed?
         """
 
         if not isinstance(name_or_field, FieldInfo):
-            field = self.get_field(name_or_field, descriptor)
-        if not field in self._fields:
-            raise ValueError("Field %r was not found, and therefore cannot be removed." % str(field))
+            name_or_field = self.get_field(name_or_field, descriptor_)
+        if not name_or_field in self._fields:
+            raise ValueError("Field %r was not found, and therefore cannot be removed." % str(name_or_field))
 
-        while field in self._fields:  # May be duplicates (cos we allow that), so remove all
-            self._fields.remove(field)
+        while name_or_field in self._fields:  # May be duplicates (cos we allow that), so remove all
+            self._fields.remove(name_or_field)
 
     # ------------------------------ IO ------------------------------ #
 

@@ -7,7 +7,7 @@ Instructions that push constants to the stack.
 from abc import ABC
 from typing import Any, IO, List
 
-from . import Instruction, MetaInstruction
+from . import Instruction
 from .. import ClassFile
 from ..constants import Constant, Integer
 from ... import types

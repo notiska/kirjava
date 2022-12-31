@@ -75,24 +75,31 @@ class InsnBlock(Block):
 
         :param instruction: The instruction to add.
         :param to: The block to jump to, if adding a jump instruction.
-        :param fix_edges: Should jump edges be added when a jump instruction is added?
+        :param fix_edges: Should the correct edges be added when certain instructions are added (jump, return and athrow)?
         :return: The same instruction.
         """
 
         if isinstance(instruction, MetaInstruction):
             instruction = instruction()  # Should throw at this point, if invalid
 
-        if fix_edges and isinstance(instruction, JumpInstruction):
-            for edge in self.out_edges:
-                # The required jump edge already exists, so nothing to do.
-                if isinstance(edge, JumpEdge) and (to is None or edge.to == to) and edge.instruction == instructions:
-                    if self.instruction[-1] != instruction:
-                        self.instruction.append(instruction)
-                    return instruction
-            if to is None:
-                raise ValueError("Expected a value for parameter 'block' if adding a jump instruction.")
-            self.jump(to, instruction)
-            return instruction
+        if fix_edges:
+            if isinstance(instruction, JumpInstruction):
+                for edge in self.out_edges:
+                    # The required jump edge already exists, so nothing to do.
+                    if isinstance(edge, JumpEdge) and (to is None or edge.to == to) and edge.jump == instructions:
+                        if self.instructions[-1] != instruction:
+                            self.instructions.append(instruction)
+                        return instruction
+                if to is None:
+                    raise ValueError("Expected a value for parameter 'block' if adding a jump instruction.")
+                self.jump(to, instruction)
+                return instruction
+            elif isinstance(instruction, ReturnInstruction):
+                self.return_()
+                return self.instructions[-1]
+            elif instruction == instructions.athrow:
+                self.throw()
+                return self.instructions[-1]
 
         self.instructions.append(instruction)  # Otherwise, just add directly to the instructions
         return instruction
@@ -102,6 +109,7 @@ class InsnBlock(Block):
         Creates a fallthrough edge from this block to another block.
 
         :param to: The block to fall through to.
+        :param fix: Removes any already existing fallthrough edges.
         :return: The fallthrough edge that was created.
         """
 

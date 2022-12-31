@@ -5,7 +5,7 @@ __all__ = (
     "Constant",
     "Class", "Field", "Method",
     "Block", "Edge", "Graph", "RethrowBlock", "ReturnBlock",
-    "Error", "NoTypeChecker", "TypeChecker", "Verifier", "VerifyError",
+    "Error", "TypeChecker", "Verifier", "VerifyError",
 )
 
 """
@@ -43,12 +43,7 @@ class Constant(ABC):
         return repr(self.value)
 
     def __eq__(self, other: Any) -> bool:
-        if other is self:
-            return True
-        elif isinstance(other, Constant):
-            return other.__class__ is self.__class__ and other.value == self.value
-
-        return other == self.value
+        return other.__class__ is self.__class__ and other.value == self.value  # or other == self.value
 
     def __hash__(self) -> int:
         return hash(self.value)

@@ -7,11 +7,11 @@ Instructions that create new references.
 from abc import ABC
 from typing import Any, IO, List, Union
 
-from . import Instruction, MetaInstruction
+from . import Instruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_
 from ... import _argument, types
-from ...abc import Class, Error, Source, TypeChecker
+from ...abc import Error, Source, TypeChecker
 from ...analysis.trace import State
 from ...types import PrimitiveType, ReferenceType
 from ...types.reference import ArrayType, ClassOrInterfaceType
@@ -27,7 +27,7 @@ class NewInstruction(Instruction, ABC):
 
     operands = {"_index": ">H"}
 
-    def __init__(self, type_: Union[ReferenceType, Class, Class_, str]) -> None:
+    def __init__(self, type_: _argument.ReferenceType) -> None:
         """
         :param type_: The new type to create.
         """
@@ -93,7 +93,7 @@ class NewArrayInstruction(Instruction, ABC):
         types.long_t: 11,
     }
 
-    def __init__(self, type_: Union[ArrayType, PrimitiveType]) -> None:  # FIXME: ArrayType?
+    def __init__(self, type_: Union[ArrayType, PrimitiveType]) -> None:  # TODO: _argument array type parsing
         """
         :param type_: Either the array type itself, or the element type of the array.
         """

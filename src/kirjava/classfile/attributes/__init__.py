@@ -3,7 +3,6 @@
 import logging
 import struct
 import typing
-from io import BytesIO
 from typing import Any, IO
 
 from ...version import Version
@@ -98,7 +97,9 @@ def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes]) -> A
     :param buffer: The buffer to read from.
     :return: The attribute.
     """
-    
+
+    # TODO: Option to "fail fast" so we don't read the entirety of an attribute if it's obvious that it's invalid
+
     name_index, attribute_length = struct.unpack(">HI", buffer.read(6))
     name = class_file.constant_pool.get_utf8(name_index, "<invalid>")  # FIXME: Yes or no?
 
@@ -132,9 +133,9 @@ def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes]) -> A
 
             except Exception as error:
                 # raise error
-                logger.error("Couldn't read attribute %r in class %r: %r" % (
-                    name, class_file.name, error,
-                ))
+                # logger.error("Couldn't read attribute %r in class %r: %r" % (
+                #     name, class_file.name, error,
+                # ))
                 logger.debug(error, exc_info=True)
     else:
         logger.debug("Unknown attribute %r in class %r." % (name, class_file.name))
@@ -155,12 +156,16 @@ def write_attribute(attribute: AttributeInfo, class_file: "ClassFile", buffer: I
     :param buffer: The binary buffer to write to.
     """
 
-    if attribute.data:
-        data = attribute.data
-    else:
-        data = BytesIO()
-        attribute.write(class_file, data)
-        data = data.getvalue()
+    start = buffer.tell()
+    buffer.write(b"\x00\x00\x00\x00\x00\x00")  # Placeholder for bytes for the name index and attribute length
 
-    buffer.write(struct.pack(">HI", class_file.constant_pool.add_utf8(attribute.name), len(data)))
-    buffer.write(data)
+    if attribute.data:
+        buffer.write(attribute.data)
+    else:
+        attribute.write(class_file, buffer)
+
+    current = buffer.tell()
+
+    buffer.seek(start)
+    buffer.write(struct.pack(">HI", class_file.constant_pool.add_utf8(attribute.name), current - start - 6))
+    buffer.seek(current)

@@ -7,7 +7,7 @@ Invocation instructions.
 from abc import ABC
 from typing import Any, IO, List, Tuple, Union
 
-from . import Instruction, MetaInstruction
+from . import Instruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_, InterfaceMethodRef, InvokeDynamic, MethodRef, NameAndType
 from ... import _argument, types
@@ -26,20 +26,17 @@ class InvokeInstruction(Instruction, ABC):
     __slots__ = ("class_", "name", "argument_types", "return_type")
 
     def __init__(
-            self,
-            class_: Union[ReferenceType, Class, Class_, str],
-            name: str,
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+            self, class_: _argument.ReferenceType, name: str, *descriptor_: _argument.MethodDescriptor,
     ) -> None:
         """
         :param class_: The class that the method belongs to.
         :param name: The name of the method.
-        :param descriptor: The method descriptor.
+        :param descriptor_: The method descriptor.
         """
 
         self.class_ = _argument.get_reference_type(class_)
         self.name = name
-        self.argument_types, self.return_type = _argument.get_method_descriptor(*descriptor)
+        self.argument_types, self.return_type = _argument.get_method_descriptor(*descriptor_)
 
     def __repr__(self) -> str:
         return "<InvokeInstruction(opcode=0x%x, mnemonic=%s, class=%s, name=%r, argument_types=(%s), return_type=%s) at %x>" % (
@@ -192,10 +189,10 @@ class InvokeInterfaceInstruction(InvokeVirtualInstruction, ABC):
             self,
             class_: Union[ReferenceType, Class, Class_, str],
             name: str,
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+            *descriptor_: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
             count: int = 0,
     ) -> None:
-        super().__init__(class_, name, *descriptor)
+        super().__init__(class_, name, *descriptor_)
 
         self.count = count
 
@@ -223,10 +220,7 @@ class InvokeDynamicInstruction(InvokeStaticInstruction, ABC):
     __slots__ = ("bootstrap_method_attr_index",)
 
     def __init__(
-            self,
-            bootstrap_method_attr_index: int,
-            name: str,
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+            self, bootstrap_method_attr_index: int, name: str, *descriptor_: _argument.MethodDescriptor,
     ) -> None:
         """
         :param bootstrap_method_attr_index: The index in the bootstrap methods attribute this invokedynamic refers to.
@@ -234,7 +228,7 @@ class InvokeDynamicInstruction(InvokeStaticInstruction, ABC):
 
         self.bootstrap_method_attr_index = bootstrap_method_attr_index
         self.name = name
-        self.argument_types, self.return_type = _argument.get_method_descriptor(*descriptor)
+        self.argument_types, self.return_type = _argument.get_method_descriptor(*descriptor_)
 
     def __repr__(self) -> str:
         # Ugly, but whatever

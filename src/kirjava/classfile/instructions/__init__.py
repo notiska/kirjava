@@ -157,6 +157,7 @@ class Instruction(Source, metaclass=MetaInstruction):
         :return: The size of the instruction.
         """
 
+        # TODO: Cache
         return 1 + sum(map(struct.calcsize, (self.operands if not wide else self.operands_wide).values()))
 
     # @abstractmethod
@@ -562,6 +563,7 @@ INSTRUCTIONS = (
 
     breakpoint_, impdep1, impdep2,
 )
+
 _opcode_map = {instruction.opcode: instruction for instruction in INSTRUCTIONS}
 
 

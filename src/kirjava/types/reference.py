@@ -46,8 +46,9 @@ class ClassOrInterfaceType(ReferenceType, VerificationType):
         elif self.inner_name is None:
             return "<ClassOrInterfaceType(name=%s, type_arguments=%s) at %x>" % (self.name, self.type_arguments, id(self))
 
-        return "<ClassOrInterfaceType(name=%s, inner_name=%s, type_arguments=%r, inner_type_arguments=%r) at %x>" % \
-               (self.name, self.inner_name, self.type_arguments, self.inner_type_arguments, id(self))
+        return "<ClassOrInterfaceType(name=%s, inner_name=%s, type_arguments=%r, inner_type_arguments=%r) at %x>" % (
+            self.name, self.inner_name, self.type_arguments, self.inner_type_arguments, id(self),
+        )
 
     def __str__(self) -> str:  # Yeah, wow
         if not self.type_arguments and self.inner_name is None:

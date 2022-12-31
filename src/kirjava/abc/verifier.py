@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "VerifyError", "Error", "TypeChecker", "Verifier", "NoTypeChecker",
+    "VerifyError", "Error", "TypeChecker", "Verifier",
 )
 
 """
@@ -56,7 +56,7 @@ class Error:
         self.messages = messages
 
     def __repr__(self) -> str:
-        return "<Error(source=%r, messages=%r) at %x>" % (self.source, self.message, id(self))
+        return "<Error(source=%r, messages=%r) at %x>" % (self.source, self.messages, id(self))
 
     def __str__(self) -> str:
         if self.source is None:
@@ -140,24 +140,3 @@ class Verifier(ABC):
     """
 
     ...
-
-
-class NoTypeChecker(TypeChecker):
-    """
-    A type checker that does nothing (for no verification).
-    """
-
-    def check_merge(self, expected: Union["VerificationType", None], actual: "VerificationType") -> bool:
-        return True  # Always assignable
-
-    def check_reference(self, actual: "VerificationType") -> bool:
-        return True
-
-    def check_array(self, actual: "VerificationType") -> bool:
-        return True
-
-    def check_category(self, actual: "VerificationType", category: int = 2) -> bool:
-        return True
-
-    def merge(self, expected: Union["VerificationType", None], actual: "VerificationType") -> "VerificationType":
-        return actual  # Assume that the actual type is always correct

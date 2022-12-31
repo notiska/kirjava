@@ -115,7 +115,7 @@ class ArrayStoreInstruction(Instruction, ABC):
             type_ = array_entry.type
 
         # Check the value can merge with the array that we popped
-        if not checker.check_merge(type_, entry.type):
+        if type_ != types.null_t and not checker.check_merge(type_, entry.type):
             errors.append(Error(source, "expected type %s" % type_, "got %s (via %s)" % (entry.type, entry.source)))
 
 

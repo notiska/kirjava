@@ -5,15 +5,15 @@ Conversion instructions.
 """
 
 from abc import ABC
-from typing import Any, IO, List, Union
+from typing import Any, IO, List
 
-from . import Instruction, MetaInstruction
+from . import Instruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_
 from ... import _argument, types
-from ...abc import Class, Error, Source, TypeChecker
+from ...abc import Error, Source, TypeChecker
 from ...analysis.trace import State
-from ...types import PrimitiveType, ReferenceType
+from ...types import PrimitiveType
 from ...types.reference import ClassOrInterfaceType
 
 
@@ -62,7 +62,7 @@ class CheckCastInstruction(Instruction, ABC):
     operands = {"_index": ">H"}
     throws = (types.classcastexception_t,)
 
-    def __init__(self, type_: Union[ReferenceType, Class, Class_, str]) -> None:
+    def __init__(self, type_: _argument.ReferenceType) -> None:
         """
         :param type_: The type to cast to.
         """
@@ -115,7 +115,7 @@ class InstanceOfInstruction(Instruction, ABC):
 
     operands = {"_index": ">H"}
 
-    def __init__(self, type_: Union[ReferenceType, Class, Class_, str]) -> None:
+    def __init__(self, type_: _argument.ReferenceType) -> None:
         """
         :param type_: The type to check if the value is an instance of.
         """

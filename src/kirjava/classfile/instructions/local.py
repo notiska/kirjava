@@ -7,7 +7,7 @@ Local-related instructions.
 from abc import ABC
 from typing import Any, IO, List, Union
 
-from . import Instruction, MetaInstruction
+from . import Instruction
 from .. import ClassFile
 from ... import types
 from ...abc import Error, Source, TypeChecker
@@ -56,7 +56,7 @@ class LoadLocalInstruction(Instruction, ABC):
 
         if error is not None:
             errors.append(error)
-            state.push(source, checker.merge(self.type_, entry.type), parents=entry, merges=(entry,))
+            state.push(source, checker.merge(self.type_, entry.type), parents=(entry,), merges=(entry,))
         else:
             state.push(source, entry)
 

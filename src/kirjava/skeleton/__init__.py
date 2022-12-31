@@ -223,11 +223,7 @@ class _SkeletonClass(Class):
     def __repr__(self) -> str:
         return "<_SkeletonClass(name=%r) at %x>" % (self._name, id(self))
 
-    def get_method(
-            self,
-            name: str,
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
-    ) -> "_SkeletonMethod":
+    def get_method(self, name: str, *descriptor: _argument.MethodDescriptor) -> "_SkeletonMethod":
         """
         Gets a method in this class.
 
@@ -253,21 +249,16 @@ class _SkeletonClass(Class):
         raise LookupError("Method %r was not found." % ("%s#%s" % (self.name, name)))
 
     def add_method(
-            self,
-            name: str,
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
-            **access_flags: Dict[str, bool],
+            self, name: str, *descriptor: _argument.MethodDescriptor, **access_flags: Dict[str, bool],
     ) -> None:
         raise AttributeError("Can't add method to skeleton class.")
 
     def remove_method(
-            self,
-            name_or_method: Union[str, "_SkeletonMethod"],
-            *descriptor: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+            self, name_or_method: Union[str, "_SkeletonMethod"], *descriptor: _argument.MethodDescriptor,
     ) -> None:
         raise AttributeError("Can't remove method from skeleton class.")
 
-    def get_field(self, name: str, descriptor: Union[BaseType, str, None] = None) -> "_SkeletonField":
+    def get_field(self, name: str, descriptor: Union[_argument.FieldDescriptor, None] = None) -> "_SkeletonField":
         """
         Gets a field in this class.
 
@@ -293,12 +284,12 @@ class _SkeletonClass(Class):
         raise LookupError("Field %r was not found." % ("%s#%s" % (self.name, name)))
 
     def add_field(
-            self, name: str, descriptor: Union[BaseType, str, None] = None, **access_flags: Dict[str, bool],
+            self, name: str, descriptor: Union[_argument.FieldDescriptor, None] = None, **access_flags: Dict[str, bool],
     ) -> None:
         raise AttributeError("Can't add field to skeleton class.")
 
     def remove_field(
-            self, name_or_field: Union[str, "_SkeletonField"], descriptor: Union[BaseType, str, None] = None,
+            self, name_or_field: Union[str, "_SkeletonField"], descriptor: Union[_argument.FieldDescriptor, None] = None,
     ) -> None:
         raise AttributeError("Can't remove field from skeleton class.")
 

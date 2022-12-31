@@ -26,7 +26,7 @@ from .source import InstructionAtOffset, InstructionInBlock
 from .trace import Entry, State, Trace
 from .verifier import FullTypeChecker
 from .. import _argument, types
-from ..abc import Class, Edge, Error, Graph, VerifyError
+from ..abc import Edge, Error, Graph, VerifyError
 from ..classfile import instructions
 from ..classfile.attributes.code import StackMapTable
 from ..classfile.attributes.method import Code
@@ -36,7 +36,6 @@ from ..classfile.instructions import (
     JumpInstruction, JsrInstruction, RetInstruction,
     ReturnInstruction,
 )
-from ..types import ReferenceType
 from ..types.verification import Uninitialized
 
 if typing.TYPE_CHECKING:
@@ -94,9 +93,7 @@ class InsnGraph(Graph):
 
         for offset, instruction in code.instructions.items():
             if isinstance(instruction, JumpInstruction):  # Add jump offsets for jump instructions
-                if isinstance(instruction, RetInstruction):
-                    ...  # has_subroutines = True
-                else:
+                if instruction != instructions.ret:
                     jump_targets.add(offset + instruction.offset)
 
             elif instruction == instructions.tableswitch:  # Add jump offsets for tableswitch instructions
@@ -129,10 +126,10 @@ class InsnGraph(Graph):
             # Don't want to modify the original as some instructions are not immutable (due to their operands).
             instruction = instruction.copy()
 
-            if offset in exception_bounds:
-                # If the current block has instructions, we need to create a new one, otherwise, don't even if it is
-                # the entry block as this block is not jumped to.
-                if block.instructions:
+            # Is this block jumped to at any point?
+            if offset in jump_targets or offset in exception_bounds or offset in handler_targets:
+                # If the current block has instructions, we need to create a new one.
+                if block.instructions or block == graph.entry_block:
                     previous = block
                     block = InsnBlock(graph, block.label + 1, add=False)
                     blocks.append(block)
@@ -141,19 +138,6 @@ class InsnGraph(Graph):
                     # By default, the graph.connect method performs checks that we don't have to care about when
                     # disassembling as they are only meant to check that the user of the library is not mishandling
                     # edges, so we can skip the method entirely and add directly to the graph.
-                    edge = FallthroughEdge(previous, block)
-                    forward_edges[previous].add(edge)
-                    backward_edges[block] = {edge}
-
-            if offset in jump_targets or offset in handler_targets:  # Is this block jumped to at any point?
-                # Don't create a new block if the current one isn't empty as that's wasteful. The exception to this
-                # however is the entry block, as by definition, it must dominate all other blocks in the graph.
-                if block.instructions or block == graph.entry_block:
-                    previous = block
-                    block = InsnBlock(graph, block.label + 1, add=False)
-                    blocks.append(block)
-                    forward_edges[block] = set()
-
                     edge = FallthroughEdge(previous, block)
                     forward_edges[previous].add(edge)
                     backward_edges[block] = {edge}
@@ -182,7 +166,7 @@ class InsnGraph(Graph):
                 # is slower than just directly checking this though.
                 is_jsr = instruction == instructions.jsr or instruction == instructions.jsr_w
 
-                if isinstance(instruction, RetInstruction):
+                if instruction == instructions.ret:
                     edge = RetEdge(block, None, instruction)
                     forward_edges[block].add(edge)
                     graph._opaque_edges.add(edge)
@@ -1239,7 +1223,7 @@ class InsnGraph(Graph):
 
             elif fix_throws and edge.to == self._rethrow_block:
                 if not edge.from_.instructions or edge.from_.instructions[-1] != instructions.athrow:
-                    edge.from_.instructions.append(instruction.athrow())
+                    edge.from_.instructions.append(instructions.athrow())
 
             # Ensure that blocks only have one fallthrough edge.
             for edge_ in self._forward_edges.get(edge.from_, []).copy():
@@ -1345,7 +1329,7 @@ class InsnGraph(Graph):
             from_: InsnBlock,
             to: InsnBlock,
             priority: Union[int, None] = None,
-            exception: Union[ReferenceType, Class, Class_, str] = types.throwable_t,
+            exception: _argument.ReferenceType = types.throwable_t,
     ) -> ExceptionEdge:
         """
         Creates an exception edge between two blocks.

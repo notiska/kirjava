@@ -5,15 +5,14 @@ Fields related instructions.
 """
 
 from abc import ABC
-from typing import Any, IO, List, Union
+from typing import Any, IO, List
 
-from . import Instruction, MetaInstruction
+from . import Instruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_, FieldRef, NameAndType
 from ... import _argument, types
-from ...abc import Class, Error, Source, TypeChecker
+from ...abc import Error, Source, TypeChecker
 from ...analysis.trace import State
-from ...types import BaseType, ReferenceType
 from ...types import ClassOrInterfaceType
 
 
@@ -30,7 +29,7 @@ class FieldInstruction(Instruction, ABC):
     static: bool = ...
 
     def __init__(
-            self, class_: Union[ReferenceType, Class, Class_, str], name: str, type_: Union[BaseType, str],
+            self, class_: _argument.ReferenceType, name: str, type_: _argument.FieldDescriptor,
     ) -> None:
         """
         :param class_: The class that the field belongs to.

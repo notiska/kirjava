@@ -8,7 +8,7 @@ import struct
 from abc import ABC
 from typing import Any, Dict, IO, Iterable, List, Union
 
-from . import Instruction, MetaInstruction
+from . import Instruction
 from .. import ClassFile
 from ... import types
 from ...abc import Error, Source, TypeChecker

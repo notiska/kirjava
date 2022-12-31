@@ -65,9 +65,9 @@ class MethodInfo(Method):
         attributes_count, = struct.unpack(">H", buffer.read(2))
         for index in range(attributes_count):
             attribute_info = attributes.read_attribute(method_info, class_file, buffer)
-            if not attribute_info.name in method_info.attributes:
-                method_info.attributes[attribute_info.name] = ()
-            method_info.attributes[attribute_info.name] = method_info.attributes[attribute_info.name] + (attribute_info,)
+            method_info.attributes[attribute_info.name] = (
+                method_info.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
+            )
 
         return method_info
 
@@ -257,7 +257,7 @@ class MethodInfo(Method):
             self,
             class_: "ClassFile",
             name: str,
-            *descriptor_: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+            *descriptor_: _argument.MethodDescriptor,
             is_public: bool = False,
             is_private: bool = False,
             is_protected: bool = False,
@@ -378,10 +378,10 @@ class FieldInfo(Field):
         attributes_count, = struct.unpack(">H", buffer.read(2))
         for index in range(attributes_count):
             attribute_info = attributes.read_attribute(field_info, class_file, buffer)
-            if not attribute_info.name in field_info.attributes:
-                field_info.attributes[attribute_info.name] = ()
-            field_info.attributes[attribute_info.name] = field_info.attributes[attribute_info.name] + (attribute_info,)
-    
+            field_info.attributes[attribute_info.name] = (
+                field_info.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
+            )
+
         return field_info
 
     ACC_PUBLIC = 0x0001
@@ -517,7 +517,7 @@ class FieldInfo(Field):
             self,
             class_: "ClassFile",
             name: str,
-            type_: Union[BaseType, str],
+            type_: _argument.FieldDescriptor,
             is_public: bool = False,
             is_private: bool = False,
             is_protected: bool = False,

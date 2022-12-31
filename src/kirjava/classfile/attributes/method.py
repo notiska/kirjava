@@ -11,7 +11,7 @@ Attributes that are only found in method info structures.
 import logging
 import struct
 from io import BytesIO
-from typing import Dict, IO, List, Tuple, Union
+from typing import Dict, IO, Iterable, List, Tuple, Union
 
 from . import AttributeInfo
 from .code import StackMapTable
@@ -34,6 +34,8 @@ class Code(AttributeInfo):
     since = Version(45, 0)
     locations = (MethodInfo,)
 
+    _LEGACY_VERSION = Version(45, 3)
+
     @property
     def stackmap_table(self) -> Union["StackMapTable", None]:
         """
@@ -54,9 +56,7 @@ class Code(AttributeInfo):
         else:
             self.attributes[value.name] = (value,)
 
-    def __init__(
-            self, parent: MethodInfo, max_stack: Union[int, None] = None, max_locals: Union[int, None] = None,
-    ) -> None:
+    def __init__(self, parent: MethodInfo, max_stack: int = 0, max_locals: int = 0) -> None:
         """
         :param max_stack: The maximum stack depth the code will reach.
         :param max_locals: The maximum number of locals.
@@ -79,7 +79,7 @@ class Code(AttributeInfo):
     def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         # Legacy code attribute for versions <= 45.2.
         # https://github.com/Storyyeller/Krakatau/blob/master/tests/decompiler/source/OldVersionTest.j
-        if class_file.version < Version(45, 3):
+        if class_file.version < self._LEGACY_VERSION:
             self.max_stack, self.max_locals, code_length = struct.unpack(">BBH", buffer.read(4))
         else:
             self.max_stack, self.max_locals, code_length = struct.unpack(">HHI", buffer.read(8))
@@ -99,16 +99,14 @@ class Code(AttributeInfo):
         attributes_count, = struct.unpack(">H", buffer.read(2))
         for index in range(attributes_count):
             attribute_info = attributes.read_attribute(self, class_file, buffer)
-            if not attribute_info.name in self.attributes:
-                self.attributes[attribute_info.name] = ()
-            self.attributes[attribute_info.name] = self.attributes[attribute_info.name] + (attribute_info,)
+            self.attributes[attribute_info.name] = self.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         code = BytesIO()
         instructions.write_instructions(self.instructions, class_file, code)
         code = code.getvalue()
 
-        if class_file.version < Version(45, 3):
+        if class_file.version < self._LEGACY_VERSION:
             buffer.write(struct.pack(">BBH", self.max_stack, self.max_locals, len(code)))
         else:
             buffer.write(struct.pack(">HHI", self.max_stack, self.max_locals, len(code)))
@@ -140,22 +138,20 @@ class Code(AttributeInfo):
             :return: The exception handler that was read.
             """
 
-            handler = cls()
+            handler = cls.__new__(cls)
 
-            handler.start_pc, handler.end_pc, handler.handler_pc = struct.unpack(">HHH", buffer.read(6))
+            (
+                handler.start_pc,
+                handler.end_pc,
+                handler.handler_pc,
+                catch_type_index,
+            ) = struct.unpack(">HHHH", buffer.read(8))
 
-            catch_type_index, = struct.unpack(">H", buffer.read(2))
-            handler.catch_type = None if catch_type_index < 1 else class_file.constant_pool[catch_type_index]
+            handler.catch_type = class_file.constant_pool[catch_type_index] if catch_type_index else None
 
             return handler
 
-        def __init__(
-                self,
-                start_pc: Union[int, None] = None,
-                end_pc: Union[int, None] = None,
-                handler_pc: Union[int, None] = None,
-                catch_type: Union[Class, None] = None,
-        ) -> None:
+        def __init__(self, start_pc: int, end_pc: int, handler_pc: int, catch_type: Class) -> None:
             """
             :param start_pc: The starting bytecode offset of the exception handler.
             :param end_pc The ending bytecode offset of the exception handler.
@@ -181,9 +177,12 @@ class Code(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(">HHH", self.start_pc, self.end_pc, self.handler_pc))
             buffer.write(struct.pack(
-                ">H", 0 if self.catch_type is None else class_file.constant_pool.add(self.catch_type),
+                ">HHHH",
+                self.start_pc,
+                self.end_pc,
+                self.handler_pc,
+                0 if self.catch_type is None else class_file.constant_pool.add(self.catch_type),
             ))
 
 
@@ -198,10 +197,12 @@ class Exceptions(AttributeInfo):
     since = Version(45, 0)
     locations = (MethodInfo,)
 
-    def __init__(self, parent: MethodInfo) -> None:
+    def __init__(self, parent: MethodInfo, exceptions: Union[Iterable[Class], None] = None) -> None:
         super().__init__(parent, Exceptions.name_)
 
         self.exceptions: List[Class] = []
+        if exceptions is not None:
+            self.exceptions.extend(exceptions)
 
     def __repr__(self) -> str:
         return "<Exceptions(%r) at %x>" % (self.exceptions, id(self))
@@ -217,6 +218,7 @@ class Exceptions(AttributeInfo):
         buffer.write(struct.pack(">H", len(self.exceptions)))
         for exception in self.exceptions:
             buffer.write(struct.pack(">H", class_file.constant_pool.add(exception)))
+
 
 from .. import instructions
 from ..instructions import Instruction

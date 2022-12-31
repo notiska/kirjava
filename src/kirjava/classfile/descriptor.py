@@ -67,16 +67,20 @@ def to_descriptor(*values: Union[Tuple[BaseType, ...], BaseType], dont_throw: bo
 
     descriptor = ""
     for value in values:
-        if value in _BACKWARD_BASE_TYPES:
-            descriptor += _BACKWARD_BASE_TYPES[value]
-        elif isinstance(value, ClassOrInterfaceType):
-            descriptor += "L%s;" % value.name
-        elif isinstance(value, ArrayType):
-            descriptor += "%s%s" % ("[" * value.dimension, to_descriptor(value.element_type, dont_throw=dont_throw))
-        elif isinstance(value, tuple):
-            descriptor += "(%s)" % to_descriptor(*value, dont_throw=dont_throw)
-        elif not dont_throw:
-            raise TypeError("Invalid type for descriptor: %r." % value)
+        base_type = _BACKWARD_BASE_TYPES.get(value, None)
+        if base_type is not None:
+            descriptor += base_type
+        else:
+            value_class = value.__class__
+
+            if value_class is ClassOrInterfaceType:
+                descriptor += "L%s;" % value.name
+            elif value_class is ArrayType:
+                descriptor += "%s%s" % ("[" * value.dimension, to_descriptor(value.element_type, dont_throw=dont_throw))
+            elif value_class is tuple:
+                descriptor += "(%s)" % to_descriptor(*value, dont_throw=dont_throw)
+            elif not dont_throw:
+                raise TypeError("Invalid type for descriptor: %r." % value)
 
     return descriptor
 
@@ -94,8 +98,9 @@ def next_argument(descriptor: str) -> Tuple[BaseType, str]:
 
     char = descriptor[0]
 
-    if char in _FORWARD_BASE_TYPES:
-        return _FORWARD_BASE_TYPES[char], descriptor[1:]
+    base_type = _FORWARD_BASE_TYPES.get(char, None)
+    if base_type is not None:
+        return base_type, descriptor[1:]
 
     elif char == "L":
         end_index = descriptor.find(";")
@@ -105,8 +110,8 @@ def next_argument(descriptor: str) -> Tuple[BaseType, str]:
 
     elif char == "[":
         element_type, descriptor = next_argument(descriptor[1:])  # FIXME: This could be done so much better
-        if isinstance(element_type, ArrayType):
-            element_type.dimension += 1
+        if element_type.__class__ is ArrayType:
+            element_type.dimension += 1  # Evil
             array_type = element_type
         else:
             array_type = ArrayType(element_type)
@@ -146,7 +151,7 @@ def parse_field_descriptor(
             raise ValueError("Trailing data %r in descriptor." % remaining)
 
         # Check the type is valid
-        if type_ == types.void_t or isinstance(type_, InvalidType):
+        if type_ == types.void_t or type_.__class__ is InvalidType:
             if dont_throw:
                 return InvalidType(descriptor)
             raise TypeError("Invalid type argument %r found." % type_)
@@ -211,7 +216,7 @@ def parse_method_descriptor(
                 raise TypeError("Invalid argument type %r found." % argument_type)
 
         # Check the return type is valid
-        if isinstance(return_type, InvalidType):
+        if return_type.__class__ is InvalidType:
             raise TypeError("Invalid return type %r found." % return_type)
 
     return argument_types, return_type

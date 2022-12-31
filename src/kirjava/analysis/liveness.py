@@ -10,7 +10,7 @@ Local variable liveness analysis.
 
 import itertools
 import typing
-from frozendict import frozendict
+from frozendict import frozendict, FrozenOrderedDict
 from typing import Dict, FrozenSet, Iterator, List, Set
 
 from ._edge import ExceptionEdge
@@ -101,7 +101,7 @@ class Liveness:
                 # therefore we also need to copy the liveness state from the handler's entry to the current block's
                 # entry.
 
-                if isinstance(edge, ExceptionEdge):
+                if edge.__class__ is ExceptionEdge:
                     live.update(entries.get(previous, ()))
 
                 live.update(entries[block])
@@ -120,8 +120,8 @@ class Liveness:
             self,
             graph: "InsnGraph",
             trace: Trace,
-            entries: Dict["InsnBlock", FrozenSet[int]],
-            exits: Dict["InsnBlock", FrozenSet[int]],
+            entries: FrozenOrderedDict["InsnBlock", FrozenSet[int]],
+            exits: FrozenOrderedDict["InsnBlock", FrozenSet[int]],
     ) -> None:
         self.graph = graph
         self.trace = trace
