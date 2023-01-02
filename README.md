@@ -12,8 +12,6 @@ The API is unfortunately quite limited (see limitations) and somewhat unintuitiv
 1. Missing quite a few attributes.
 2. No jar file reading yet, even though the package exists.
 3. Although there is generic signature parsing, writing generic signatures is not yet implemented.
-4. Stack manipulations on an empty stack crash the assembler.
-5. No support for invalid CP entries when it comes to UTF8 constants, as most of them are dereferenced. (I can't think of a nice solution to this problem without perhaps using descriptors, and even then.)
 
 ## Quickstart
 I might add documentation in the future, not sure yet lol. Anyway, here's the quickstart guide, for more usage, see [examples](examples/).
