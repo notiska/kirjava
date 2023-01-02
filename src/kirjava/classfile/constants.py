@@ -647,12 +647,13 @@ class ConstantPool:
 
     # ------------------------------ Accessing ------------------------------ #
 
-    def get(self, index: int, default: Union[Constant, None] = None) -> Constant:
+    def get(self, index: int, default: Union[Constant, None] = None, do_raise: bool = False) -> Constant:
         """
         Gets the constant at a given index.
 
         :param index: The index of the constant.
         :param default: The default value to get if the constant doesn't exist.
+        :param do_raise: Raises an error if the index is invalid.
         :return: The constant at that index.
         """
 
@@ -661,6 +662,10 @@ class ConstantPool:
             return constant
         if default is not None:
             return default
+
+        if do_raise:
+            raise IndexError("Constant pool index %i is not defined." % index)
+
         return Index(index)
 
     def get_utf8(self, index: int, default: Union[str, None] = None) -> str:

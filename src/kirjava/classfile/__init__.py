@@ -341,7 +341,7 @@ class ClassFile(Class_):
 
         for method in self._methods:
             if method._name == name:
-                if not descriptor:
+                if not descriptor_:
                     return method
                 if (method._argument_types, method._return_type) == descriptor_:
                     return method
@@ -483,8 +483,9 @@ class ClassFile(Class_):
             method.write(self, data)
 
         data.write(struct.pack(">H", len(self.attributes)))
-        for attribute, *_ in self.attributes.values():  # Only write the first attribute cos yeah
-            attributes.write_attribute(attribute, self, data)
+        for attributes_ in self.attributes.values():
+            for attribute in attributes_:
+                attributes.write_attribute(attribute, self, data)
 
         self.constant_pool.write(self, buffer)
         buffer.write(data.getvalue())

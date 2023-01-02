@@ -37,7 +37,7 @@ class Synthetic(AttributeInfo):
     def __repr__(self) -> str:
         return "<Synthetic() at %x>" % id(self)
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         ...
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
@@ -67,7 +67,7 @@ class Signature(AttributeInfo):
     def __repr__(self) -> str:
         return "<Signature(%s) at %x>" % (self.signature, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         signature_index, = struct.unpack(">H", buffer.read(2))
 
         # if isinstance(self.parent, MethodInfo):
@@ -128,11 +128,11 @@ class Annotations(AttributeInfo):
     def __repr__(self) -> str:
         return "<%s(%r) at %x>" % (self.__class__.__name__, self.annotations, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.annotations.clear()
         annotations_count, = struct.unpack(">H", buffer.read(2))
         for index in range(annotations_count):
-            self.annotations.append(Annotations.Annotation.read(class_file, buffer))
+            self.annotations.append(Annotations.Annotation.read(class_file, buffer, fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         buffer.write(struct.pack(">H", len(self.annotations)))
@@ -147,12 +147,13 @@ class Annotations(AttributeInfo):
         __slots__ = ("tag", "value")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes]) -> "Annotations.Element":
+        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "Annotations.Element":
             """
             Reads an annotation element from the buffer.
 
             :param class_file: The class file that this element belongs to.
             :param buffer: The binary buffer to read from.
+            :param fail_fast: Raises an exception if it's clear the element is invalid.
             :return: The read annotation element.
             """
 
@@ -162,24 +163,27 @@ class Annotations(AttributeInfo):
 
             if element.tag in b"BCDFIJSZsc":
                 value_index, = struct.unpack(">H", buffer.read(2))
-                element.value = class_file.constant_pool[value_index]
+                element.value = class_file.constant_pool.get(value_index, fail_fast)
 
             elif element.tag == b"e":
                 type_name_index, const_name_index = struct.unpack(">HH", buffer.read(4))
                 element.value = (
-                    class_file.constant_pool[type_name_index],
-                    class_file.constant_pool[const_name_index],
+                    class_file.constant_pool.get(type_name_index, fail_fast),
+                    class_file.constant_pool.get(const_name_index, fail_fast),
                 )
 
             elif element.tag == b"@":
-                element.value = Annotations.Annotation.read(class_file, buffer)
+                element.value = Annotations.Annotation.read(class_file, buffer, fail_fast)
 
             elif element.tag == b"[":
                 element.value = []
 
                 values_count, = struct.unpack(">H", buffer.read(2))
                 for index in range(values_count):
-                    element.value.append(Annotations.Element.read(class_file, buffer))
+                    element.value.append(Annotations.Element.read(class_file, buffer, fail_fast))
+
+            else:
+                raise ValueError("Unknown element tag %r." % element.tag)
 
             return element
 
@@ -232,26 +236,27 @@ class Annotations(AttributeInfo):
         __slots__ = ("descriptor", "elements")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes]) -> "Annotations.Annotation":
+        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "Annotations.Annotation":
             """
             Reads a single annotation from the buffer.
 
             :param class_file: The class file that annotation belongs to.
             :param buffer: The binary buffer to read from.
+            :param fail_fast: Raise an exception if it's clear that the annotation is invalid.
             :return: The read annotation.
             """
 
             annotation = cls.__new__(cls)
 
             descriptor_index, elements_count = struct.unpack(">HH", buffer.read(4))
-            annotation.descriptor = class_file.constant_pool[descriptor_index]
+            annotation.descriptor = class_file.constant_pool.get(descriptor_index, fail_fast)
 
             annotation.elements = []
             for index in range(elements_count):
                 name_index, = struct.unpack(">H", buffer.read(2))
-                name = class_file.constant_pool[name_index]
+                name = class_file.constant_pool.get(name_index, fail_fast)
 
-                annotation.elements.append((name, Annotations.Element.read(class_file, buffer)))
+                annotation.elements.append((name, Annotations.Element.read(class_file, buffer, fail_fast)))
 
             return annotation
 

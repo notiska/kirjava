@@ -32,12 +32,13 @@ class AttributeInfo:
     def __repr__(self) -> str:
         return "<%s()> at %x" % (self.__class__.__name__, id(self))
 
-    def read(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         """
         Populates the attribute's data from the buffer.
 
         :param class_file: The class file that this attribute belongs to.
         :param buffer: The binary data buffer to read from.
+        :param fail_fast: Fail immediately if the attribute is not valid.
         """
 
         ...
@@ -88,17 +89,16 @@ ATTRIBUTES = (
 _attribute_map = {attribute.name_: attribute for attribute in ATTRIBUTES}
 
 
-def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes]) -> AttributeInfo:
+def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = False) -> AttributeInfo:
     """
     Reads an attribute info from the buffer.
     
     :param parent: The parent (element in the class file, or the class file itself) that the attribute belongs to.
     :param class_file: The class file that the attribute belongs to.
     :param buffer: The buffer to read from.
+    :param fail_fast: Don't read the attribute if it's obvious that it isn't valid.
     :return: The attribute.
     """
-
-    # TODO: Option to "fail fast" so we don't read the entirety of an attribute if it's obvious that it's invalid
 
     name_index, attribute_length = struct.unpack(">HI", buffer.read(6))
     name = class_file.constant_pool.get_utf8(name_index, "<invalid>")  # FIXME: Yes or no?
@@ -114,7 +114,7 @@ def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes]) -> A
         if version_valid and location_valid:
             try:
                 attribute_info = attribute(parent)
-                attribute_info.read(class_file, buffer)
+                attribute_info.read(class_file, buffer, fail_fast)
                 # logger.debug("Found attribute %r." % attribute_info)
 
                 difference = buffer.tell() - (offset + attribute_length)

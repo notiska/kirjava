@@ -5,7 +5,7 @@ __all__ = (
 )
 
 import typing
-from typing import Iterable, List, Union
+from typing import Any, Iterable, List, Union
 
 from .. import types
 from ..abc import Class, Block, RethrowBlock, ReturnBlock
@@ -51,6 +51,24 @@ class InsnBlock(Block):
             self.label, ", ".join(map(str, self.instructions)), id(self),
         )
 
+    def __len__(self) -> int:
+        return len(self.instructions)
+
+    def __contains__(self, item: Any) -> bool:
+        return item in self.instructions
+
+    def __getitem__(self, index: int) -> Instruction:
+        return self.instructions[index]
+
+    def __setitem__(self, index: int, item: Any) -> None:
+        if isinstance(item, MetaInstruction):
+            item = item()
+        elif not isinstance(item, Instruction):
+            raise ValueError("Expected an instruction, got %r." % item)
+
+        # TODO: Specific instruction handling
+        self.instructions[index] = item
+
     def copy(self, deep: bool = False) -> "InsnBlock":
         new_block = self.__class__.__new__(self.__class__)
         new_block.graph = self.graph
@@ -81,6 +99,8 @@ class InsnBlock(Block):
 
         if isinstance(instruction, MetaInstruction):
             instruction = instruction()  # Should throw at this point, if invalid
+        elif not isinstance(instruction, Instruction):
+            raise ValueError("Expected an instruction, got %r." % instruction)
 
         if fix_edges:
             if isinstance(instruction, JumpInstruction):
@@ -103,6 +123,25 @@ class InsnBlock(Block):
 
         self.instructions.append(instruction)  # Otherwise, just add directly to the instructions
         return instruction
+
+    # TODO
+    # def insert(
+    #         self,
+    #         index: int,
+    #         instruction: Union[MetaInstruction, Instruction]
+    #         to: Union["InsnBlock", None] = None,
+    #         fix_edges: bool = True,
+    # ) -> Instruction:
+    #     ...
+
+    def clear(self) -> None:
+        """
+        Completely clears this block, including all edges.
+        """
+
+        self.instructions.clear()
+        for edge in self.out_edges:
+            self.graph.disconnect(edge)
 
     def fallthrough(self, to: "InsnBlock", fix: bool = True) -> "FallthroughEdge":
         """

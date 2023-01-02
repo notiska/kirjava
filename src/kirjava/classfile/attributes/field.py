@@ -37,7 +37,7 @@ class ConstantValue(AttributeInfo):
     def __repr__(self) -> str:
         return "<ConstantValue(%r) at %x>" % (self.value, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         value_index, = struct.unpack(">H", buffer.read(2))
         self.value = class_file.constant_pool[value_index]
 

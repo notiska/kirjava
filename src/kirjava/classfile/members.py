@@ -334,8 +334,9 @@ class MethodInfo(Method):
         ))
 
         buffer.write(struct.pack(">H", len(self.attributes)))
-        for attribute, *_ in self.attributes.values():
-            attributes.write_attribute(attribute, class_file, buffer)
+        for attributes_ in self.attributes.values():
+            for attribute in attributes_:
+                attributes.write_attribute(attribute, class_file, buffer)
 
 
 class FieldInfo(Field):
@@ -582,8 +583,9 @@ class FieldInfo(Field):
         ))
 
         buffer.write(struct.pack(">H", len(self.attributes)))
-        for attribute, *_ in self.attributes.values():
-            attributes.write_attribute(attribute, class_file, buffer)
+        for attributes_ in self.attributes.values():
+            for attribute in attributes_:
+                attributes.write_attribute(attribute, class_file, buffer)
 
 
 from . import attributes

@@ -122,7 +122,7 @@ class StackMapTable(AttributeInfo):
     def __repr__(self) -> str:
         return "<StackMapTable(%r) at %x>" % (self.frames, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.frames.clear()
         frames_count, = struct.unpack(">H", buffer.read(2))
         for index in range(frames_count):
@@ -132,7 +132,7 @@ class StackMapTable(AttributeInfo):
                     self.frames.append(stack_frame.read(frame_type, class_file, buffer))
                     break
             else:
-                ...  # TODO: Raise exception / log
+               raise ValueError("Unknown stackmap frame type %i." % frame_type)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         buffer.write(struct.pack(">H", len(self.frames)))
@@ -445,7 +445,7 @@ class LineNumberTable(AttributeInfo):
     def __repr__(self) -> str:
         return "<LineNumberTable(%r) at %x>" % (self.entries, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.entries.clear()
         entry_count, = struct.unpack(">H", buffer.read(2))
         for index in range(entry_count):
@@ -526,11 +526,11 @@ class LocalVariableTable(AttributeInfo):
     def __repr__(self) -> str:
         return "<LocalVariableTable(%r) at %x>" % (self.entries, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.entries.clear()
         entries_count, = struct.unpack(">H", buffer.read(2))
         for index in range(entries_count):
-            self.entries.append(LocalVariableTable.LocalVariableEntry.read(class_file, buffer))
+            self.entries.append(LocalVariableTable.LocalVariableEntry.read(class_file, buffer, fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         buffer.write(struct.pack(">H", len(self.entries)))
@@ -545,12 +545,13 @@ class LocalVariableTable(AttributeInfo):
         __slots__ = ("start_pc", "length", "name", "descriptor", "index")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes]) -> "LocalVariableTable.LocalVariableEntry":
+        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "LocalVariableTable.LocalVariableEntry":
             """
             Reads a local variable entry from the buffer.
 
             :param class_file: The class file that the entry belongs to.
             :param buffer: The binary buffer to read from.
+            :param fail_fast: Throws an exception if it's obvious this local variable entry is invalid.
             :return: The read local variable entry.
             """
 
@@ -564,8 +565,8 @@ class LocalVariableTable(AttributeInfo):
                 entry.index,
             ) = struct.unpack(">HHHHH", buffer.read(10))
 
-            entry.name = class_file.constant_pool[name_index]
-            entry.descriptor = class_file.constant_pool[descriptor_index]
+            entry.name = class_file.constant_pool.get(name_index, fail_fast)
+            entry.descriptor = class_file.constant_pool.get(descriptor_index, fail_fast)
 
             # try:
             #     self.type_ = descriptor.parse_field_descriptor(
@@ -648,11 +649,11 @@ class LocalVariableTypeTable(AttributeInfo):
     def __repr__(self) -> str:
         return "<LocalVariableTypeTable(%r) at %x>" % (self.entries, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.entries.clear()
         entries_count, = struct.unpack(">H", buffer.read(2))
         for index in range(entries_count):
-            self.entries.append(LocalVariableTypeTable.LocalVariableTypeEntry.read(class_file, buffer))
+            self.entries.append(LocalVariableTypeTable.LocalVariableTypeEntry.read(class_file, buffer, fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         buffer.write(struct.pack(">H", len(self.entries)))
@@ -667,12 +668,13 @@ class LocalVariableTypeTable(AttributeInfo):
         __slots__ = ("start_pc", "length", "name", "signature", "index")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes]) -> "LocalVariableTypeTable.LocalVariableTypeEntry":
+        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "LocalVariableTypeTable.LocalVariableTypeEntry":
             """
             Reads a local variable type entry from the buffer.
 
             :param class_file: The class file that the entry belongs to.
             :param buffer: The binary buffer to read from.
+            :param fail_fast: Throws an exception if it's obvious that this local variable type entry is invalid.
             :return: The entry that was read.
             """
 
@@ -686,8 +688,8 @@ class LocalVariableTypeTable(AttributeInfo):
                 entry.index,
             ) = struct.unpack(">HHHHH", buffer.read(10))
 
-            entry.name = class_file.constant_pool[name_index]
-            entry.signature = class_file.constant_pool[signature_index]
+            entry.name = class_file.constant_pool.get(name_index, fail_fast)
+            entry.signature = class_file.constant_pool.get(signature_index, fail_fast)
 
             # try:
             #     self.type_ = signature.parse_field_signature(

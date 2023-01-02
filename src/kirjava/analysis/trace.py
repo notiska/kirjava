@@ -486,7 +486,7 @@ class Trace:
         max_stack = state.max_stack
         max_locals = state.max_locals
 
-        states: Dict[InsnBlock, Dict[State.Frozen, State.Frozen]] = {}
+        states: Dict[InsnBlock, Dict[State.Frozen, Tuple[State.Frozen, ...]]] = {}
 
         while to_visit:
             root, state, edges = to_visit[-1]
@@ -594,7 +594,7 @@ class Trace:
 
                 # Check the locals more specifically, taking into account if any of the locals actually used in
                 # the block are different.
-                for entry, exit in constraints.items():
+                for entry, (*_, exit) in constraints.items():
                     live: Set[int] = set()
                     overwritten: Set[int] = set()
                     for index, _, _, read in exit.local_accesses:
@@ -663,9 +663,17 @@ class Trace:
 
             # print(root, edge)
             entry = state.freeze()
-            for index, instruction in enumerate(block.instructions):
-                instruction.trace(InstructionInBlock(block, instruction, index), state, errors, checker)
-            constraints[entry] = state.freeze()
+
+            if exact:
+                instruction_states = []
+                for index, instruction in enumerate(block.instructions):
+                    instruction.trace(InstructionInBlock(block, instruction, index), state, errors, checker)
+                    instruction_states.append(state.freeze())
+                constraints[entry] = tuple(instruction_states)
+            else:
+                for index, instruction in enumerate(block.instructions):
+                    instruction.trace(InstructionInBlock(block, instruction, index), state, errors, checker)
+                constraints[entry] = (state.freeze(),)
 
             # Adjust stack and local maxes too
             if state.max_stack > max_stack:
@@ -703,7 +711,7 @@ class Trace:
     def __init__(
             self,
             graph: "InsnGraph",
-            states: FrozenOrderedDict["InsnBlock", FrozenOrderedDict["State.Frozen", "State.Frozen"]],
+            states: FrozenOrderedDict["InsnBlock", FrozenOrderedDict[State.Frozen, Tuple[State.Frozen, ...]]],
             errors: Tuple[Error, ...],
             leaf_edges: FrozenSet[Edge],
             back_edges: FrozenSet[Edge],

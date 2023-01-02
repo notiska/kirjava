@@ -37,7 +37,7 @@ class BootstrapMethods(AttributeInfo):
     def __repr__(self) -> str:
         return "<BootstrapMethods(methods=%r) at %x>" % (self.methods, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.methods.clear()
         bootstrap_methods_count, = struct.unpack(">H", buffer.read(2))
         for index in range(bootstrap_methods_count):
@@ -129,7 +129,7 @@ class NestHost(AttributeInfo):
     def __repr__(self) -> str:
         return "<NestHost(host=%r) at %x>" % (self.host_class, id(self))
         
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         host_class_index, = struct.unpack(">H", buffer.read(2))
         self.host_class = class_file.constant_pool[host_class_index]
 
@@ -162,7 +162,7 @@ class NestMembers(AttributeInfo):
     def __repr__(self) -> str:
         return "<NestMembers(classes=%r) at %x>" % (self.classes, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.classes.clear()
         classes_count, = struct.unpack(">H", buffer.read(2))
         for index in range(classes_count):
@@ -200,7 +200,7 @@ class PermittedSubclasses(AttributeInfo):
     def __repr__(self) -> str:
         return "<PermittedSubclasses(classes=%r) at %x>" % (self.classes, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.classes.clear()
         classes_count, = struct.unpack(">H", buffer.read(2))
         for index in range(classes_count):
@@ -239,11 +239,11 @@ class InnerClasses(AttributeInfo):
     def __repr__(self) -> str:
         return "<InnerClasses(classes=%r) at %x>" % (self.classes, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.classes.clear()
         classes_count, = struct.unpack(">H", buffer.read(2))
         for index in range(classes_count):
-            self.classes.append(InnerClasses.InnerClass.read(class_file, buffer))
+            self.classes.append(InnerClasses.InnerClass.read(class_file, buffer, fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         buffer.write(struct.pack(">H", len(self.classes)))
@@ -258,12 +258,13 @@ class InnerClasses(AttributeInfo):
         __slots__ = ("inner_class", "outer_class", "inner_name", "access_flags")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes]) -> "InnerClasses.InnerClass":
+        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "InnerClasses.InnerClass":
             """
             Reads an inner class info from the buffer.
 
             :param class_file: The class file that the inner class info belongs to.
             :param buffer: The binary buffer to read from.
+            :param fail_fast: Throws an exception if it's obvious this inner class info is invalid.
             :return: The read inner class.
             """
 
@@ -276,10 +277,12 @@ class InnerClasses(AttributeInfo):
                 inner_class.access_flags,
             ) = struct.unpack(">HHHH", buffer.read(8))
 
-            inner_class.inner_class = class_file.constant_pool[inner_class_index]
-            inner_class.outer_class = class_file.constant_pool[outer_class_index] if outer_class_index else None
+            inner_class.inner_class = class_file.constant_pool.get(inner_class_index, fail_fast)
+            inner_class.outer_class = (
+                class_file.constant_pool.get(outer_class_index, fail_fast) if outer_class_index else None
+            )
             inner_class.inner_name = (
-                class_file.constant_pool[inner_class_name_index] if inner_class_name_index else None
+                class_file.constant_pool.get(inner_class_name_index, fail_fast) if inner_class_name_index else None
             )
 
             return inner_class
@@ -447,7 +450,7 @@ class EnclosingMethod(AttributeInfo):
     def __repr__(self) -> str:
         return "<EnclosingMethod(class=%r, method=%r) at %x>" % (self.class_, self.method, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         class_index, method_index = struct.unpack(">HH", buffer.read(4))
         # No type information? Thanks Iska, really helpful!
         self.class_ = class_file.constant_pool[class_index]
@@ -485,11 +488,11 @@ class Record(AttributeInfo):
     def __repr__(self) -> str:
         return "<Record(components=%r) at %x>" % (self.components, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.components.clear()
         components_count, = struct.unpack(">H", buffer.read(2))
         for index in range(components_count):
-            self.components.append(Record.ComponentInfo.read(class_file, buffer))
+            self.components.append(Record.ComponentInfo.read(class_file, buffer, fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         buffer.write(struct.pack(">H", len(self.components)))
@@ -504,12 +507,13 @@ class Record(AttributeInfo):
         __slots__ = ("name", "descriptor", "attributes")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes]) -> "Record.ComponentInfo":
+        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "Record.ComponentInfo":
             """
             Reads a single component info from a buffer.
 
             :param class_file: The class file that the component info belongs to.
             :param buffer: The binary buffer to read from.
+            :param fail_fast: Throws an exception if it's obvious that this record component info is invalid.
             :return: The read component info.
             """
 
@@ -517,12 +521,12 @@ class Record(AttributeInfo):
 
             name_index, descriptor_index, attributes_count = struct.unpack(">HHH", buffer.read(6))
 
-            component_info.name = class_file.constant_pool[name_index]
-            component_info.descriptor = class_file.constant_pool[descriptor_index]
+            component_info.name = class_file.constant_pool.get(name_index, fail_fast)
+            component_info.descriptor = class_file.constant_pool.get(descriptor_index, fail_fast)
 
             component_info.attributes = {}
             for index in range(attributes_count):
-                attribute_info = attributes.read_attribute(component_info, class_file, buffer)
+                attribute_info = attributes.read_attribute(component_info, class_file, buffer, fail_fast)
                 component_info.attributes[attribute_info.name] = (
                     component_info.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
                 )
@@ -553,8 +557,9 @@ class Record(AttributeInfo):
                 len(self.attributes),
             ))
 
-            for attribute in self.attributes.values():
-                attributes.write_attribute(attribute, class_file, buffer)
+            for attributes_ in self.attributes.values():
+                for attribute in attributes_:
+                    attributes.write_attribute(attribute, class_file, buffer)
 
 
 class SourceFile(AttributeInfo):
@@ -580,7 +585,7 @@ class SourceFile(AttributeInfo):
     def __repr__(self) -> str:
         return "<SourceFile(%r) at %x>" % (self.source_file, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         source_file_index, = struct.unpack(">H", buffer.read(2))
         self.source_file = class_file.constant_pool[source_file_index]
 

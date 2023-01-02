@@ -57,7 +57,7 @@ class Liveness:
         for start in itertools.chain(trace.leaf_edges, trace.back_edges):
             live = entries.setdefault(start.to, set())
             overwritten: Set[int] = set()
-            for exit in trace.states[start.to].values():
+            for *_, exit in trace.states[start.to].values():
                 for index, _, _, read in exit.local_accesses:
                     if index in overwritten:
                         continue
@@ -89,7 +89,7 @@ class Liveness:
 
                 # Check if the block was visited, if not, we don't need to worry about the liveness for it
                 if block in trace.states:
-                    for exit in trace.states[block].values():
+                    for *_, exit in trace.states[block].values():
                         for index, _, _, read in reversed(exit.local_accesses):
                             if read:
                                 live.add(index)

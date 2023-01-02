@@ -76,7 +76,7 @@ class Code(AttributeInfo):
             self.max_stack, self.max_locals, self.exception_table, id(self),
         )
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         # Legacy code attribute for versions <= 45.2.
         # https://github.com/Storyyeller/Krakatau/blob/master/tests/decompiler/source/OldVersionTest.j
         if class_file.version < self._LEGACY_VERSION:
@@ -98,7 +98,7 @@ class Code(AttributeInfo):
         self.attributes.clear()
         attributes_count, = struct.unpack(">H", buffer.read(2))
         for index in range(attributes_count):
-            attribute_info = attributes.read_attribute(self, class_file, buffer)
+            attribute_info = attributes.read_attribute(self, class_file, buffer, fail_fast)
             self.attributes[attribute_info.name] = self.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
@@ -118,8 +118,9 @@ class Code(AttributeInfo):
             exception.write(class_file, buffer)
 
         buffer.write(struct.pack(">H", len(self.attributes)))
-        for attribute, *_ in self.attributes.values():
-            attributes.write_attribute(attribute, class_file, buffer)
+        for attributes_ in self.attributes.values():
+            for attribute in attributes_:
+                attributes.write_attribute(attribute, class_file, buffer)
 
     class ExceptionHandler:
         """
@@ -207,12 +208,12 @@ class Exceptions(AttributeInfo):
     def __repr__(self) -> str:
         return "<Exceptions(%r) at %x>" % (self.exceptions, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.exceptions.clear()
         exceptions_count, = struct.unpack(">H", buffer.read(2))
         for index in range(exceptions_count):
             class_index, = struct.unpack(">H", buffer.read(2))
-            self.exceptions.append(class_file.constant_pool[class_index])
+            self.exceptions.append(class_file.constant_pool.get(class_index, fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         buffer.write(struct.pack(">H", len(self.exceptions)))
