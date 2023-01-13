@@ -2,10 +2,12 @@
 
 __all__ = (
     "variable",
+    "IRGraph",
 )
 
 """
 Kirjava IR constructs.
 """
 
-from . import variable
+from . import graph, variable
+from .graph import *

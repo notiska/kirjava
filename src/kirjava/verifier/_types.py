@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "NoTypeChecker", "BasicTypeChecker", "FullTypeChecker",
+)
+
 """
-The bytecode verifier.
+Type checker implementations.
 """
 
 import logging
 from typing import Dict, Set, Tuple, Union
 
-from ... import types
-from ...abc import TypeChecker
-from ...environment import Environment
-from ...types import ReferenceType, VerificationType
-from ...types.reference import ArrayType, ClassOrInterfaceType
-from ...types.verification import This, Uninitialized, UninitializedThis
+from .. import environment, types
+from ..abc import TypeChecker
+from ..types import ReferenceType, VerificationType
+from ..types.reference import ArrayType, ClassOrInterfaceType
+from ..types.verification import This, Uninitialized, UninitializedThis
 
 logger = logging.getLogger("kirjava.analysis.verifier")
 
@@ -22,10 +25,13 @@ class NoTypeChecker(TypeChecker):
     A type checker that does nothing (for no verification).
     """
 
-    def check_merge(self, expected: Union[VerificationType, None], actual: "VerificationType") -> bool:
+    def check_merge(self, expected: Union[VerificationType, None], actual: VerificationType) -> bool:
         return True  # Always assignable
 
     def check_reference(self, actual: VerificationType) -> bool:
+        return True
+
+    def check_class(self, actual: VerificationType) -> bool:
         return True
 
     def check_array(self, actual: VerificationType) -> bool:
@@ -67,6 +73,9 @@ class BasicTypeChecker(TypeChecker):
         ):
             return True
         return actual == types.null_t or actual == types.this_t or actual == types.uninit_this_t
+
+    def check_class(self, actual: VerificationType) -> bool:
+        return actual.__class__ is ClassOrInterfaceType or actual == types.null_t
 
     def check_array(self, actual: VerificationType) -> bool:
         return actual.__class__ is ArrayType or actual == types.null_t
@@ -116,8 +125,8 @@ class FullTypeChecker(BasicTypeChecker):
                 super_classes_a: Set[str] = set()
 
                 try:
-                    class_a = Environment.find_class(expected.name)
-                    class_b = Environment.find_class(actual.name)
+                    class_a = environment.find_class(expected.name)
+                    class_b = environment.find_class(actual.name)
 
                     # FIXME: Cleanup
 

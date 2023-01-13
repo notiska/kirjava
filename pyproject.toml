@@ -1,3 +1,2 @@
 [build-system]
-requires = ["pybuilder>=0.12.0"]
-build-backend = "pybuilder.pep517"
+requires = ["setuptools", "wheel", "Cython"]

@@ -9,12 +9,12 @@ __all__ = (
 Attributes found exclusively in the ClassFile structure.
 """
 
-import struct
 from typing import Dict, IO, Iterable, List, Tuple, Union
 
 from . import AttributeInfo
 from .. import attributes, ClassFile
-from ..constants import Constant, Class, MethodHandle, UTF8
+from .._struct import *
+from ..constants import ConstantInfo, Class, MethodHandle, UTF8
 from ...version import Version
 
 
@@ -39,12 +39,12 @@ class BootstrapMethods(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.methods.clear()
-        bootstrap_methods_count, = struct.unpack(">H", buffer.read(2))
+        bootstrap_methods_count, = unpack_H(buffer.read(2))
         for index in range(bootstrap_methods_count):
             self.methods.append(BootstrapMethods.BootstrapMethod.read(class_file, buffer))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.methods)))
+        buffer.write(pack_H(len(self.methods)))
         for bootstrap_method in self.methods:
             bootstrap_method.write(class_file, buffer)
 
@@ -67,25 +67,25 @@ class BootstrapMethods(AttributeInfo):
 
             bootstrap_method = cls.__new__(cls)
 
-            bootstrap_method_index, = struct.unpack(">H", buffer.read(2))
+            bootstrap_method_index, = unpack_H(buffer.read(2))
             bootstrap_method.method_handle = class_file.constant_pool[bootstrap_method_index]
 
             bootstrap_method.arguments = []
-            bootstrap_arguments_count, = struct.unpack(">H", buffer.read(2))
+            bootstrap_arguments_count, = unpack_H(buffer.read(2))
             for index in range(bootstrap_arguments_count):
-                bootstrap_argument_index, = struct.unpack(">H", buffer.read(2))
+                bootstrap_argument_index, = unpack_H(buffer.read(2))
                 bootstrap_method.arguments.append(class_file.constant_pool[bootstrap_argument_index])
 
             return bootstrap_method
 
-        def __init__(self, method_handle: MethodHandle, arguments: Union[Iterable[Constant], None] = None) -> None:
+        def __init__(self, method_handle: MethodHandle, arguments: Union[Iterable[ConstantInfo], None] = None) -> None:
             """
             :param method_handle: The method handle for this bootstrap method.
             :param arguments: The bootstrap arguments used to resolve the call site.
             """
 
             self.method_handle = method_handle
-            self.arguments: List[Constant] = []
+            self.arguments: List[ConstantInfo] = []
 
             if arguments is not None:
                 self.arguments.extend(arguments)
@@ -101,9 +101,9 @@ class BootstrapMethods(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(">HH", class_file.constant_pool.add(self.method_handle), len(self.arguments)))
+            buffer.write(pack_HH(class_file.constant_pool.add(self.method_handle), len(self.arguments)))
             for bootstrap_argument in self.arguments:
-                buffer.write(struct.pack(">H", class_file.constant_pool.add(bootstrap_argument)))
+                buffer.write(pack_H(class_file.constant_pool.add(bootstrap_argument)))
 
 
 class NestHost(AttributeInfo):
@@ -130,11 +130,11 @@ class NestHost(AttributeInfo):
         return "<NestHost(host=%r) at %x>" % (self.host_class, id(self))
         
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
-        host_class_index, = struct.unpack(">H", buffer.read(2))
+        host_class_index, = unpack_H(buffer.read(2))
         self.host_class = class_file.constant_pool[host_class_index]
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", class_file.constant_pool.add(self.host_class)))
+        buffer.write(pack_H(class_file.constant_pool.add(self.host_class)))
 
 
 class NestMembers(AttributeInfo):
@@ -164,15 +164,15 @@ class NestMembers(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.classes.clear()
-        classes_count, = struct.unpack(">H", buffer.read(2))
+        classes_count, = unpack_H(buffer.read(2))
         for index in range(classes_count):
-            class_index, = struct.unpack(">H", buffer.read(2))
+            class_index, = unpack_H(buffer.read(2))
             self.classes.append(class_file.constant_pool[class_index])
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.classes)))
+        buffer.write(pack_H(len(self.classes)))
         for class_ in self.classes:
-            buffer.write(struct.pack(">H", class_file.constant_pool.add(class_)))
+            buffer.write(pack_H(class_file.constant_pool.add(class_)))
 
 
 class PermittedSubclasses(AttributeInfo):
@@ -202,15 +202,15 @@ class PermittedSubclasses(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.classes.clear()
-        classes_count, = struct.unpack(">H", buffer.read(2))
+        classes_count, = unpack_H(buffer.read(2))
         for index in range(classes_count):
-            class_index, = struct.unpack(">H", buffer.read(2))
+            class_index, = unpack_H(buffer.read(2))
             self.classes.append(class_file.constant_pool[class_index])
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.classes)))
+        buffer.write(pack_H(len(self.classes)))
         for class_ in self.classes:
-            buffer.write(struct.pack(">H", class_file.constant_pool.add(class_)))
+            buffer.write(pack_H(class_file.constant_pool.add(class_)))
 
 
 class InnerClasses(AttributeInfo):
@@ -241,12 +241,12 @@ class InnerClasses(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.classes.clear()
-        classes_count, = struct.unpack(">H", buffer.read(2))
+        classes_count, = unpack_H(buffer.read(2))
         for index in range(classes_count):
             self.classes.append(InnerClasses.InnerClass.read(class_file, buffer, fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.classes)))
+        buffer.write(pack_H(len(self.classes)))
         for inner_class in self.classes:
             inner_class.write(class_file, buffer)
 
@@ -275,14 +275,15 @@ class InnerClasses(AttributeInfo):
                 outer_class_index,
                 inner_class_name_index,
                 inner_class.access_flags,
-            ) = struct.unpack(">HHHH", buffer.read(8))
+            ) = unpack_HHHH(buffer.read(8))
 
-            inner_class.inner_class = class_file.constant_pool.get(inner_class_index, fail_fast)
+            inner_class.inner_class = class_file.constant_pool.get(inner_class_index, do_raise=fail_fast)
             inner_class.outer_class = (
-                class_file.constant_pool.get(outer_class_index, fail_fast) if outer_class_index else None
+                class_file.constant_pool.get(outer_class_index, do_raise=fail_fast) if outer_class_index else None
             )
             inner_class.inner_name = (
-                class_file.constant_pool.get(inner_class_name_index, fail_fast) if inner_class_name_index else None
+                class_file.constant_pool.get(inner_class_name_index, do_raise=fail_fast)
+                if inner_class_name_index else None
             )
 
             return inner_class
@@ -424,8 +425,7 @@ class InnerClasses(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(
-                ">HHHH",
+            buffer.write(pack_HHHH(
                 class_file.constant_pool.add(self.inner_class),
                 0 if self.outer_class is None else class_file.constant_pool.add(self.outer_class),
                 0 if self.inner_name is None else class_file.constant_pool.add(self.inner_name),
@@ -451,14 +451,14 @@ class EnclosingMethod(AttributeInfo):
         return "<EnclosingMethod(class=%r, method=%r) at %x>" % (self.class_, self.method, id(self))
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
-        class_index, method_index = struct.unpack(">HH", buffer.read(4))
+        class_index, method_index = unpack_HH(buffer.read(4))
         # No type information? Thanks Iska, really helpful!
         self.class_ = class_file.constant_pool[class_index]
         self.method = class_file.constant_pool[method_index] if method_index else None
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(
-            ">HH", class_file.constant_pool.add(self.class_),
+        buffer.write(pack_HH(
+            class_file.constant_pool.add(self.class_),
             0 if self.method is None else class_file.constant_pool.add(self.method),
         ))
 
@@ -490,12 +490,12 @@ class Record(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.components.clear()
-        components_count, = struct.unpack(">H", buffer.read(2))
+        components_count, = unpack_H(buffer.read(2))
         for index in range(components_count):
             self.components.append(Record.ComponentInfo.read(class_file, buffer, fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.components)))
+        buffer.write(pack_H(len(self.components)))
         for component in self.components:
             component.write(class_file, buffer)
 
@@ -519,10 +519,10 @@ class Record(AttributeInfo):
 
             component_info = cls.__new__(cls)
 
-            name_index, descriptor_index, attributes_count = struct.unpack(">HHH", buffer.read(6))
+            name_index, descriptor_index, attributes_count = unpack_HHH(buffer.read(6))
 
-            component_info.name = class_file.constant_pool.get(name_index, fail_fast)
-            component_info.descriptor = class_file.constant_pool.get(descriptor_index, fail_fast)
+            component_info.name = class_file.constant_pool.get(name_index, do_raise=fail_fast)
+            component_info.descriptor = class_file.constant_pool.get(descriptor_index, do_raise=fail_fast)
 
             component_info.attributes = {}
             for index in range(attributes_count):
@@ -550,8 +550,7 @@ class Record(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(
-                ">HHH",
+            buffer.write(pack_HHH(
                 class_file.constant_pool.add(self.name),
                 class_file.constant_pool.add(self.descriptor),
                 len(self.attributes),
@@ -586,8 +585,8 @@ class SourceFile(AttributeInfo):
         return "<SourceFile(%r) at %x>" % (self.source_file, id(self))
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
-        source_file_index, = struct.unpack(">H", buffer.read(2))
+        source_file_index, = unpack_H(buffer.read(2))
         self.source_file = class_file.constant_pool[source_file_index]
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", class_file.constant_pool.add(self.source_file)))
+        buffer.write(pack_H(class_file.constant_pool.add(self.source_file)))

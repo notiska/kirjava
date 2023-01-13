@@ -40,9 +40,6 @@ class Null(Constant, VerificationType):  # Yes, it's a constant too, cos compati
     Used to denote a null reference in Java.
     """
 
-    def __init__(self) -> None:
-        super().__init__(None)
-
     def __repr__(self) -> str:
         return "<Null() at %x>" % id(self)
 

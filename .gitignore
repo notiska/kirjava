@@ -1,6 +1,8 @@
 __pycache__
+*.c
 *.pyc
 
-/.pybuilder/
-/target/
+/build/
+/dist/
+/src/kirjava.egg-info/
 /tests/

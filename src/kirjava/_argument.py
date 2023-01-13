@@ -37,7 +37,7 @@ def get_class_constant(argument: ClassConstant) -> constants.Class:
     if argument_class is str:
         try:
             type_ = descriptor.parse_field_descriptor(argument)
-            if not isinstance(type_, ReferenceType):
+            if not isinstance(type_, types.ReferenceType):
                 raise Exception
             return get_class_constant(type_)
         except Exception:
@@ -46,7 +46,7 @@ def get_class_constant(argument: ClassConstant) -> constants.Class:
         return argument
     elif argument_class is ClassOrInterfaceType:
         return constants.Class(argument.name)
-    elif isinstance(argument, ReferenceType):
+    elif isinstance(argument, types.ReferenceType):
         return constants.Class(descriptor.to_descriptor(argument))
     elif isinstance(argument, Class):
         return constants.Class(argument.name)
@@ -67,14 +67,14 @@ def get_reference_type(argument: ReferenceType) -> types.ReferenceType:
     if argument_class is str:
         try:
             type_ = descriptor.parse_field_descriptor(argument)
-            if not isinstance(type_, ReferenceType):
+            if not isinstance(type_, types.ReferenceType):
                 raise Exception
             return type_
         except Exception:
             return ClassOrInterfaceType(argument)
     elif argument_class is constants.Class:
-        return argument.get_actual_type()
-    elif isinstance(argument, ReferenceType):
+        return argument.type
+    elif isinstance(argument, types.ReferenceType):
         return argument
     elif isinstance(argument, Class):
         return argument.get_type()

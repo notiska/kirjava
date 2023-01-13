@@ -8,12 +8,12 @@ __all__ = (
 Attributes that are only found in fields info structures.
 """
 
-import struct
 from typing import IO, Union
 
 from . import AttributeInfo
 from .. import ClassFile
-from ..constants import Constant
+from .._struct import *
+from ..constants import ConstantInfo
 from ..members import FieldInfo
 from ...version import Version
 
@@ -29,7 +29,7 @@ class ConstantValue(AttributeInfo):
     since = Version(45, 0)
     locations = (FieldInfo,)
 
-    def __init__(self, parent: FieldInfo, value: Union[Constant, None] = None) -> None:
+    def __init__(self, parent: FieldInfo, value: Union[ConstantInfo, None] = None) -> None:
         super().__init__(parent, ConstantValue.name_)
 
         self.value = value
@@ -38,8 +38,8 @@ class ConstantValue(AttributeInfo):
         return "<ConstantValue(%r) at %x>" % (self.value, id(self))
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
-        value_index, = struct.unpack(">H", buffer.read(2))
+        value_index, = unpack_H(buffer.read(2))
         self.value = class_file.constant_pool[value_index]
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", class_file.constant_pool.add(self.value)))
+        buffer.write(pack_H(class_file.constant_pool.add(self.value)))

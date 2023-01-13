@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+# cython: language=c
+# cython: language_level=3
 
 from typing import Tuple, Union
 
@@ -6,7 +7,7 @@ from .. import types
 from ..types import BaseType, InvalidType
 from ..types.reference import ArrayType, ClassOrInterfaceType
 
-_FORWARD_BASE_TYPES = {
+cdef dict _FORWARD_BASE_TYPES = {
     "B": types.byte_t,
     "S": types.short_t,
     "I": types.int_t,
@@ -17,7 +18,7 @@ _FORWARD_BASE_TYPES = {
     "Z": types.bool_t,
     "V": types.void_t,
 }
-_BACKWARD_BASE_TYPES = {
+cdef dict _BACKWARD_BASE_TYPES = {
     types.byte_t: "B",
     types.short_t: "S",
     types.int_t: "I",
@@ -30,28 +31,23 @@ _BACKWARD_BASE_TYPES = {
 }
 
 
-def _find_enclosing(
-        string: str,
-        start_identifier: str,
-        end_identifier: str,
-) -> Union[Tuple[str, str, str], Tuple[None, None, None]]:
+cpdef inline tuple _find_enclosing(str string, str start_identifier, str end_identifier):
     """
     Finds the enclosing arguments within the provided start and ending identifiers, as well as the string before and
     after the start and end.
     """
 
-    start_index = string.find(start_identifier)
-
-    offset = start_index + 1
-    end_index = string.find(end_identifier)
+    cdef int end_index = string.find(end_identifier)
     if end_index < 0:
         return None, None, None
+    cdef int start_index = string.find(start_identifier)
+    cdef int offset = string.find(start_identifier, start_index + 1)
 
-    while 0 < string.find(start_identifier, offset) < end_index:  # Find the next start in the initial bound
-        offset = string.find(start_identifier, offset) + 1
+    while 0 < offset < end_index:  # Find the next start in the initial bound
         end_index = string.find(end_identifier, end_index + 1)
         if end_index < 0:  # No corresponding end identifier?
             return None, None, None
+        offset = string.find(start_identifier, offset) + 1
 
     return string[:start_index], string[start_index + 1: end_index], string[end_index + 1:]
 
@@ -65,7 +61,7 @@ def to_descriptor(*values: Union[Tuple[BaseType, ...], BaseType], dont_throw: bo
     :return: The serialized type string.
     """
 
-    descriptor = ""
+    cdef str descriptor = ""
     for value in values:
         base_type = _BACKWARD_BASE_TYPES.get(value, None)
         if base_type is not None:
@@ -85,7 +81,7 @@ def to_descriptor(*values: Union[Tuple[BaseType, ...], BaseType], dont_throw: bo
     return descriptor
 
 
-def next_argument(descriptor: str) -> Tuple[BaseType, str]:
+cpdef inline tuple next_argument(str descriptor):  # -> Tuple[BaseType, str]:
     """
     Gets the next argument from the descriptor.
 
@@ -96,19 +92,13 @@ def next_argument(descriptor: str) -> Tuple[BaseType, str]:
     if not descriptor:
         return InvalidType(descriptor), ""
 
-    char = descriptor[0]
-
-    base_type = _FORWARD_BASE_TYPES.get(char, None)
-    if base_type is not None:
-        return base_type, descriptor[1:]
-
-    elif char == "L":
+    if descriptor[0] == "L":
         end_index = descriptor.find(";")
         if end_index < 0:
             return InvalidType(descriptor), ""
         return ClassOrInterfaceType(descriptor[1: end_index]), descriptor[end_index + 1:]
 
-    elif char == "[":
+    elif descriptor[0] == "[":
         element_type, descriptor = next_argument(descriptor[1:])  # FIXME: This could be done so much better
         if element_type.__class__ is ArrayType:
             element_type.dimension += 1  # Evil
@@ -119,6 +109,9 @@ def next_argument(descriptor: str) -> Tuple[BaseType, str]:
         return array_type, descriptor
 
     else:
+        base_type = _FORWARD_BASE_TYPES.get(descriptor[0], None)
+        if base_type is not None:
+            return base_type, descriptor[1:]
         return InvalidType(descriptor), ""
 
 
@@ -141,6 +134,8 @@ def parse_field_descriptor(
         if dont_throw:
             return InvalidType(descriptor)
         raise ValueError("Descriptor is empty.")
+
+    cdef str remaining
 
     type_, remaining = next_argument(descriptor)
     if not force_read:
@@ -178,16 +173,19 @@ def parse_method_descriptor(
         if dont_throw:
             return InvalidType(descriptor)
         raise ValueError("Descriptor is empty.")
-    
+
+    cdef str preceding
+    cdef str arguments_descriptor
+    cdef str remaining
+
     # This is extra, but who cares :p, if it causes MAJOR issues I'll remove it later
     preceding, arguments_descriptor, remaining = _find_enclosing(descriptor, "(", ")")
 
-    argument_types = []
+    cdef list argument_types = []
     while arguments_descriptor:  # If there are no (), arguments_descriptor should be None
         type_, arguments_descriptor = next_argument(arguments_descriptor)
         argument_types.append(type_)
-        
-    argument_types = tuple(argument_types)
+
     return_type, remaining = next_argument(remaining)
     
     if not force_read:
@@ -210,7 +208,7 @@ def parse_method_descriptor(
 
         # Check the types in the arguments are valid (i.e. no void types)
         for argument_type in argument_types:
-            if argument_type == types.void_t or isinstance(argument_type, InvalidType):
+            if argument_type == types.void_t or argument_type.__class__ is InvalidType:
                 if dont_throw:
                     return InvalidType(descriptor)
                 raise TypeError("Invalid argument type %r found." % argument_type)
@@ -219,7 +217,7 @@ def parse_method_descriptor(
         if return_type.__class__ is InvalidType:
             raise TypeError("Invalid return type %r found." % return_type)
 
-    return argument_types, return_type
+    return tuple(argument_types), return_type
 
 
 # def parse_any_descriptor(descriptor: str, dont_throw: bool = False, force_tuple: bool = False,

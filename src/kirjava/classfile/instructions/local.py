@@ -5,14 +5,20 @@ Local-related instructions.
 """
 
 from abc import ABC
-from typing import Any, IO, List, Union
+from typing import Any, Dict, IO, List, Union
+
 
 from . import Instruction
 from .. import ClassFile
+from ..constants import Integer
 from ... import types
-from ...abc import Error, Source, TypeChecker
-from ...analysis.trace import State
+from ...abc import Source, TypeChecker, Value
+from ...analysis.ir.arithmetic import AdditionExpression
+from ...analysis.ir.local import GetLocalExpression, SetLocalStatement
+from ...analysis.ir.value import ConstantValue
+from ...analysis.trace import Entry, State
 from ...types import BaseType
+from ...verifier import Error
 
 
 class LoadLocalInstruction(Instruction, ABC):
@@ -50,15 +56,24 @@ class LoadLocalInstruction(Instruction, ABC):
         error = None
         if self.type_ is None:
             if not checker.check_reference(entry.type):
-                error = Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source))
+                error = Error(
+                    Error.Type.INVALID_TYPE, source,
+                    "expected reference type", "got %s (via %s)" % (entry.type, entry.source),
+                )
         elif not checker.check_merge(self.type_, entry.type):
-            error = Error(source, "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source))
+            error = Error(
+                Error.Type.INVALID_TYPE, source,
+                "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source),
+            )
 
         if error is not None:
             errors.append(error)
             state.push(source, checker.merge(self.type_, entry.type), parents=(entry,), merges=(entry,))
         else:
             state.push(source, entry)
+
+    def lift(self, pre: State, post: State, associations: Dict[Entry, Value]) -> None:
+        associations[post.stack[-1]] = GetLocalExpression(self.index, associations[pre.locals[self.index]])
 
 
 class LoadLocalFixedInstruction(LoadLocalInstruction, ABC):
@@ -129,14 +144,17 @@ class StoreLocalInstruction(Instruction, ABC):
         if self.type_ is not None:
             entry, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
             if not checker.check_merge(self.type_, entry.type):
-                error = Error(source, "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source))
+                error = Error(
+                    Error.Type.INVALID_TYPE, source,
+                    "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source),
+                )
         else:
             entry = state.pop(source)
             if not checker.check_merge(types.return_address_t, entry.type):  # Can also be used for returnAddresses
                 if not checker.check_reference(entry.type):
                     error = Error(
-                        source, "expected reference type or returnAddress type",
-                        "got %s (via %s)" % (entry.type, entry.source),
+                        Error.Type.INVALID_TYPE, source,
+                        "expected reference type or returnAddress type", "got %s (via %s)" % (entry.type, entry.source),
                     )
 
         if error is not None:
@@ -144,6 +162,9 @@ class StoreLocalInstruction(Instruction, ABC):
             state.set(source, self.index, checker.merge(self.type_, entry.type), parents=entry.parents, merges=(entry,))
         else:
             state.set(source, self.index, entry)
+
+    def lift(self, pre: State, post: State, associations: Dict[Entry, Value]) -> SetLocalStatement:
+        return SetLocalStatement(self.index, associations[pre.stack[-1]])
 
 
 class StoreLocalFixedInstruction(StoreLocalInstruction, ABC):
@@ -214,6 +235,17 @@ class IncrementLocalInstruction(Instruction, ABC):
 
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.get(source, self.index)
+        value = None
         if not checker.check_merge(types.int_t, entry.type):
-            errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
-        state.set(source, self.index, types.int_t, parents=(entry,))
+            errors.append(Error(
+                Error.Type.INVALID_TYPE, source,
+                "expected type int", "got %s (via %s)" % (entry.type, entry.source),
+            ))
+        elif entry.value.__class__ is Integer:
+            value = entry.value + Integer(self.value)
+        state.set(source, self.index, types.int_t, value, parents=(entry,))
+
+    def lift(self, pre: State, post: State, associations: Dict[Entry, Value]) -> None:
+        associations[post.locals[self.index]] = AdditionExpression(
+            associations[pre.locals[self.index]], ConstantValue(Integer(self.index)),
+        )

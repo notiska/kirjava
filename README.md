@@ -12,9 +12,16 @@ The API is unfortunately quite limited (see limitations) and somewhat unintuitiv
 1. Missing quite a few attributes.
 2. No jar file reading yet, even though the package exists.
 3. Although there is generic signature parsing, writing generic signatures is not yet implemented.
+4. Doesn't appear to handle multi-source uninitialized types correctly in the StackMapTable?
+5. The performance is good, but could still be improved.
 
 ## Quickstart
 I might add documentation in the future, not sure yet lol. Anyway, here's the quickstart guide, for more usage, see [examples](examples/).
+
+### Installing
+You can either:
+1. Clone this repository and install via `python3 setup.py install`.
+2. Install this library via pip: `pip3 install git+https://github.com/node3112/kirjava.git`
 
 ### Getting started
 ```python3

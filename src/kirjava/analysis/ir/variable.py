@@ -1,26 +1,22 @@
 #!/usr/bin/env python3
 
 """
-IR variables.
+IR variables and variable-related expressions/statements.
 """
 
-from typing import Any
+from typing import Any, Iterable, Union
 
-from .abc import Expression
+from ...abc import Expression, Statement, Value
 from ...types import BaseType
 from ...types.reference import ClassOrInterfaceType
 
 
-class Variable(Expression):
+# ------------------------------ Variables ------------------------------ #
+
+class Variable(Value):
     """
     An IR variable.
     """
-
-    __slots__ = ("id", "_type")
-
-    @property
-    def type(self) -> BaseType:
-        return self._type
 
     def __init__(self, id_: int, type_: BaseType) -> None:
         """
@@ -29,7 +25,7 @@ class Variable(Expression):
         """
 
         self.id = id_
-        self._type = type_
+        self.type = type_
 
     def __repr__(self) -> str:
         return "<Variable(id=%i) at %x>" % (self.id, id(self))
@@ -38,10 +34,13 @@ class Variable(Expression):
         return "var_%i" % self.id
 
     def __eq__(self, other: Any) -> bool:
-        return other.__class__ == self.__class__ and other.id == self.id
+        return other.__class__ is self.__class__ and other.id == self.id
 
     def __hash__(self) -> int:
-        return self.id
+        return hash((8530224966147402853, self.id))
+
+    def get_type(self) -> BaseType:
+        return self.type
 
 
 class This(Variable):
@@ -59,7 +58,7 @@ class This(Variable):
         return "this"
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, This)
+        return other.__class__ is This
 
     def __hash__(self) -> int:
         return 1952999795
@@ -84,4 +83,100 @@ class Parameter(Variable):
         return "param_%i" % self.id
 
     def __hash__(self) -> int:
-        return 7021781891505481074 + self.id
+        return hash((7021781891505481074, self.id))
+
+
+# ------------------------------ Expressions ------------------------------ #
+
+class PhiExpression(Expression):
+    """
+    A phi function expression.
+    """
+
+    def __init__(self, type_: BaseType, variables: Iterable[Variable]) -> None:
+        """
+        :param type_: The merged type of the variables.
+        :param variables: The variables that this phi function merges.
+        """
+
+        self.type = type_
+        self.variables = list(variables)
+
+    def __repr__(self) -> str:
+        return "<PhiExpression(type=%s, variables=%r) at %x>" % (self.type, self.variables, id(self))
+
+    def __str__(self) -> str:
+        return "phi(%s)" % ", ".join(map(str, self.variables))
+
+    def get_type(self) -> BaseType:
+        return self.type
+
+
+class AssignExpression(Expression):
+    """
+    An assignment expression.
+    """
+
+    def __init__(self, target: Variable, value: Value) -> None:
+        """
+        :param target: The target variable to assign to.
+        :param value: The value to assign.
+        """
+
+        self.target = target
+        self.value = value
+
+    def __repr__(self) -> str:
+        return "<AssignExpression(target=%r, value=%r) at %x>" % (self.target, self.value, id(self))
+
+    def __str__(self) -> str:
+        return "%s = %s" % (self.target, self.value)
+
+    def get_type(self) -> BaseType:
+        return self.value.get_type()
+
+
+# ------------------------------ Statements ------------------------------ #
+
+class DeclareStatement(Statement):
+    """
+    A variable declaration statement.
+    """
+
+    def __init__(self, target: Variable, value: Union[Value, None] = None) -> None:
+        """
+        :param target: The target variable to declare.
+        :param value: The value to assign to the variable, if any.
+        """
+
+        self.target = target
+        self.value = value
+
+    def __repr__(self) -> str:
+        return "<DeclareStatement(target=%r, value=%r) at %x>" % (self.target, self.value, id(self))
+
+    def __str__(self) -> str:
+        if self.value is not None:
+            return "var %s = %s" % (self.target, self.value)
+        return "var %s" % self.target
+
+
+class AssignStatement(Statement):
+    """
+    An assignment statement.
+    """
+
+    def __init__(self, target: Variable, value: Value) -> None:
+        """
+        :param target: The target variable to assign to.
+        :param value: The value to assign.
+        """
+
+        self.target = target
+        self.value = value
+
+    def __repr__(self) -> str:
+        return "<AssignStatement(target=%r, value=%r) at %x>" % (self.target, self.value, id(self))
+
+    def __str__(self) -> str:
+        return "%s = %s" % (self.target, self.value)

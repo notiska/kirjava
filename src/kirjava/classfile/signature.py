@@ -6,11 +6,36 @@ Generic signature parsing.
 
 from typing import Tuple, Union
 
-from .descriptor import _FORWARD_BASE_TYPES, _BACKWARD_BASE_TYPES, _find_enclosing, next_argument as next_argument_
+from .descriptor import _find_enclosing, next_argument as next_argument_
+from .. import types
 from ..types import BaseType, InvalidType, TypeArgument, TypeArgumentList
 from ..types.generic import TypeParameter, Wildcard
 from ..types.primitive import VoidType
 from ..types.reference import ClassOrInterfaceType, ArrayType, TypeVariable
+
+
+_FORWARD_BASE_TYPES = {
+    "B": types.byte_t,
+    "S": types.short_t,
+    "I": types.int_t,
+    "J": types.long_t,
+    "C": types.char_t,
+    "F": types.float_t,
+    "D": types.double_t,
+    "Z": types.bool_t,
+    "V": types.void_t,
+}
+_BACKWARD_BASE_TYPES = {
+    types.byte_t: "B",
+    types.short_t: "S",
+    types.int_t: "I",
+    types.long_t: "J",
+    types.char_t: "C",
+    types.float_t: "F",
+    types.double_t: "D",
+    types.bool_t: "Z",
+    types.void_t: "V",
+}
 
 
 # FIXME

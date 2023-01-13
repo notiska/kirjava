@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+# TODO: Better description
 """
 JVM instructions.
 """
@@ -10,9 +11,10 @@ from abc import ABCMeta
 from typing import Any, Dict, IO, List, Tuple, Union
 
 from .. import ClassFile
-from ..constants import Double, Float, Long
-from ...abc import Error, Source, TypeChecker
+from ..constants import Double, Float, Integer, Long
+from ...abc import Source, Statement, TypeChecker, Value
 from ...types.reference import ClassOrInterfaceType
+from ...verifier import Error
 
 if typing.TYPE_CHECKING:
     from ...analysis.trace import State
@@ -32,7 +34,7 @@ class MetaInstruction(ABCMeta):
             operands: Union[Dict[str, str], None] = None,
             operands_wide: Union[Dict[str, str], None] = None,
             throws: Union[Tuple[ClassOrInterfaceType, ...], None] = None,
-            **namespace: Dict[str, object],
+            **namespace: object,
     ) -> "MetaInstruction":
         """
         Creates a new instruction with the given information.
@@ -148,7 +150,7 @@ class Instruction(Source, metaclass=MetaInstruction):
                 value = getattr(self, operand)
             buffer.write(struct.pack(format_, value))
 
-    def get_size(self, offset: int, wide: bool) -> None:
+    def get_size(self, offset: int, wide: bool) -> int:
         """
         Gets the size of an instruction as if it were about to be written.
 
@@ -157,7 +159,7 @@ class Instruction(Source, metaclass=MetaInstruction):
         :return: The size of the instruction.
         """
 
-        # TODO: Cache
+        # TODO: Cache?
         return 1 + sum(map(struct.calcsize, (self.operands if not wide else self.operands_wide).values()))
 
     # @abstractmethod
@@ -169,6 +171,19 @@ class Instruction(Source, metaclass=MetaInstruction):
         :param state: The current stack state.
         :param errors: Cumulative errors to add to.
         :param checker: The type checker implementation to use.
+        """
+
+        ...
+
+    # @abstractmethod
+    def lift(self, pre: "State", post: "State", associations: Dict["Entry", Value]) -> Union[Statement, None]:
+        """
+        Generates IR code from this instruction.
+
+        :param pre: The state before this instruction has been "executed".
+        :param post: The state after this instruction has been "executed".
+        :param associations: The associations between stack entries and IR values.
+        :return: The generated IR statement, or None if there was no effect.
         """
 
         ...
@@ -322,53 +337,53 @@ swap = MetaInstruction.new_instruction(0x5f, "swap", SwapInstruction)
 # ------------------------------ Arithmetic ------------------------------ #
 
 # Addition
-iadd = MetaInstruction.new_instruction(0x60, "iadd", BinaryOperationInstruction, type_a=types.int_t, type_b=types.int_t)
-ladd = MetaInstruction.new_instruction(0x61, "ladd", BinaryOperationInstruction, type_a=types.long_t, type_b=types.long_t)
-fadd = MetaInstruction.new_instruction(0x62, "fadd", BinaryOperationInstruction, type_a=types.float_t, type_b=types.float_t)
-dadd = MetaInstruction.new_instruction(0x63, "dadd", BinaryOperationInstruction, type_a=types.double_t, type_b=types.double_t)
+iadd = MetaInstruction.new_instruction(0x60, "iadd", AdditionInstruction, type_a=types.int_t, type_b=types.int_t)
+ladd = MetaInstruction.new_instruction(0x61, "ladd", AdditionInstruction, type_a=types.long_t, type_b=types.long_t)
+fadd = MetaInstruction.new_instruction(0x62, "fadd", AdditionInstruction, type_a=types.float_t, type_b=types.float_t)
+dadd = MetaInstruction.new_instruction(0x63, "dadd", AdditionInstruction, type_a=types.double_t, type_b=types.double_t)
 # Subtraction
-isub = MetaInstruction.new_instruction(0x64, "isub", BinaryOperationInstruction, type_a=types.int_t, type_b=types.int_t)
-lsub = MetaInstruction.new_instruction(0x65, "lsub", BinaryOperationInstruction, type_a=types.long_t, type_b=types.long_t)
-fsub = MetaInstruction.new_instruction(0x66, "fsub", BinaryOperationInstruction, type_a=types.float_t, type_b=types.float_t)
-dsub = MetaInstruction.new_instruction(0x67, "dsub", BinaryOperationInstruction, type_a=types.double_t, type_b=types.double_t)
+isub = MetaInstruction.new_instruction(0x64, "isub", SubtractionInstruction, type_a=types.int_t, type_b=types.int_t)
+lsub = MetaInstruction.new_instruction(0x65, "lsub", SubtractionInstruction, type_a=types.long_t, type_b=types.long_t)
+fsub = MetaInstruction.new_instruction(0x66, "fsub", SubtractionInstruction, type_a=types.float_t, type_b=types.float_t)
+dsub = MetaInstruction.new_instruction(0x67, "dsub", SubtractionInstruction, type_a=types.double_t, type_b=types.double_t)
 # Multiplication
-imul = MetaInstruction.new_instruction(0x68, "imul", BinaryOperationInstruction, type_a=types.int_t, type_b=types.int_t)
-lmul = MetaInstruction.new_instruction(0x69, "lmul", BinaryOperationInstruction, type_a=types.long_t, type_b=types.long_t)
-fmul = MetaInstruction.new_instruction(0x6a, "fmul", BinaryOperationInstruction, type_a=types.float_t, type_b=types.float_t)
-dmul = MetaInstruction.new_instruction(0x6b, "dmul", BinaryOperationInstruction, type_a=types.double_t, type_b=types.double_t)
+imul = MetaInstruction.new_instruction(0x68, "imul", MultiplicationInstruction, type_a=types.int_t, type_b=types.int_t)
+lmul = MetaInstruction.new_instruction(0x69, "lmul", MultiplicationInstruction, type_a=types.long_t, type_b=types.long_t)
+fmul = MetaInstruction.new_instruction(0x6a, "fmul", MultiplicationInstruction, type_a=types.float_t, type_b=types.float_t)
+dmul = MetaInstruction.new_instruction(0x6b, "dmul", MultiplicationInstruction, type_a=types.double_t, type_b=types.double_t)
 # Division
-idiv = MetaInstruction.new_instruction(0x6c, "idiv", BinaryOperationInstruction, throws=(types.arithmeticexception_t,), type_a=types.int_t, type_b=types.int_t)
-ldiv = MetaInstruction.new_instruction(0x6d, "ldiv", BinaryOperationInstruction, type_a=types.long_t, type_b=types.long_t)
-fdiv = MetaInstruction.new_instruction(0x6e, "fdiv", BinaryOperationInstruction, type_a=types.float_t, type_b=types.float_t)
-ddiv = MetaInstruction.new_instruction(0x6f, "ddiv", BinaryOperationInstruction, type_a=types.double_t, type_b=types.double_t)
+idiv = MetaInstruction.new_instruction(0x6c, "idiv", DivisionInstruction, throws=(types.arithmeticexception_t,), type_a=types.int_t, type_b=types.int_t)
+ldiv = MetaInstruction.new_instruction(0x6d, "ldiv", DivisionInstruction, type_a=types.long_t, type_b=types.long_t)
+fdiv = MetaInstruction.new_instruction(0x6e, "fdiv", DivisionInstruction, type_a=types.float_t, type_b=types.float_t)
+ddiv = MetaInstruction.new_instruction(0x6f, "ddiv", DivisionInstruction, type_a=types.double_t, type_b=types.double_t)
 # Modulo
-irem = MetaInstruction.new_instruction(0x70, "irem", BinaryOperationInstruction, type_a=types.int_t, type_b=types.int_t)
-lrem = MetaInstruction.new_instruction(0x71, "lrem", BinaryOperationInstruction, type_a=types.long_t, type_b=types.long_t)
-frem = MetaInstruction.new_instruction(0x72, "frem", BinaryOperationInstruction, type_a=types.float_t, type_b=types.float_t)
-drem = MetaInstruction.new_instruction(0x73, "drem", BinaryOperationInstruction, type_a=types.double_t, type_b=types.double_t)
+irem = MetaInstruction.new_instruction(0x70, "irem", RemainderInstruction, type_a=types.int_t, type_b=types.int_t)
+lrem = MetaInstruction.new_instruction(0x71, "lrem", RemainderInstruction, type_a=types.long_t, type_b=types.long_t)
+frem = MetaInstruction.new_instruction(0x72, "frem", RemainderInstruction, type_a=types.float_t, type_b=types.float_t)
+drem = MetaInstruction.new_instruction(0x73, "drem", RemainderInstruction, type_a=types.double_t, type_b=types.double_t)
 # Negation
-ineg = MetaInstruction.new_instruction(0x74, "ineg", UnaryOperationInstruction, type_=types.int_t)
-lneg = MetaInstruction.new_instruction(0x75, "lneg", UnaryOperationInstruction, type_=types.long_t)
-fneg = MetaInstruction.new_instruction(0x76, "fneg", UnaryOperationInstruction, type_=types.float_t)
-dneg = MetaInstruction.new_instruction(0x77, "dneg", UnaryOperationInstruction, type_=types.double_t)
+ineg = MetaInstruction.new_instruction(0x74, "ineg", NegationInstruction, type_=types.int_t)
+lneg = MetaInstruction.new_instruction(0x75, "lneg", NegationInstruction, type_=types.long_t)
+fneg = MetaInstruction.new_instruction(0x76, "fneg", NegationInstruction, type_=types.float_t)
+dneg = MetaInstruction.new_instruction(0x77, "dneg", NegationInstruction, type_=types.double_t)
 # Left shift
-ishl = MetaInstruction.new_instruction(0x78, "ishl", BinaryOperationInstruction, type_a=types.int_t, type_b=types.int_t)
-lshl = MetaInstruction.new_instruction(0x79, "lshl", BinaryOperationInstruction, type_a=types.int_t, type_b=types.long_t)
+ishl = MetaInstruction.new_instruction(0x78, "ishl", ShiftLeftInstruction, type_a=types.int_t, type_b=types.int_t)
+lshl = MetaInstruction.new_instruction(0x79, "lshl", ShiftLeftInstruction, type_a=types.int_t, type_b=types.long_t)
 # Right shift
-ishr = MetaInstruction.new_instruction(0x7a, "ishr", BinaryOperationInstruction, type_a=types.int_t, type_b=types.int_t)
-lshr = MetaInstruction.new_instruction(0x7b, "lshr", BinaryOperationInstruction, type_a=types.int_t, type_b=types.long_t)
+ishr = MetaInstruction.new_instruction(0x7a, "ishr", ShiftRightInstruction, type_a=types.int_t, type_b=types.int_t)
+lshr = MetaInstruction.new_instruction(0x7b, "lshr", ShiftRightInstruction, type_a=types.int_t, type_b=types.long_t)
 # Unsigned right shift
-iushr = MetaInstruction.new_instruction(0x7c, "iushr", BinaryOperationInstruction, type_a=types.int_t, type_b=types.int_t)
-lushr = MetaInstruction.new_instruction(0x7d, "lushr", BinaryOperationInstruction, type_a=types.int_t, type_b=types.long_t)
-# Logical and
-iand = MetaInstruction.new_instruction(0x7e, "iand", BinaryOperationInstruction, type_a=types.int_t, type_b=types.int_t)
-land = MetaInstruction.new_instruction(0x7f, "land", BinaryOperationInstruction, type_a=types.long_t, type_b=types.long_t)
-# Logical or
-ior = MetaInstruction.new_instruction(0x80, "ior", BinaryOperationInstruction, type_a=types.int_t, type_b=types.int_t)
-lor = MetaInstruction.new_instruction(0x81, "lor", BinaryOperationInstruction, type_a=types.long_t, type_b=types.long_t)
-# Logical xor
-ixor = MetaInstruction.new_instruction(0x82, "ixor", BinaryOperationInstruction, type_a=types.int_t, type_b=types.int_t)
-lxor = MetaInstruction.new_instruction(0x83, "lxor", BinaryOperationInstruction, type_a=types.long_t, type_b=types.long_t)
+iushr = MetaInstruction.new_instruction(0x7c, "iushr", UnsignedShiftRightInstruction, type_a=types.int_t, type_b=types.int_t)
+lushr = MetaInstruction.new_instruction(0x7d, "lushr", UnsignedShiftRightInstruction, type_a=types.int_t, type_b=types.long_t)
+# Bitwise and
+iand = MetaInstruction.new_instruction(0x7e, "iand", BitwiseAndInstruction, type_a=types.int_t, type_b=types.int_t)
+land = MetaInstruction.new_instruction(0x7f, "land", BitwiseAndInstruction, type_a=types.long_t, type_b=types.long_t)
+# Bitwise or
+ior = MetaInstruction.new_instruction(0x80, "ior", BitwiseOrInstruction, type_a=types.int_t, type_b=types.int_t)
+lor = MetaInstruction.new_instruction(0x81, "lor", BitwiseOrInstruction, type_a=types.long_t, type_b=types.long_t)
+# Bitwise xor
+ixor = MetaInstruction.new_instruction(0x82, "ixor", BitwiseXorInstruction, type_a=types.int_t, type_b=types.int_t)
+lxor = MetaInstruction.new_instruction(0x83, "lxor", BitwiseXorInstruction, type_a=types.long_t, type_b=types.long_t)
 
 # ------------------------------ Conversions ------------------------------ #
 
@@ -407,24 +422,24 @@ dcmpg = MetaInstruction.new_instruction(0x98, "dcmpg", ComparisonInstruction, ty
 # ------------------------------ Jumps ------------------------------ #
 
 # Compare to 0
-ifeq = MetaInstruction.new_instruction(0x99, "ifeq", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
-ifne = MetaInstruction.new_instruction(0x9a, "ifne", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
-iflt = MetaInstruction.new_instruction(0x9b, "iflt", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
-ifge = MetaInstruction.new_instruction(0x9c, "ifge", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
-ifgt = MetaInstruction.new_instruction(0x9d, "ifgt", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
-ifle = MetaInstruction.new_instruction(0x9e, "ifle", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
+ifeq = MetaInstruction.new_instruction(0x99, "ifeq", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.EQ)
+ifne = MetaInstruction.new_instruction(0x9a, "ifne", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.NE)
+iflt = MetaInstruction.new_instruction(0x9b, "iflt", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.LT)
+ifge = MetaInstruction.new_instruction(0x9c, "ifge", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.GE)
+ifgt = MetaInstruction.new_instruction(0x9d, "ifgt", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.GT)
+ifle = MetaInstruction.new_instruction(0x9e, "ifle", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.LE)
 # Integer comparison
-if_icmpeq = MetaInstruction.new_instruction(0x9f, "if_icmpeq", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
-if_icmpne = MetaInstruction.new_instruction(0xa0, "if_icmpne", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
-if_icmplt = MetaInstruction.new_instruction(0xa1, "if_icmplt", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
-if_icmpge = MetaInstruction.new_instruction(0xa2, "if_icmpge", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
-if_icmpgt = MetaInstruction.new_instruction(0xa3, "if_icmpgt", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
-if_icmple = MetaInstruction.new_instruction(0xa4, "if_icmple", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t)
+if_icmpeq = MetaInstruction.new_instruction(0x9f, "if_icmpeq", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.EQ)
+if_icmpne = MetaInstruction.new_instruction(0xa0, "if_icmpne", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.NE)
+if_icmplt = MetaInstruction.new_instruction(0xa1, "if_icmplt", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.LT)
+if_icmpge = MetaInstruction.new_instruction(0xa2, "if_icmpge", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.GE)
+if_icmpgt = MetaInstruction.new_instruction(0xa3, "if_icmpgt", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.GT)
+if_icmple = MetaInstruction.new_instruction(0xa4, "if_icmple", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=types.int_t, comparison=ConditionalJumpInstruction.LE)
 # Reference comparison
-if_acmpeq = MetaInstruction.new_instruction(0xa5, "if_acmpeq", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=None)
-if_acmpne = MetaInstruction.new_instruction(0xa6, "if_acmpne", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=None)
-ifnull = MetaInstruction.new_instruction(0xc6, "ifnull", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=None)
-ifnonnull = MetaInstruction.new_instruction(0xc7, "ifnonnull", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=None)
+if_acmpeq = MetaInstruction.new_instruction(0xa5, "if_acmpeq", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=None, comparison=ConditionalJumpInstruction.EQ)
+if_acmpne = MetaInstruction.new_instruction(0xa6, "if_acmpne", BinaryComparisonJumpInstruction, {"offset": ">h"}, type_=None, comparison=ConditionalJumpInstruction.NE)
+ifnull = MetaInstruction.new_instruction(0xc6, "ifnull", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=None, comparison=ConditionalJumpInstruction.EQ)
+ifnonnull = MetaInstruction.new_instruction(0xc7, "ifnonnull", UnaryComparisonJumpInstruction, {"offset": ">h"}, type_=None, comparison=ConditionalJumpInstruction.NE)
 # Other jumps
 goto = MetaInstruction.new_instruction(0xa7, "goto", JumpInstruction, {"offset": ">h"})
 goto_w = MetaInstruction.new_instruction(0xc8, "goto_w", JumpInstruction, {"offset": ">i"})
@@ -584,9 +599,9 @@ def read_instructions(class_file: ClassFile, buffer: IO[bytes], length: int) -> 
 
     while offset < length:
         opcode, = buffer.read(1)
-        if not opcode in _opcode_map:
+        instruction = _opcode_map.get(opcode, None)
+        if instruction is None:
             raise ValueError("Unknown opcode: 0x%x." % opcode)
-        instruction = _opcode_map[opcode]
         instruction = instruction.__new__(instruction)
         instruction.read(class_file, buffer, wide_)
 

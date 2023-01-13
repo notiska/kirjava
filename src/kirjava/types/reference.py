@@ -78,7 +78,7 @@ class ClassOrInterfaceType(ReferenceType, VerificationType):
                 ((not other.inner_type_arguments or not self.inner_type_arguments) or
                  other.inner_type_arguments == self.inner_type_arguments)
             )
-        elif isinstance(other, str):
+        elif other.__class__ is str:
             return other == self.name
 
         return False
@@ -91,6 +91,17 @@ class ClassOrInterfaceType(ReferenceType, VerificationType):
 
     def can_merge(self, other: VerificationType) -> bool:
         return isinstance(other, ClassOrInterfaceType) or other.can_merge(self)
+
+    def rename(self, name: str) -> "ClassOrInterfaceType":
+        if name == self.name:
+            return self
+
+        return ClassOrInterfaceType(
+            name,
+            self.type_arguments,
+            self.inner_name,
+            self.inner_type_arguments,
+        )
 
 
 class ArrayType(ReferenceType, VerificationType):
@@ -124,12 +135,41 @@ class ArrayType(ReferenceType, VerificationType):
         return hash((self.element_type, self.dimension))
 
     def to_verification_type(self) -> VerificationType:
-        if isinstance(self.element_type, ClassOrInterfaceType):  # Strip any signature info, if necessary
+        if self.element_type.__class__ is ClassOrInterfaceType:  # Strip any signature info, if necessary
             return ArrayType(self.element_type.to_verification_type(), self.dimension)
         return self
 
     def can_merge(self, other: VerificationType) -> bool:
         return isinstance(other, ArrayType) or isinstance(other, ClassOrInterfaceType) or other.can_merge(self)
+
+    def set_dimension(self, dimension: int) -> "ArrayType":
+        """
+        Sets the dimension in this array type to the given value. If the dimension <= 0, it will return the element type.
+
+        :param dimension: The new dimension of the array type.
+        :return: The copied array type with the new dimension, or other.
+        """
+
+        if dimension <= 0:
+            return self.element_type
+        elif dimension == self.dimension:
+            return self
+        return ArrayType(self.element_type, dimension)
+
+    def set_dim(self, dimension: int) -> "ArrayType":
+        """
+        Sets the dimension in this array type to the given value. If the dimension <= 0, it will return the element type.
+
+        :param dimension: The new dimension of the array type.
+        :return: The coped array type with the new dimension, or other.
+        """
+
+        return self.set_dimension(dimension)
+
+    def rename(self, name: str) -> "ArrayType":
+        if not isinstance(self.element_type, ReferenceType):
+            return self
+        return ArrayType(self.element_type.rename(name), self.dimension)
 
 
 class TypeVariable(ReferenceType, TypeBound):
@@ -151,7 +191,7 @@ class TypeVariable(ReferenceType, TypeBound):
     def __eq__(self, other: Any) -> bool:
         if other.__class__ is TypeVariable:
             return other.identifier == self.identifier
-        elif isinstance(other, str):
+        elif other.__class__ is str:
             return other == self.identifier
 
         return False
@@ -161,3 +201,6 @@ class TypeVariable(ReferenceType, TypeBound):
 
     def to_verification_type(self) -> VerificationType:
         raise TypeError("Cannot create verification type from %r." % self)
+
+    def rename(self, name: str) -> "TypeVariable":
+        return self

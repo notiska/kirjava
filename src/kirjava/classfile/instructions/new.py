@@ -5,17 +5,19 @@ Instructions that create new references.
 """
 
 from abc import ABC
-from typing import Any, IO, List, Union
+from typing import Any, Dict, IO, List, Union
 
 from . import Instruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_
 from ... import _argument, types
-from ...abc import Error, Source, TypeChecker
-from ...analysis.trace import State
+from ...abc import Source, TypeChecker, Value
+from ...analysis.ir.value import NewExpression, NewArrayExpression
+from ...analysis.trace import Entry, State
 from ...types import PrimitiveType, ReferenceType
 from ...types.reference import ArrayType, ClassOrInterfaceType
 from ...types.verification import Uninitialized
+from ...verifier import Error
 
 
 class NewInstruction(Instruction, ABC):
@@ -27,7 +29,7 @@ class NewInstruction(Instruction, ABC):
 
     operands = {"_index": ">H"}
 
-    def __init__(self, type_: _argument.ReferenceType) -> None:
+    def __init__(self, type_: "_argument.ReferenceType") -> None:
         """
         :param type_: The new type to create.
         """
@@ -50,17 +52,25 @@ class NewInstruction(Instruction, ABC):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
-        self.type = class_file.constant_pool[self._index].get_actual_type()
+        self.type = class_file.constant_pool[self._index].type
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
-        if isinstance(self.type, ClassOrInterfaceType):
+        if self.type.__class__ is ClassOrInterfaceType:
             self._index = class_file.constant_pool.add(Class_(self.type.name))
         else:
             self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type)))
         super().write(class_file, buffer, wide)
 
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
+        if not checker.check_class(self.type):
+            errors.append(Error(
+                Error.Type.INVALID_TYPE, source, "expected class or interface type", "got %s" % self.type,
+            ))
         state.push(source, Uninitialized(class_=self.type))
+
+    def lift(self, pre: State, post: State, associations: Dict[Entry, Value]) -> None:
+        associations[post.stack[-1]] = NewExpression(self.type)
+        # Technically this has no side effects (invoking the constructor does), so there's no need to return anything.
 
 
 class NewArrayInstruction(Instruction, ABC):
@@ -128,8 +138,14 @@ class NewArrayInstruction(Instruction, ABC):
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
-            errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
+            errors.append(Error(
+                Error.Type.INVALID_TYPE, source,
+                "expected type int", "got %s (via %s)" % (entry.type, entry.source),
+            ))
         state.push(source, self.type, parents=(entry,))
+
+    def lift(self, pre: State, post: State, associations: Dict[Entry, Value]) -> None:
+        associations[post.stack[-1]] = NewArrayExpression(self.type, (associations[pre.stack[-1]],))
 
 
 class ANewArrayInstruction(Instruction, ABC):
@@ -168,14 +184,14 @@ class ANewArrayInstruction(Instruction, ABC):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
-        self.type = class_file.constant_pool[self._index].get_actual_type()
-        if isinstance(self.type, ArrayType):
+        self.type = class_file.constant_pool[self._index].type
+        if self.type.__class__ is ArrayType:
             self.type = ArrayType(self.type.element_type, self.type.dimension + 1)
         else:
             self.type = ArrayType(self.type)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
-        if isinstance(self.type.element_type, ClassOrInterfaceType) and self.type.dimension == 1:
+        if self.type.element_type.__class__ is ClassOrInterfaceType and self.type.dimension == 1:
             self._index = class_file.constant_pool.add(Class_(self.type.element_type.name))
         else:
             self._index = class_file.constant_pool.add(Class_(
@@ -186,8 +202,14 @@ class ANewArrayInstruction(Instruction, ABC):
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
-            errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
+            errors.append(Error(
+                Error.Type.INVALID_TYPE, source,
+                "expected type int", "got %s (via %s)" % (entry.type, entry.source),
+            ))
         state.push(source, self.type, parents=(entry,))
+
+    def lift(self, pre: State, post: State, associations: Dict[Entry, Value]) -> None:
+        associations[post.stack[-1]] = NewArrayExpression(self.type, (associations[pre.stack[-1]],))
 
 
 class MultiANewArrayInstruction(Instruction, ABC):
@@ -229,7 +251,7 @@ class MultiANewArrayInstruction(Instruction, ABC):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
-        self.type = class_file.constant_pool[self._index].get_actual_type()
+        self.type = class_file.constant_pool[self._index].type
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
         self._index = class_file.constant_pool.add(Class_(descriptor.to_descriptor(self.type)))
@@ -238,7 +260,8 @@ class MultiANewArrayInstruction(Instruction, ABC):
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         if self.dimension > self.type.dimension:
             errors.append(Error(
-                source, "instruction dimension exceeds array dimension", "%i > %i" % (self.dimension, self.type.dimension),
+                Error.Type.INVALID_INSTRUCTION, source,
+                "instruction dimension exceeds array dimension", "%i > %i" % (self.dimension, self.type.dimension),
             ))
 
         entries = []
@@ -246,6 +269,14 @@ class MultiANewArrayInstruction(Instruction, ABC):
             entry = state.pop(source)
             entries.append(entry)
             if not checker.check_merge(types.int_t, entry.type):
-                errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
+                errors.append(Error(
+                    Error.Type.INVALID_TYPE, source,
+                    "expected type int", "got %s (via %s)" % (entry.type, entry.source),
+                ))
 
         state.push(source, self.type, parents=tuple(entries))
+
+    def lift(self, pre: State, post: State, associations: Dict[Entry, Value]) -> None:
+        associations[post.stack[-1]] = NewArrayExpression(
+            self.type, [associations[parent] for parent in pre.stack[-self.dimension:]],
+        )

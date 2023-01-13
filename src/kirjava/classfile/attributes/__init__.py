@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import logging
-import struct
 import typing
 from typing import Any, IO
 
+from .._struct import *
 from ...version import Version
 
 if typing.TYPE_CHECKING:
@@ -100,7 +100,7 @@ def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes], fail
     :return: The attribute.
     """
 
-    name_index, attribute_length = struct.unpack(">HI", buffer.read(6))
+    name_index, attribute_length = unpack_HI(buffer.read(6))
     name = class_file.constant_pool.get_utf8(name_index, "<invalid>")  # FIXME: Yes or no?
 
     offset = buffer.tell()
@@ -167,5 +167,5 @@ def write_attribute(attribute: AttributeInfo, class_file: "ClassFile", buffer: I
     current = buffer.tell()
 
     buffer.seek(start)
-    buffer.write(struct.pack(">HI", class_file.constant_pool.add_utf8(attribute.name), current - start - 6))
+    buffer.write(pack_HI(class_file.constant_pool.add_utf8(attribute.name), current - start - 6))
     buffer.seek(current)

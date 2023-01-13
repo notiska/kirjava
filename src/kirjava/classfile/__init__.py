@@ -10,15 +10,14 @@ Java classfile parsing and manipulation.
 """
 
 import logging
-import struct
 import time
 import typing
 from io import BytesIO
-from typing import Dict, IO, List, Tuple, Union
+from typing import Dict, IO, Iterable, List, Tuple, Union
 
-from .. import _argument, types
+from ._struct import *
+from .. import _argument, environment, types
 from ..abc import Class as Class_
-from ..environment import Environment
 from ..version import Version
 
 if typing.TYPE_CHECKING:
@@ -52,30 +51,32 @@ class ClassFile(Class_):
 
         start = time.perf_counter_ns()
 
-        class_file = cls.__new__(cls)
+        minor, major = unpack_HH(buffer.read(4))
+        version = Version(major, minor)
 
-        minor, major = struct.unpack(">HH", buffer.read(4))
-        class_file.version = Version(major, minor)
+        constant_pool = ConstantPool.read(version, buffer)
 
-        class_file.constant_pool = ConstantPool.read(class_file, buffer)
+        access_flags, this_class_index, super_class_index = unpack_HHH(buffer.read(6))
+        this = constant_pool[this_class_index]
+        super_ = None if super_class_index < 1 else constant_pool[super_class_index]
 
-        class_file.access_flags, this_class_index, super_class_index = struct.unpack(">HHH", buffer.read(6))
-        class_file._this = class_file.constant_pool[this_class_index]
-        class_file._super = None if super_class_index < 1 else class_file.constant_pool[super_class_index]
+        interfaces_count, = unpack_H(buffer.read(2))
+        interfaces = [constant_pool[unpack_H(buffer.read(2))[0]] for index in range(interfaces_count)]
 
-        interfaces_count, = struct.unpack(">H", buffer.read(2))
-        class_file._interfaces = [
-            class_file.constant_pool[struct.unpack(">H", buffer.read(2))[0]] for index in range(interfaces_count)
-        ]
+        class_file = cls(this.name, super_, interfaces, version)
+        class_file.access_flags = access_flags
+        class_file.constant_pool = constant_pool
 
-        fields_count, = struct.unpack(">H", buffer.read(2))
-        class_file._fields = [FieldInfo.read(class_file, buffer) for index in range(fields_count)]
+        fields_count, = unpack_H(buffer.read(2))
+        for index in range(fields_count):
+            FieldInfo.read(class_file, buffer)
 
-        methods_count, = struct.unpack(">H", buffer.read(2))
-        class_file._methods = [MethodInfo.read(class_file, buffer) for index in range(methods_count)]
+        methods_count, = unpack_H(buffer.read(2))
+        for index in range(methods_count):
+            MethodInfo.read(class_file, buffer)
 
         class_file.attributes = {}
-        attributes_count, = struct.unpack(">H", buffer.read(2))
+        attributes_count, = unpack_H(buffer.read(2))
         for index in range(attributes_count):
             attribute_info = attributes.read_attribute(class_file, class_file, buffer)
             class_file.attributes[attribute_info.name] = (
@@ -207,7 +208,7 @@ class ClassFile(Class_):
     def super(self) -> Union[Class_, None]:
         if self._super is None:
             return None
-        return Environment.find_class(self._super.name)
+        return environment.find_class(self._super.name)
 
     @super.setter
     def super(self, value: Union[Class_, None]) -> None:
@@ -229,10 +230,10 @@ class ClassFile(Class_):
 
     @property
     def interfaces(self) -> Tuple[Class_, ...]:
-        return tuple(Environment.find_class(interface.name) for interface in self._interfaces)
+        return tuple(environment.find_class(interface.name) for interface in self._interfaces)
 
     @interfaces.setter
-    def interfaces(self, value: Tuple[Class_, ...]) -> None:
+    def interfaces(self, value: Iterable[Class_]) -> None:
         self._interfaces.clear()
         self._interfaces.extend(Class(interface.name) for interface in value)
 
@@ -241,7 +242,7 @@ class ClassFile(Class_):
         return tuple(interface.name for interface in self._interfaces)
 
     @interface_names.setter
-    def interface_names(self, value: Tuple[str, ...]) -> None:
+    def interface_names(self, value: Iterable[str]) -> None:
         self._interfaces.clear()
         self._interfaces.extend(Class(interface_name) for interface_name in value)
 
@@ -257,7 +258,8 @@ class ClassFile(Class_):
     def methods(self, value: Tuple["MethodInfo", ...]) -> None:
         self._methods.clear()
         for method in value:
-            method._class = self
+            if method.class_ != self:
+                raise ValueError("Method %r does not belong to this class." % method)
             self._methods.append(method)
 
     @property
@@ -268,14 +270,15 @@ class ClassFile(Class_):
     def fields(self, value: Tuple["FieldInfo", ...]) -> None:
         self._fields.clear()
         for field in value:
-            field._class = self
+            if field.class_ != self:
+                raise ValueError("Field %r does not belong to this class." % field)
             self._fields.append(field)
 
     def __init__(
             self,
             name: str,
-            super_: _argument.ClassConstant = types.object_t,
-            interfaces: Union[List[_argument.ClassConstant], None] = None,
+            super_: "_argument.ClassConstant" = types.object_t,
+            interfaces: Union[List["_argument.ClassConstant"], None] = None,
             version: Version = Version(52, 0),
             is_public: bool = False,
             is_final: bool = False,
@@ -292,6 +295,8 @@ class ClassFile(Class_):
         :param super_: The superclass of this class.
         :param interfaces: A list of interfaces this class implements.
         """
+
+        super().__init__()
 
         self._this = Class(name)
         if super_ is None:
@@ -327,7 +332,7 @@ class ClassFile(Class_):
 
     # ------------------------------ Methods ------------------------------ #
 
-    def get_method(self, name: str, *descriptor_: _argument.MethodDescriptor) -> "MethodInfo":
+    def get_method(self, name: str, *descriptor_: "_argument.MethodDescriptor") -> "MethodInfo":
         """
         Gets a method in this class.
 
@@ -353,7 +358,7 @@ class ClassFile(Class_):
         raise LookupError("Method %r was not found." % ("%s#%s" % (self.name, name)))
 
     def add_method(
-            self, name: str, *descriptor_: _argument.MethodDescriptor, **access_flags: Dict[str, bool],
+            self, name: str, *descriptor_: "_argument.MethodDescriptor", **access_flags: bool,
     ) -> "MethodInfo":
         """
         Adds a method to this class given the provided information about it.
@@ -368,8 +373,8 @@ class ClassFile(Class_):
         return MethodInfo(self, name, *descriptor_, **access_flags)
 
     def remove_method(
-            self, name_or_method: Union[str, "MethodInfo"], *descriptor_: _argument.MethodDescriptor,
-    ) -> bool:
+            self, name_or_method: Union[str, "MethodInfo"], *descriptor_: "_argument.MethodDescriptor",
+    ) -> "MethodInfo":
         """
         Removes a method from this class.
 
@@ -386,10 +391,11 @@ class ClassFile(Class_):
 
         while name_or_method in self._methods:
             self._methods.remove(name_or_method)
+        return name_or_method
 
     # ------------------------------ Fields ------------------------------ #
 
-    def get_field(self, name: str, descriptor_: Union[_argument.FieldDescriptor, None] = None) -> "FieldInfo":
+    def get_field(self, name: str, descriptor_: Union["_argument.FieldDescriptor", None] = None) -> "FieldInfo":
         """
         Gets a field in this class.
 
@@ -415,7 +421,7 @@ class ClassFile(Class_):
         raise LookupError("Field %r was not found." % ("%s#%s" % (self.name, name)))
 
     def add_field(
-            self, name: str, descriptor_: Union[_argument.FieldDescriptor, None] = None, **access_flags: Dict[str, bool],
+            self, name: str, descriptor_: Union["_argument.FieldDescriptor", None] = None, **access_flags: bool,
     ) -> "FieldInfo":
         """
         Adds a field to this class.
@@ -429,8 +435,8 @@ class ClassFile(Class_):
         return FieldInfo(self, name, descriptor_, **access_flags)
 
     def remove_field(
-            self, name_or_field: Union[str, "FieldInfo"], descriptor_: Union[_argument.FieldDescriptor, None] = None,
-    ) -> bool:
+            self, name_or_field: Union[str, "FieldInfo"], descriptor_: Union["_argument.FieldDescriptor", None] = None,
+    ) -> "FieldInfo":
         """
         Removes a field from this class.
 
@@ -446,6 +452,7 @@ class ClassFile(Class_):
 
         while name_or_field in self._fields:  # May be duplicates (cos we allow that), so remove all
             self._fields.remove(name_or_field)
+        return name_or_field
 
     # ------------------------------ IO ------------------------------ #
 
@@ -459,30 +466,30 @@ class ClassFile(Class_):
         start = time.perf_counter_ns()
 
         buffer.write(b"\xca\xfe\xba\xbe")
-        buffer.write(struct.pack(">HH", self.version.minor, self.version.major))
+        buffer.write(pack_HH(self.version.minor, self.version.major))
 
         if self.constant_pool is None:
             self.constant_pool = ConstantPool()
         # self.constant_pool.clear()
 
         data = BytesIO()
-        data.write(struct.pack(
-            ">HHH", self.access_flags, self.constant_pool.add(self._this), 
+        data.write(pack_HHH(
+            self.access_flags, self.constant_pool.add(self._this), 
             0 if self._super is None else self.constant_pool.add(self._super),
         ))
-        data.write(struct.pack(">H", len(self._interfaces)))
+        data.write(pack_H(len(self._interfaces)))
         for interface in self._interfaces:
-            data.write(struct.pack(">H", self.constant_pool.add(interface)))
+            data.write(pack_H(self.constant_pool.add(interface)))
 
-        data.write(struct.pack(">H", len(self._fields)))
+        data.write(pack_H(len(self._fields)))
         for field in self._fields:
             field.write(self, data)
 
-        data.write(struct.pack(">H", len(self._methods)))
+        data.write(pack_H(len(self._methods)))
         for method in self._methods:
             method.write(self, data)
 
-        data.write(struct.pack(">H", len(self.attributes)))
+        data.write(pack_H(len(self.attributes)))
         for attributes_ in self.attributes.values():
             for attribute in attributes_:
                 attributes.write_attribute(attribute, self, data)
@@ -494,5 +501,5 @@ class ClassFile(Class_):
 
 
 from . import attributes, constants, descriptor, instructions, members, signature
-from .constants import Constant, ConstantPool, Class
+from .constants import ConstantPool, Class
 from .members import FieldInfo, MethodInfo

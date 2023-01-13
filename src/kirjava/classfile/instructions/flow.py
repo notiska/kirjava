@@ -6,14 +6,16 @@ Control flow related instructions.
 
 import struct
 from abc import ABC
+from enum import Enum
 from typing import Any, Dict, IO, Iterable, List, Union
 
 from . import Instruction
 from .. import ClassFile
 from ... import types
-from ...abc import Error, Source, TypeChecker
-from ...analysis.trace import State
+from ...abc import Source, TypeChecker
+from ...analysis.trace import Entry, State
 from ...types import BaseType
+from ...verifier import Error
 
 
 class JumpInstruction(Instruction, ABC):
@@ -42,6 +44,26 @@ class JumpInstruction(Instruction, ABC):
     def copy(self) -> "JumpInstruction":
         return self.__class__(self.offset)
 
+    def trace(
+            self, source: Source, state: State, errors: List[Error], checker: TypeChecker,
+    ) -> "JumpInstruction.Troolean":
+        """
+        :return: will this jump instruction actually jump?
+        """
+
+        return JumpInstruction.Troolean.ALWAYS
+
+    # ------------------------------ Classes ------------------------------ #
+
+    class Troolean(Enum):
+        """
+        A three-state enum for representing jump predicates.
+        """
+
+        ALWAYS = 0
+        MAYBE = 1
+        NEVER = 2
+
 
 class JsrInstruction(JumpInstruction, ABC):
     """
@@ -53,8 +75,9 @@ class JsrInstruction(JumpInstruction, ABC):
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> JumpInstruction.Troolean:
         state.push(source, types.return_address_t)
+        return JumpInstruction.Troolean.ALWAYS
 
 
 class RetInstruction(JumpInstruction, ABC):
@@ -90,16 +113,29 @@ class RetInstruction(JumpInstruction, ABC):
     def copy(self) -> "RetInstruction":
         return self.__class__(self.index)
 
-    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> JumpInstruction.Troolean:
         entry = state.get(source, self.index)
         if not checker.check_merge(types.return_address_t, entry.type):
-            errors.append(Error(source, "expected type returnAddress", "got %s (via %s)" % (entry.type, entry.source)))
+            errors.append(Error(
+                Error.Type.INVALID_TYPE, source,
+                "expected type returnAddress", "got %s (via %s)" % (entry.type, entry.source),
+            ))
+        return JumpInstruction.Troolean.ALWAYS
 
 
 class ConditionalJumpInstruction(JumpInstruction, ABC):
     """
     A jump instruction that jumps only if a certain condition is met.
     """
+
+    EQ = 0
+    NE = 1
+    LT = 2
+    GE = 3
+    GT = 4
+    LE = 5
+
+    comparison: int = ...
 
     def __repr__(self) -> str:
         return "<ConditionalJumpInstruction(opcode=0x%x, mnemonic=%s, offset=%s) at %x>" % (
@@ -119,23 +155,28 @@ class UnaryComparisonJumpInstruction(ConditionalJumpInstruction, ABC):
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> JumpInstruction.Troolean:
         if self.type_ is None:
             entry = state.pop(source)
             if not checker.check_reference(entry.type):
-                errors.append(Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source)))
+                errors.append(Error(
+                    Error.Type.INVALID_TYPE, source,
+                    "expected reference type", "got %s (via %s)" % (entry.type, entry.source),
+                ))
         else:
             entry, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
-
             if not checker.check_merge(self.type_, entry.type):
                 errors.append(Error(
-                    source, "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source),
+                    Error.Type.INVALID_TYPE, source,
+                    "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source),
                 ))
+
+        return JumpInstruction.Troolean.MAYBE
 
 
 class BinaryComparisonJumpInstruction(ConditionalJumpInstruction, ABC):
     """
-    A conditional jump instruction that comapares two values.
+    A conditional jump instruction that compares two values.
     """
 
     type_: BaseType = ...
@@ -145,7 +186,7 @@ class BinaryComparisonJumpInstruction(ConditionalJumpInstruction, ABC):
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
+    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> JumpInstruction.Troolean:
         if self.type_ is None:
             entry_a, entry_b = state.pop(source, 2)
         else:
@@ -154,12 +195,28 @@ class BinaryComparisonJumpInstruction(ConditionalJumpInstruction, ABC):
 
         if not checker.check_merge(self.type_, entry_a.type):
             errors.append(Error(
-                source, "expected type %s" % self.type_, "got %s (via %s)" % (entry_a.type, entry_a.source),
+                Error.Type.INVALID_TYPE, source,
+                "expected type %s" % self.type_, "got %s (via %s)" % (entry_a.type, entry_a.source),
             ))
         if not checker.check_merge(self.type_, entry_b.type):
             errors.append(Error(
-                source, "expected type %s" % self.type_, "got %s (via %s)" % (entry_b.type, entry_b.source),
+                Error.Type.INVALID_TYPE, source,
+                "expected type %s" % self.type_, "got %s (via %s)" % (entry_b.type, entry_b.source),
             ))
+
+        return JumpInstruction.Troolean.MAYBE  # self.compare(entry_a, entry_b)
+
+    # @abstractmethod
+    # def compare(self, entry_a: Entry, entry_b: Entry) -> JumpInstruction.Troolean:
+    #     """
+    #     Compares the two entries provided to this instruction and returns whether this jump will occur.
+    #
+    #     :param entry_a: The first entry.
+    #     :param entry_b: The second entry.
+    #     :return: The troolean indicating whether this jump will occur.
+    #     """
+    #
+    #     ...
 
 
 class TableSwitchInstruction(Instruction, ABC):
@@ -221,7 +278,10 @@ class TableSwitchInstruction(Instruction, ABC):
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
-            errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
+            errors.append(Error(
+                Error.Type.INVALID_TYPE, source,
+                "expected type int", "got %s (via %s)" % (entry.type, entry.source),
+            ))
 
 
 class LookupSwitchInstruction(Instruction, ABC):
@@ -281,4 +341,7 @@ class LookupSwitchInstruction(Instruction, ABC):
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         entry = state.pop(source)
         if not checker.check_merge(types.int_t, entry.type):
-            errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
+            errors.append(Error(
+                Error.Type.INVALID_TYPE, source,
+                "expected type int", "got %s (via %s)" % (entry.type, entry.source),
+            ))

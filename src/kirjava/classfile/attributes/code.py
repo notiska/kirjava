@@ -9,13 +9,13 @@ Attributes found exclusively in the Code attribute.
 """
 
 import logging
-import struct
 import typing
 from abc import abstractmethod, ABC
 from typing import IO, Iterable, List, Tuple, Union
 
 from . import AttributeInfo
 from .. import descriptor, ClassFile
+from .._struct import *
 from ..constants import Class, UTF8
 from ... import types
 from ...types.verification import VerificationType, Uninitialized
@@ -45,12 +45,12 @@ class StackMapTable(AttributeInfo):
         Reads a verification type info from a buffer.
         """
 
-        tag = buffer.read(1)[0]
+        tag, = buffer.read(1)
         # The tags are somewhat sorted by their occurrence frequency. Some of the less common types are harder to
         # distinguish in terms of usage, but the most common types tend to be class, int and top, in that order.
         if tag == 7:
-            class_index, = struct.unpack(">H", buffer.read(2))
-            return class_file.constant_pool[class_index].get_actual_type()
+            class_index, = unpack_H(buffer.read(2))
+            return class_file.constant_pool[class_index].type
         elif tag == 1:
             return types.int_t
         elif tag == 0:
@@ -62,7 +62,7 @@ class StackMapTable(AttributeInfo):
         elif tag == 4:
             return types.long_t
         elif tag == 8:
-            offset, = struct.unpack(">H", buffer.read(2))
+            offset, = unpack_H(buffer.read(2))
             return Uninitialized(offset)
         elif tag == 5:
             return types.null_t
@@ -81,17 +81,17 @@ class StackMapTable(AttributeInfo):
 
         if type_class is ClassOrInterfaceType:
             buffer.write(bytes((7,)))
-            buffer.write(struct.pack(">H", class_file.constant_pool.add(Class(type_.name))))
+            buffer.write(pack_H(class_file.constant_pool.add(Class(type_.name))))
         elif type_ == types.this_t:
             buffer.write(bytes((7,)))
-            buffer.write(struct.pack(">H", class_file.constant_pool.add(Class(type_.class_.name))))
+            buffer.write(pack_H(class_file.constant_pool.add(Class(type_.class_.name))))
         elif type_ == types.int_t:
             buffer.write(bytes((1,)))
         elif type_ == types.top_t:
             buffer.write(bytes((0,)))
         elif type_class is ArrayType:
             buffer.write(bytes((7,)))
-            buffer.write(struct.pack(">H", class_file.constant_pool.add(Class(descriptor.to_descriptor(type_)))))
+            buffer.write(pack_H(class_file.constant_pool.add(Class(descriptor.to_descriptor(type_)))))
         elif type_ == types.float_t:
             buffer.write(bytes((2,)))
         elif type_ == types.double_t:
@@ -100,7 +100,7 @@ class StackMapTable(AttributeInfo):
             buffer.write(bytes((4,)))
         elif type_class is Uninitialized:
             buffer.write(bytes((8,)))
-            buffer.write(struct.pack(">H", type_.offset))
+            buffer.write(pack_H(type_.offset))
         elif type_ == types.null_t:
             buffer.write(bytes((5,)))
         elif type_ == types.uninit_this_t:
@@ -124,7 +124,7 @@ class StackMapTable(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.frames.clear()
-        frames_count, = struct.unpack(">H", buffer.read(2))
+        frames_count, = unpack_H(buffer.read(2))
         for index in range(frames_count):
             frame_type, = buffer.read(1)
             for stack_frame in self.STACK_MAP_FRAMES:
@@ -135,7 +135,7 @@ class StackMapTable(AttributeInfo):
                raise ValueError("Unknown stackmap frame type %i." % frame_type)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.frames)))
+        buffer.write(pack_H(len(self.frames)))
         for stack_frame in self.frames:
             stack_frame.write(class_file, buffer)
 
@@ -247,7 +247,7 @@ class StackMapTable(AttributeInfo):
         def read(
                 cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes],
         ) -> "StackMapTable.SameLocals1StackItemFrameExtended":
-            offset_delta, = struct.unpack(">H", buffer.read(2))
+            offset_delta, = unpack_H(buffer.read(2))
             stack_item = StackMapTable._read_verification_type(class_file, buffer)
             return cls(offset_delta, stack_item)
 
@@ -267,7 +267,7 @@ class StackMapTable(AttributeInfo):
 
         def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
             buffer.write(bytes((247,)))
-            buffer.write(struct.pack(">H", self.offset_delta))
+            buffer.write(pack_H(self.offset_delta))
             StackMapTable._write_verification_type(self.stack_item, class_file, buffer)
 
     class ChopFrame(StackMapFrame):
@@ -282,7 +282,7 @@ class StackMapTable(AttributeInfo):
 
         @classmethod
         def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.ChopFrame":
-            offset_delta, = struct.unpack(">H", buffer.read(2))
+            offset_delta, = unpack_H(buffer.read(2))
             return cls(offset_delta, 251 - frame_type)
 
         def __init__(self, offset_delta: int, chopped: int) -> None:
@@ -299,7 +299,7 @@ class StackMapTable(AttributeInfo):
 
         def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
             buffer.write(bytes((251 - self.chopped,)))
-            buffer.write(struct.pack(">H", self.offset_delta))
+            buffer.write(pack_H(self.offset_delta))
 
     class SameFrameExtended(StackMapFrame):
         """
@@ -311,12 +311,12 @@ class StackMapTable(AttributeInfo):
 
         @classmethod
         def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.SameFrameExtended":
-            offset_delta, = struct.unpack(">H", buffer.read(2))
+            offset_delta, = unpack_H(buffer.read(2))
             return cls(offset_delta)
 
         def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
             buffer.write(bytes((251,)))
-            buffer.write(struct.pack(">H", self.offset_delta))
+            buffer.write(pack_H(self.offset_delta))
 
     class AppendFrame(StackMapFrame):
         """
@@ -330,7 +330,7 @@ class StackMapTable(AttributeInfo):
 
         @classmethod
         def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.AppendFrame":
-            offset_delta, = struct.unpack(">H", buffer.read(2))
+            offset_delta, = unpack_H(buffer.read(2))
             locals_ = tuple(
                 StackMapTable._read_verification_type(class_file, buffer) for index in range(frame_type - 251)
             )
@@ -352,7 +352,7 @@ class StackMapTable(AttributeInfo):
 
         def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
             buffer.write(bytes((251 + len(self.locals),)))
-            buffer.write(struct.pack(">H", self.offset_delta))
+            buffer.write(pack_H(self.offset_delta))
             for local in self.locals:
                 StackMapTable._write_verification_type(local, class_file, buffer)
 
@@ -367,14 +367,14 @@ class StackMapTable(AttributeInfo):
 
         @classmethod
         def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.FullFrame":
-            offset_delta, = struct.unpack(">H", buffer.read(2))
+            offset_delta, = unpack_H(buffer.read(2))
             locals_ = tuple(
                 StackMapTable._read_verification_type(class_file, buffer)
-                for index in range(struct.unpack(">H", buffer.read(2))[0])
+                for index in range(unpack_H(buffer.read(2))[0])
             )
             stack = tuple(
                 StackMapTable._read_verification_type(class_file, buffer)
-                for index in range(struct.unpack(">H", buffer.read(2))[0])
+                for index in range(unpack_H(buffer.read(2))[0])
             )
 
             return cls(offset_delta, locals_, stack)
@@ -399,13 +399,13 @@ class StackMapTable(AttributeInfo):
 
         def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
             buffer.write(bytes((255,)))
-            buffer.write(struct.pack(">H", self.offset_delta))
+            buffer.write(pack_H(self.offset_delta))
 
-            buffer.write(struct.pack(">H", len(self.locals)))
+            buffer.write(pack_H(len(self.locals)))
             for local in self.locals:
                 StackMapTable._write_verification_type(local, class_file, buffer)
 
-            buffer.write(struct.pack(">H", len(self.stack)))
+            buffer.write(pack_H(len(self.stack)))
             for state in self.stack:
                 StackMapTable._write_verification_type(state, class_file, buffer)
 
@@ -447,14 +447,14 @@ class LineNumberTable(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.entries.clear()
-        entry_count, = struct.unpack(">H", buffer.read(2))
+        entry_count, = unpack_H(buffer.read(2))
         for index in range(entry_count):
-            self.entries.append(LineNumberTable.LineNumberEntry.read(class_file, buffer))
+            self.entries.append(LineNumberTable.LineNumberEntry.read(buffer))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.entries)))
+        buffer.write(pack_H(len(self.entries)))
         for entry in self.entries:
-            entry.write(class_file, buffer)
+            entry.write(buffer)
 
     class LineNumberEntry:
         """
@@ -464,16 +464,15 @@ class LineNumberTable(AttributeInfo):
         __slots__ = ("class_file", "start_pc", "line_number",)
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes]) -> "LineNumberTable.LineNumberEntry":
+        def read(cls, buffer: IO[bytes]) -> "LineNumberTable.LineNumberEntry":
             """
             Reads a line number entry from the buffer.
 
-            :param class_file: The class file that the entry belongs to.
             :param buffer: The binary buffer to read from.
             :return: The read line number entry.
             """
 
-            start_pc, line_number = struct.unpack(">HH", buffer.read(4))
+            start_pc, line_number = unpack_HH(buffer.read(4))
             return cls(start_pc, line_number)
 
         def __init__(self, start_pc: int, line_number: int) -> None:
@@ -488,15 +487,14 @@ class LineNumberTable(AttributeInfo):
         def __repr__(self) -> str:
             return "<LineNumberEntry(start_pc=%i, line_number=%i) at %x>" % (self.start_pc, self.line_number, id(self))
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, buffer: IO[bytes]) -> None:
             """
             Writes this line number entry to the buffer.
 
-            :param class_file: The class file that this entry belongs to.
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(">HH", self.start_pc, self.line_number))
+            buffer.write(pack_HH(self.start_pc, self.line_number))
 
 
 class LocalVariableTable(AttributeInfo):
@@ -528,12 +526,12 @@ class LocalVariableTable(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.entries.clear()
-        entries_count, = struct.unpack(">H", buffer.read(2))
+        entries_count, = unpack_H(buffer.read(2))
         for index in range(entries_count):
             self.entries.append(LocalVariableTable.LocalVariableEntry.read(class_file, buffer, fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.entries)))
+        buffer.write(pack_H(len(self.entries)))
         for entry in self.entries:
             entry.write(class_file, buffer)
 
@@ -563,10 +561,10 @@ class LocalVariableTable(AttributeInfo):
                 name_index,
                 descriptor_index,
                 entry.index,
-            ) = struct.unpack(">HHHHH", buffer.read(10))
+            ) = unpack_HHHHH(buffer.read(10))
 
-            entry.name = class_file.constant_pool.get(name_index, fail_fast)
-            entry.descriptor = class_file.constant_pool.get(descriptor_index, fail_fast)
+            entry.name = class_file.constant_pool.get(name_index, do_raise=fail_fast)
+            entry.descriptor = class_file.constant_pool.get(descriptor_index, do_raise=fail_fast)
 
             # try:
             #     self.type_ = descriptor.parse_field_descriptor(
@@ -612,8 +610,7 @@ class LocalVariableTable(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(
-                ">HHHHH",
+            buffer.write(pack_HHHHH(
                 self.start_pc,
                 self.length,
                 class_file.constant_pool.add(self.name),
@@ -651,12 +648,12 @@ class LocalVariableTypeTable(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.entries.clear()
-        entries_count, = struct.unpack(">H", buffer.read(2))
+        entries_count, = unpack_H(buffer.read(2))
         for index in range(entries_count):
             self.entries.append(LocalVariableTypeTable.LocalVariableTypeEntry.read(class_file, buffer, fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.entries)))
+        buffer.write(pack_H(len(self.entries)))
         for entry in self.entries:
             entry.write(class_file, buffer)
 
@@ -686,10 +683,10 @@ class LocalVariableTypeTable(AttributeInfo):
                 name_index,
                 signature_index,
                 entry.index,
-            ) = struct.unpack(">HHHHH", buffer.read(10))
+            ) = unpack_HHHHH(buffer.read(10))
 
-            entry.name = class_file.constant_pool.get(name_index, fail_fast)
-            entry.signature = class_file.constant_pool.get(signature_index, fail_fast)
+            entry.name = class_file.constant_pool.get(name_index, do_raise=fail_fast)
+            entry.signature = class_file.constant_pool.get(signature_index, do_raise=fail_fast)
 
             # try:
             #     self.type_ = signature.parse_field_signature(
@@ -735,8 +732,7 @@ class LocalVariableTypeTable(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(
-                ">HHHHH",
+            buffer.write(pack_HHHHH(
                 self.start_pc,
                 self.length,
                 class_file.constant_pool.add(self.name),

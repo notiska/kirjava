@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+# cython: language=c
+# cython: language_level=3
 
 __all__ = (
     "Liveness",
@@ -9,26 +10,18 @@ Local variable liveness analysis.
 """
 
 import itertools
-import typing
 from frozendict import frozendict, FrozenOrderedDict
-from typing import Dict, FrozenSet, Iterator, List, Set
+from typing import FrozenSet, Iterator, List, Set
 
-from ._edge import ExceptionEdge
-from .trace import Trace
-from .verifier import BasicTypeChecker
-from ..abc import Edge
-
-if typing.TYPE_CHECKING:
-    from ._block import InsnBlock
-    from .graph import InsnGraph
+from .graph cimport ExceptionEdge, InsnBlock, InsnEdge, InsnGraph
+from .trace cimport Trace
+from ..verifier import BasicTypeChecker
 
 
-class Liveness:
+cdef class Liveness:
     """
     Liveness analysis information.
     """
-
-    __slots__ = ("graph", "trace", "entries", "exits")
 
     @classmethod
     def from_graph(cls, graph: "InsnGraph") -> "Liveness":
@@ -51,15 +44,15 @@ class Liveness:
         :return: The computed liveness information.
         """
 
-        entries: Dict[InsnBlock, Set[int]] = {}
-        exits: Dict[InsnBlock, Set[int]] = {}
+        cdef dict entries = {}
+        cdef dict exits = {}
 
         for start in itertools.chain(trace.leaf_edges, trace.back_edges):
             live = entries.setdefault(start.to, set())
             overwritten: Set[int] = set()
             for *_, exit in trace.states[start.to].values():
                 for index, _, _, read in exit.local_accesses:
-                    if index in overwritten:
+                    if index in live or index in overwritten:
                         continue
                     elif read:
                         live.add(index)
@@ -67,7 +60,7 @@ class Liveness:
                         overwritten.add(index)
                 break
 
-            to_visit: List[Iterator[Edge]] = [iter(trace.graph.in_edges(start.to))]
+            to_visit: List[Iterator[InsnEdge]] = [iter(trace.graph.in_edges(start.to))]
 
             while to_visit:
                 try:
@@ -118,10 +111,10 @@ class Liveness:
 
     def __init__(
             self,
-            graph: "InsnGraph",
+            graph: InsnGraph,
             trace: Trace,
-            entries: FrozenOrderedDict["InsnBlock", FrozenSet[int]],
-            exits: FrozenOrderedDict["InsnBlock", FrozenSet[int]],
+            entries: "FrozenOrderedDict[InsnBlock, FrozenSet[int]]",
+            exits: "FrozenOrderedDict[InsnBlock, FrozenSet[int]]",
     ) -> None:
         self.graph = graph
         self.trace = trace

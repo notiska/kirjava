@@ -5,14 +5,16 @@ Instructions that push constants to the stack.
 """
 
 from abc import ABC
-from typing import Any, IO, List
+from typing import Any, Dict, IO, List
 
 from . import Instruction
 from .. import ClassFile
-from ..constants import Constant, Integer
+from ..constants import ConstantInfo, Integer
 from ... import types
-from ...abc import Error, Source, TypeChecker
-from ...analysis.trace import State
+from ...abc import Source, TypeChecker, Value
+from ...analysis.ir.value import ConstantValue
+from ...analysis.trace import Entry, State
+from ...verifier import Error
 
 
 class ConstantInstruction(Instruction, ABC):
@@ -22,7 +24,7 @@ class ConstantInstruction(Instruction, ABC):
 
     __slots__ = ("constant",)
 
-    def __init__(self, constant: Constant) -> None:
+    def __init__(self, constant: ConstantInfo) -> None:
         """
         :param constant: The constant that this instruction holds.
         """
@@ -45,10 +47,15 @@ class ConstantInstruction(Instruction, ABC):
 
     def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
         try:
-            state.push(source, self.constant.get_type())
+            state.push(source, self.constant.get_type(), self.constant)
         except TypeError:
-            errors.append(Error(source, "can't convert constant %s to Java type" % self.constant))
+            errors.append(Error(
+                Error.Type.INVALID_CONSTANT, source, "can't convert constant %s to Java type" % self.constant,
+            ))
             state.push(source, types.top_t)  # Placeholder, doesn't account for wide types tho :(
+
+    def lift(self, pre: State, post: State, associations: Dict[Entry, Value]) -> None:
+        associations[post.stack[-1]] = ConstantValue(self.constant)
 
 
 class FixedConstantInstruction(ConstantInstruction, ABC):
@@ -56,7 +63,7 @@ class FixedConstantInstruction(ConstantInstruction, ABC):
     Pushes the same constant to the stack every time.
     """
 
-    constant: Constant = ...
+    constant: ConstantInfo = ...
 
     def __init__(self) -> None:
         super().__init__(self.__class__.constant)

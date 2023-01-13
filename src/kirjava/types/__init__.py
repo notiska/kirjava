@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 __all__ = (
+    "class_", "array",
     "void_t",
     "byte_t", "short_t", "char_t", "bool_t",
     "int_t", "long_t",
@@ -165,10 +166,27 @@ class ReferenceType(BaseType, ABC):
     def __eq__(self, other: Any) -> bool:
         return other is self or other.__class__ is self.__class__
 
+    @abstractmethod
+    def rename(self, name: str) -> "ReferenceType":
+        """
+        Returns the renamed reference type. This may vary based on the reference type in question, some many not change
+        at all.
 
-# ------------------------------ Primitives ------------------------------ #
+        :param name: The new name.
+        :return: The new reference type, renamed (if applicable).
+        """
+
+        ...
+
 
 from .primitive import *
+from .reference import *
+
+# Aliases for easier API usage
+array = ArrayType
+class_ = ClassOrInterfaceType
+
+# ------------------------------ Primitives ------------------------------ #
 
 void_t = VoidType()
 
@@ -189,8 +207,6 @@ return_address_t = ReturnAddressType()
 
 
 # ------------------------------ Reference ------------------------------ #
-
-from .reference import *
 
 # Bases
 object_t = ClassOrInterfaceType("java/lang/Object")

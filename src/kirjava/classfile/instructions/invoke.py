@@ -11,11 +11,14 @@ from . import Instruction
 from .. import descriptor, ClassFile
 from ..constants import Class as Class_, InterfaceMethodRef, InvokeDynamic, MethodRef, NameAndType
 from ... import _argument, types
-from ...abc import Class, Error, Source, TypeChecker
+from ...abc import Class, Source, TypeChecker
 from ...analysis.trace import Entry, State
 from ...types import BaseType, ReferenceType
 from ...types.reference import ClassOrInterfaceType
 from ...types.verification import This, Uninitialized
+from ...verifier import Error
+
+# TODO: Signature polymorphic methods (check specification)
 
 
 class InvokeInstruction(Instruction, ABC):
@@ -26,7 +29,7 @@ class InvokeInstruction(Instruction, ABC):
     __slots__ = ("class_", "name", "argument_types", "return_type")
 
     def __init__(
-            self, class_: _argument.ReferenceType, name: str, *descriptor_: _argument.MethodDescriptor,
+            self, class_: "_argument.ReferenceType", name: str, *descriptor_: "_argument.MethodDescriptor",
     ) -> None:
         """
         :param class_: The class that the method belongs to.
@@ -66,12 +69,12 @@ class InvokeInstruction(Instruction, ABC):
         super().read(class_file, buffer, wide)
 
         method_ref = class_file.constant_pool[self._index]
-        self.class_ = method_ref.class_.get_actual_type()
+        self.class_ = method_ref.class_.type
         self.name = method_ref.name_and_type.name
         self.argument_types, self.return_type = descriptor.parse_method_descriptor(method_ref.name_and_type.descriptor)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
-        if isinstance(self.class_, ClassOrInterfaceType):
+        if self.class_.__class__ is ClassOrInterfaceType:
             class_ = Class_(self.class_.name)
         else:
             class_ = Class_(descriptor.to_descriptor(self.class_))
@@ -97,7 +100,8 @@ class InvokeInstruction(Instruction, ABC):
 
             if not checker.check_merge(argument_type, entry.type):
                 errors.append(Error(
-                    source, "expected type %s" % argument_type, "got %s (via %s)" % (entry.type, entry.source),
+                    Error.Type.INVALID_TYPE, source,
+                    "expected type %s" % argument_type, "got %s (via %s)" % (entry.type, entry.source),
                 ))
 
         return argument_entries
@@ -121,7 +125,8 @@ class InvokeVirtualInstruction(InvokeInstruction, ABC):
 
         if not checker.check_merge(self.class_, entry.type):
             errors.append(Error(
-                source, "expected type %s" % self.class_, "got %s (via %s)" % (entry.type, entry.source),
+                Error.Type.INVALID_TYPE, source,
+                "expected type %s" % self.class_, "got %s (via %s)" % (entry.type, entry.source),
             ))
 
         if self.return_type != types.void_t:
@@ -148,13 +153,14 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction, ABC):
             if entry.type == types.uninit_this_t:
                 state.replace(source, entry, This(entry.type.class_), merges=(entry,))
                 return
-            elif isinstance(entry.type, Uninitialized):  # Unverified code can cause this not to be an uninitialized type
+            elif entry.type.__class__ is Uninitialized:  # Unverified code can cause this not to be an uninitialized type
                 state.replace(source, entry, entry.type.class_, merges=(entry,))
                 return
 
         if not checker.check_merge(self.class_, entry.type):
             errors.append(Error(
-                source, "expected type %s" % self.class_, "got %s (via %s)" % (entry.type, entry.source),
+                Error.Type.INVALID_TYPE, source,
+                "expected type %s" % self.class_, "got %s (via %s)" % (entry.type, entry.source),
             ))
 
         if self.return_type != types.void_t:
@@ -187,9 +193,9 @@ class InvokeInterfaceInstruction(InvokeVirtualInstruction, ABC):
 
     def __init__(
             self,
-            class_: Union[ReferenceType, Class, Class_, str],
+            class_: "_argument.ReferenceType",
             name: str,
-            *descriptor_: Union[Tuple[Union[Tuple[BaseType, ...], str], Union[BaseType, str]], Tuple[str]],
+            *descriptor_: "_argument.MethodDescriptor",
             count: int = 0,
     ) -> None:
         super().__init__(class_, name, *descriptor_)
@@ -200,7 +206,7 @@ class InvokeInterfaceInstruction(InvokeVirtualInstruction, ABC):
         return self.__class__(self.class_, self.name, self.argument_types, self.return_type, count=self.count)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
-        if isinstance(self.class_, ClassOrInterfaceType):
+        if self.class_.__class__ is ClassOrInterfaceType:
             class_ = Class_(self.class_.name)
         else:
             class_ = Class_(descriptor.to_descriptor(self.class_))
@@ -220,7 +226,7 @@ class InvokeDynamicInstruction(InvokeStaticInstruction, ABC):
     __slots__ = ("bootstrap_method_attr_index",)
 
     def __init__(
-            self, bootstrap_method_attr_index: int, name: str, *descriptor_: _argument.MethodDescriptor,
+            self, bootstrap_method_attr_index: int, name: str, *descriptor_: "_argument.MethodDescriptor",
     ) -> None:
         """
         :param bootstrap_method_attr_index: The index in the bootstrap methods attribute this invokedynamic refers to.
