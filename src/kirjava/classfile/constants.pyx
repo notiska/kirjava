@@ -252,7 +252,7 @@ cdef class Long(ConstantInfo):
     wide = True
     since = Version(45, 0)
 
-    cdef readonly long value
+    cdef readonly long long value
 
     @classmethod
     def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "Long"]:
@@ -270,52 +270,52 @@ cdef class Long(ConstantInfo):
     def __add__(self, other: Any) -> "Long":
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for +: %r and %r" % (Long, other.__class__))
-        return Long(<long>self.value + (<Long>other).value)
+        return Long(<long long>self.value + (<Long>other).value)
 
     def __sub__(self, other: Any) -> "Long":
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for -: %r and %r" % (Long, other.__class__))
-        return Long(<long>self.value - (<Long>other).value)
+        return Long(<long long>self.value - (<Long>other).value)
 
     def __mul__(self, other: Any) -> "Long":
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for *: %r and %r" % (Long, other.__class__))
-        return Long(<long>self.value * (<Long>other).value)
+        return Long(<long long>self.value * (<Long>other).value)
 
     def __truediv__(self, other: Any) -> "Long":
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for /: %r and %r" % (Long, other.__class__))
-        return Long(<long>self.value / (<Long>other).value)
+        return Long(<long long>self.value / (<Long>other).value)
 
     def __mod__(self, other: Any) -> "Long":
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Long, other.__class__))
-        return Long(<int>self.value % (<Long>other).value)
+        return Long(<long long>self.value % (<Long>other).value)
 
     def __lshift__(self, other: Any) -> "Long":
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for <<: %r and %r" % (Long, other.__class__))
-        return Long(<long>self.value << (<Integer>other).value)
+        return Long(<long long>self.value << (<Integer>other).value)
 
     def __rshift__(self, other: Any) -> "Long":
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for >>: %r and %r" % (Long, other.__class__))
-        return Long(<long>self.value >> (<Integer>other).value)
+        return Long(<long long>self.value >> (<Integer>other).value)
 
     def __and__(self, other: Any) -> "Long":
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, other.__class__))
-        return Long(<long>self.value & (<Long>other).value)
+        return Long(<long long>self.value & (<Long>other).value)
 
     def __or__(self, other: Any) -> "Long":
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for |: %r and %r" % (Long, other.__class__))
-        return Long(<long>self.value | (<Long>other).value)
+        return Long(<long long>self.value | (<Long>other).value)
 
     def __xor__(self, other) -> "Long":
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, other.__class__))
-        return Long(<long>self.value ^ (<Long>other).value)
+        return Long(<long long>self.value ^ (<Long>other).value)
 
     def __neg__(self) -> "Long":
         return Long(-self.value)
