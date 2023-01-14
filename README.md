@@ -21,7 +21,7 @@ I might add documentation in the future, not sure yet lol. Anyway, here's the qu
 ### Installing
 You can either:
 1. Clone this repository and install via `python3 setup.py install`.
-2. Install this library via pip: `pip3 install git+https://github.com/node3112/kirjava.git`
+2. Install this library via pip: `pip3 install git+https://github.com/node3112/kirjava.git`.
 
 ### Getting started
 ```python3

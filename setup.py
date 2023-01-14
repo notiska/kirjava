@@ -42,7 +42,7 @@ if __name__ == "__main__":
             # "src/kirjava/skeleton/reconstruct/*.pyx",
             # "src/kirjava/types/*.pyx",
             # "src/kirjava/verifier/*.pyx",
-        ]),
+        ], build_dir="build/"),
         package_dir={
             "": "src/",
         },
