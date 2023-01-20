@@ -21,7 +21,7 @@ cdef inline tuple _find_targets_and_bounds(object code):  # -> Tuple[Set[int], S
     cdef set handler_targets = set()
     cdef set exception_bounds = set()
 
-    for offset, instruction in code.instructions.items():
+    for offset, instruction in (<dict>code.instructions).items():
         if isinstance(instruction, JumpInstruction):  # Add jump offsets for jump instructions
             try:
                 if instruction.offset is not None:
@@ -39,7 +39,7 @@ cdef inline tuple _find_targets_and_bounds(object code):  # -> Tuple[Set[int], S
             for offset_ in instruction.offsets.values():
                 jump_targets.add(offset + offset_)
 
-    for handler in code.exception_table:  # Add exception handler targets and bounds
+    for handler in <list>code.exception_table:  # Add exception handler targets and bounds
         handler_targets.add(handler.handler_pc)
         exception_bounds.add(handler.start_pc)
         exception_bounds.add(handler.end_pc)
@@ -59,6 +59,8 @@ cdef inline void _create_blocks_and_edges(
 
     # Variables that'll be used later
     cdef:
+        dict instructions_ = code.instructions
+
         bint is_new_block = False
         bint is_forward_offset
         bint is_jsr
@@ -69,11 +71,13 @@ cdef inline void _create_blocks_and_edges(
         InsnBlock previous
         InsnBlock to
 
+        dict offsets  # For switch instructions
+
         InsnBlock block = graph.entry_block
 
-    for offset, instruction in sorted(code.instructions.items(), key=lambda item: item[0]):
+    for offset in sorted(instructions_):
         # Don't want to modify the original as some instructions are not immutable (due to their operands).
-        instruction = instruction.copy()
+        instruction = instructions_[offset].copy()
 
         is_forward_offset = offset in forward_jumps
 
@@ -95,6 +99,19 @@ cdef inline void _create_blocks_and_edges(
             if is_forward_offset:
                 edges = forward_jumps.pop(offset)
                 for edge in edges:
+                    # Since this is a bound edge, remove any absolute jump offsets from it.
+                    if isinstance(edge, SwitchEdge):
+                        if edge.value is None:
+                            edge.instruction.default = None
+                        elif edge.instruction == instructions.tableswitch:
+                            # FIXME: Remove individual offsets, might have unbound switch edges
+                            edge.instruction.offsets.clear()
+                        elif edge.instruction == instructions.lookupswitch:
+                            edge.instruction.offsets.pop(edge.value, None)
+
+                    elif isinstance(edge, JumpEdge):
+                        edge.instruction.offset = None
+
                     # Technically we aren't allowed to set the edge's to, but we can get away with it here as we
                     # haven't yet added it to the graph, though generally, these should be immutable.
                     edge.to = block
@@ -112,6 +129,7 @@ cdef inline void _create_blocks_and_edges(
                 to = starting.get(offset + instruction.offset, None)
                 edge = JumpEdge(block, to, instruction)
                 if to is not None:
+                    instruction.offset = None
                     graph._connect(edge, overwrite=False, check=False)
                 else:  # Mark the offset as a forward jump edge
                     edges = forward_jumps.setdefault(offset + instruction.offset, [])
@@ -128,6 +146,7 @@ cdef inline void _create_blocks_and_edges(
                 to = starting.get(offset + instruction.offset, None)
                 edge = JsrJumpEdge(previous, to, instruction)
                 if to is not None:
+                    instruction.offset = None
                     graph._connect(edge, overwrite=False, check=False)
                 else:
                     edges = forward_jumps.setdefault(offset + instruction.offset, [])
@@ -137,10 +156,22 @@ cdef inline void _create_blocks_and_edges(
                 graph._connect(JsrFallthroughEdge(previous, block, instruction), overwrite=False, check=False)
 
         elif instruction == instructions.tableswitch:
-            for index, offset_ in itertools.chain(((None, instruction.default),), enumerate(instruction.offsets)):
+            # Previously chained the default to the beginning of the offsets, this was slower so it's here now.
+            to = starting.get(offset + instruction.default)
+            edge = SwitchEdge(block, to, instruction, None)
+            if to is not None:
+                instruction.default = None
+                graph._connect(edge, overwrite=False, check=False)
+            else:
+                edges = forward_jumps.setdefault(offset + instruction.default, [])
+                edges.append(edge)
+
+            for index, offset_ in enumerate(<list>instruction.offsets):
                 to = starting.get(offset + offset_, None)
                 edge = SwitchEdge(block, to, instruction, index)
                 if to is not None:
+                    # FIXME: Remove individual offsets, might have unbound switch edges
+                    instruction.offsets.clear()
                     graph._connect(edge, overwrite=False, check=False)
                 else:
                     edges = forward_jumps.setdefault(offset + offset_, [])
@@ -151,10 +182,21 @@ cdef inline void _create_blocks_and_edges(
             graph._add(block, check=False)
 
         elif instruction == instructions.lookupswitch:
-            for value, offset_ in itertools.chain(((None, instruction.default),), instruction.offsets.items()):
+            to = starting.get(offset + instruction.default)
+            edge = SwitchEdge(block, to, instruction, None)
+            if to is not None:
+                instruction.default = None
+                graph._connect(edge, overwrite=False, check=False)
+            else:
+                edges = forward_jumps.setdefault(offset + instruction.default, [])
+                edges.append(edge)
+
+            offsets = instruction.offsets
+            for value, offset_ in offsets.items():
                 to = starting.get(offset + offset_, None)
                 edge = SwitchEdge(block, to, instruction, value)
                 if to is not None:
+                    offsets.pop(value)
                     graph._connect(edge, overwrite=False, check=False)
                 else:
                     edges = forward_jumps.setdefault(offset + offset_, [])
@@ -210,25 +252,10 @@ cdef inline void _create_blocks_and_edges(
     if not block._instructions and not graph._forward_edges[block] and not graph._backward_edges[block]:
         graph._remove(block, check=False)
 
-    cdef set edges_
-    for edges_ in graph._forward_edges.values():
-        for edge in edges_:
-            if isinstance(edge, SwitchEdge):
-                if edge.value is None:
-                    edge.instruction.default = None
-                elif edge.instruction == instructions.tableswitch:
-                    # FIXME: Remove individual offsets, might have unbound switch edges
-                    edge.instruction.offsets.clear()
-                elif edge.instruction == instructions.lookupswitch:
-                    edge.instruction.offsets.pop(edge.value, None)
-
-            elif isinstance(edge, JumpEdge):
-                edge.instruction.offset = None
-
     # Add exception edges via the code's exception table.
 
     for start, block in starting.items():
-        for index, handler in enumerate(code.exception_table):
+        for index, handler in enumerate(<list>code.exception_table):
             if handler.start_pc <= start < handler.end_pc:
                 target = starting.get(handler.handler_pc, None)
                 if target is not None:

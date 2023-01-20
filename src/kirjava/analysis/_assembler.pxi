@@ -51,8 +51,8 @@ cdef inline int _write_block(
     cdef InsnEdge edge
     cdef InsnEdge fallthrough_edge
 
-    inline = inline and block.inline_
-    if block in offsets and not inline:  # The block is already written, so nothing to do here
+    inline_ = inline_ and block.inline_
+    if block in offsets and not inline_:  # The block is already written, so nothing to do here
         return offset
     # No instructions means nothing to write, so skip this block. Keep in mind if we do have out edges though, we may
     # need to add jumps to account for impossible fallthroughs.
@@ -94,7 +94,7 @@ cdef inline int _write_block(
     cdef bint unbound_returns = False
     cdef bint unbound_athrows = False
 
-    shifted = False
+    cdef bint shifted = False
     while not shifted:
         offset = start
 
@@ -227,7 +227,7 @@ cdef inline int _write_block(
             not is_conditional and
             jump_edge.to is not None and
             jump_edge.to.inline_ and
-            len(graph.in_edges(jump_edge.to)) <= 1
+            len(graph._forward_edges[jump_edge.to]) <= 1
         ):
             offset = _write_block(
                 graph, offset, jump_edge.to, code,
