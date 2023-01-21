@@ -51,7 +51,7 @@ cdef inline int _write_block(
     cdef InsnEdge edge
     cdef InsnEdge fallthrough_edge
 
-    inline_ = inline_ and block.inline_
+    inline_ = inline and block.inline_
     if block in offsets and not inline_:  # The block is already written, so nothing to do here
         return offset
     # No instructions means nothing to write, so skip this block. Keep in mind if we do have out edges though, we may

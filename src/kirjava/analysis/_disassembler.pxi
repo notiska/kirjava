@@ -49,7 +49,7 @@ cdef inline tuple _find_targets_and_bounds(object code):  # -> Tuple[Set[int], S
 
 cdef inline void _create_blocks_and_edges(
         InsnGraph graph, object code, set jump_targets, set handler_targets, set exception_bounds,
-):
+) except *:
     """
     Creates basic blocks and edges between them.
     """
@@ -166,7 +166,7 @@ cdef inline void _create_blocks_and_edges(
                 edges = forward_jumps.setdefault(offset + instruction.default, [])
                 edges.append(edge)
 
-            for index, offset_ in enumerate(<list>instruction.offsets):
+            for index, offset_ in enumerate(<list>instruction.offsets.copy()):
                 to = starting.get(offset + offset_, None)
                 edge = SwitchEdge(block, to, instruction, index)
                 if to is not None:
@@ -192,7 +192,7 @@ cdef inline void _create_blocks_and_edges(
                 edges.append(edge)
 
             offsets = instruction.offsets
-            for value, offset_ in offsets.items():
+            for value, offset_ in offsets.copy().items():
                 to = starting.get(offset + offset_, None)
                 edge = SwitchEdge(block, to, instruction, value)
                 if to is not None:
@@ -249,7 +249,7 @@ cdef inline void _create_blocks_and_edges(
 
     # Remove the final block if it is empty and has no out edges. There might be cases where the final instruction in a
     # method is not one that breaks control flow, and due to that we want to check if we can remove it first.
-    if not block._instructions and not graph._forward_edges[block] and not graph._backward_edges[block]:
+    if not block._instructions and not graph._forward_edges[block]:  # and not graph._backward_edges[block]:
         graph._remove(block, check=False)
 
     # Add exception edges via the code's exception table.

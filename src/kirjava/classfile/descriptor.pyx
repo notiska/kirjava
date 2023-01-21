@@ -52,12 +52,12 @@ cpdef inline tuple _find_enclosing(str string, str start_identifier, str end_ide
     return string[:start_index], string[start_index + 1: end_index], string[end_index + 1:]
 
 
-def to_descriptor(*values: Union[Tuple[BaseType, ...], BaseType], dont_throw: bool = False) -> str:
+def to_descriptor(*values: Union[Tuple[BaseType, ...], BaseType], do_raise: bool = True) -> str:
     """
     Serializes the provided types to a descriptor.
 
     :param values: The values to serialize.
-    :param dont_throw: Don't throw an exception when an invalid type is passed.
+    :param do_raise: Raises an exception when an invalid type is encountered.
     :return: The serialized type string.
     """
 
@@ -72,10 +72,10 @@ def to_descriptor(*values: Union[Tuple[BaseType, ...], BaseType], dont_throw: bo
             if value_class is ClassOrInterfaceType:
                 descriptor += "L%s;" % value.name
             elif value_class is ArrayType:
-                descriptor += "%s%s" % ("[" * value.dimension, to_descriptor(value.element_type, dont_throw=dont_throw))
+                descriptor += "%s%s" % ("[" * value.dimension, to_descriptor(value.element_type, do_raise=do_raise))
             elif value_class is tuple:
-                descriptor += "(%s)" % to_descriptor(*value, dont_throw=dont_throw)
-            elif not dont_throw:
+                descriptor += "(%s)" % to_descriptor(*value, do_raise=do_raise)
+            elif do_raise:
                 raise TypeError("Invalid type for descriptor: %r." % value)
 
     return descriptor
@@ -117,8 +117,9 @@ cpdef inline tuple next_argument(str descriptor):  # -> Tuple[BaseType, str]:
 
 def parse_field_descriptor(
         descriptor: str,
+        *,
         force_read: bool = False,
-        dont_throw: bool = False,
+        do_raise: bool = True,
 ) -> BaseType:
     """
     Parses a field descriptor.
@@ -126,14 +127,14 @@ def parse_field_descriptor(
 
     :param descriptor: The field descriptor.
     :param force_read: Force the already parsed field descriptor to be returned, even if there is an error.
-    :param dont_throw: Don't throw an exception if the descriptor is invalid, instead return InvalidType.
+    :param do_raise: Raises an exception if the descriptor is invalid. Otherwise, returns an InvalidType.
     :return: The parsed field type.
     """
 
     if not force_read and not descriptor:
-        if dont_throw:
-            return InvalidType(descriptor)
-        raise ValueError("Descriptor is empty.")
+        if do_raise:
+            raise ValueError("Descriptor is empty.")
+        return InvalidType(descriptor)
 
     cdef str remaining
 
@@ -141,23 +142,24 @@ def parse_field_descriptor(
     if not force_read:
         # Check for trailing data
         if remaining:
-            if dont_throw:
-                return InvalidType(descriptor)
-            raise ValueError("Trailing data %r in descriptor." % remaining)
+            if do_raise:
+                raise ValueError("Trailing data %r in descriptor." % remaining)
+            return InvalidType(descriptor)
 
         # Check the type is valid
         if type_ == types.void_t or type_.__class__ is InvalidType:
-            if dont_throw:
-                return InvalidType(descriptor)
-            raise TypeError("Invalid type argument %r found." % type_)
+            if do_raise:
+                raise TypeError("Invalid type argument %r found." % type_)
+            return InvalidType(descriptor)
 
     return type_
 
 
 def parse_method_descriptor(
         descriptor: str,
+        *,
         force_read: bool = False,
-        dont_throw: bool = False,
+        do_raise: bool = True,
 ) -> Union[Tuple[Tuple[BaseType, ...], BaseType], InvalidType]:
     """
     Parses a method descriptor.
@@ -165,14 +167,14 @@ def parse_method_descriptor(
 
     :param descriptor: The method descriptor.
     :param force_read: Force the already parsed method descriptor to be returned, even if there is an error.
-    :param dont_throw: Don't throw an exception if the descriptor is invalid, instead return InvalidType.
+    :param do_raise: Raises an exception if the descriptor is invalid. Otherwise, returns an InvalidType.
     :return: The parsed method types and the return type.
     """
 
     if not force_read and not descriptor:
-        if dont_throw:
-            return InvalidType(descriptor)
-        raise ValueError("Descriptor is empty.")
+        if do_raise:
+            raise ValueError("Descriptor is empty.")
+        return InvalidType(descriptor)
 
     cdef str preceding
     cdef str arguments_descriptor
@@ -191,27 +193,27 @@ def parse_method_descriptor(
     if not force_read:
         # Checking for leading / trailing data
         if preceding:
-            if dont_throw:
-                return InvalidType(descriptor)
-            raise ValueError("Leading data %r in descriptor." % preceding)
+            if do_raise:
+                raise ValueError("Leading data %r in descriptor." % preceding)
+            return InvalidType(descriptor)
 
         if remaining:
-            if dont_throw:
-                return InvalidType(descriptor)
-            raise ValueError("Trailing data %r in descriptor." % remaining)
+            if do_raise:
+                raise ValueError("Trailing data %r in descriptor." % remaining)
+            return InvalidType(descriptor)
 
         # Check we have arguments
         if arguments_descriptor is None:
-            if dont_throw:
-                return InvalidType(descriptor)
-            raise ValueError("No argument types found.")
+            if do_raise:
+                raise ValueError("No argument types found.")
+            return InvalidType(descriptor)
 
         # Check the types in the arguments are valid (i.e. no void types)
         for argument_type in argument_types:
             if argument_type == types.void_t or argument_type.__class__ is InvalidType:
-                if dont_throw:
-                    return InvalidType(descriptor)
-                raise TypeError("Invalid argument type %r found." % argument_type)
+                if do_raise:
+                    raise TypeError("Invalid argument type %r found." % argument_type)
+                return InvalidType(descriptor)
 
         # Check the return type is valid
         if return_type.__class__ is InvalidType:

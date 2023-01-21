@@ -3,7 +3,7 @@
 
 import logging
 import typing
-from typing import Any, Callable, Dict, IO, List, Tuple, Union
+from typing import Any, Callable, Dict, IO, List, Tuple, Type, Union
 
 from ._struct import *
 from ..abc.constant cimport Constant
@@ -26,12 +26,24 @@ cdef class ConstantInfo(Constant):
     since = Version(45, 0)
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], "Constant"]], "Constant"]:
+    def read(cls, buffer: IO[bytes]) -> Union[ConstantInfo, Any]:
         """
         Reads this constant type from the provided buffer.
 
         :param buffer: The binary data buffer.
-        :return: A function that, when invoked, creates the constant.
+        :return: Either the constant, or info that can be used to dereference it.
+        """
+
+        ...
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> Union[ConstantInfo, None]:
+        """
+        Dereferences this constant from the provided information.
+
+        :param lookups: The constant lookups that have already been computed.
+        :param info: The info that was read from the constant pool.
+        :return: The dereferenced constant, or None if it can't yet be dereferenced.
         """
 
         ...
@@ -59,8 +71,12 @@ cdef class Index(ConstantInfo):
             return self.index
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "Index"]:
-        ...
+    def read(cls, buffer: IO[bytes]) -> Tuple[Callable[[Dict[int, Any], ...], Index], Tuple[Any, ...]]:
+        raise Exception("Tried to read index type.")
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+        raise Exception("Tried to dereference index type.")
 
     def __init__(self, index: int) -> None:
         """
@@ -84,10 +100,14 @@ cdef class UTF8(ConstantInfo):
     cdef readonly str value
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "UTF8"]:
-        value = buffer.read(unpack_H(buffer.read(2))[0])
-        constant = cls(value.replace(b"\xc0\x80", b"\x00").decode("utf-8", errors="ignore"))
-        return lambda _: constant
+    def read(cls, buffer: IO[bytes]) -> UTF8:
+        return cls(buffer.read(
+            unpack_H(buffer.read(2))[0],
+        ).replace(b"\xc0\x80", b"\x00").decode("utf-8", errors="ignore"))
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+        raise Exception("Tried to derefence UTF8 constant.")
 
     def __init__(self, value: str) -> None:
         """
@@ -113,10 +133,12 @@ cdef class Integer(ConstantInfo):
     cdef readonly int value
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "Integer"]:
-        value, = unpack_i(buffer.read(4))
-        constant = cls(value)
-        return lambda _: constant
+    def read(cls, buffer: IO[bytes]) -> Integer:
+        return cls(unpack_i(buffer.read(4))[0])
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+        raise Exception("Tried to derefence integer constant.")
 
     def __init__(self, value: int) -> None:
         """
@@ -125,57 +147,57 @@ cdef class Integer(ConstantInfo):
 
         self.value = value
 
-    def __add__(self, other: Any) -> "Integer":
+    def __add__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for +: %r and %r" % (Integer, other.__class__))
         return Integer(<int>self.value + (<Integer>other).value)
 
-    def __sub__(self, other: Any) -> "Integer":
+    def __sub__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for -: %r and %r" % (Integer, other.__class__))
         return Integer(<int>self.value - (<Integer>other).value)
 
-    def __mul__(self, other: Any) -> "Integer":
+    def __mul__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for *: %r and %r" % (Integer, other.__class__))
         return Integer(<int>self.value * (<Integer>other).value)
 
-    def __truediv__(self, other: Any) -> "Integer":
+    def __truediv__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for /: %r and %r" % (Integer, other.__class__))
         return Integer(<int>self.value / (<Integer>other).value)
 
-    def __mod__(self, other: Any) -> "Integer":
+    def __mod__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Integer, other.__class__))
         return Integer(<int>self.value % (<Integer>other).value)
 
-    def __lshift__(self, other: Any) -> "Integer":
+    def __lshift__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for <<: %r and %r" % (Integer, other.__class__))
         return Integer(<int>self.value << (<Integer>other).value)
 
-    def __rshift__(self, other: Any) -> "Integer":
+    def __rshift__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for >>: %r and %r" % (Integer, other.__class__))
         return Integer(<int>self.value >> (<Integer>other).value)
 
-    def __and__(self, other: Any) -> "Integer":
+    def __and__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for &: %r and %r" % (Integer, other.__class__))
         return Integer(<int>self.value & (<Integer>other).value)
 
-    def __or__(self, other: Any) -> "Integer":
+    def __or__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for |: %r and %r" % (Integer, other.__class__))
         return Integer(<int>self.value | (<Integer>other).value)
 
-    def __xor__(self, other) -> "Integer":
+    def __xor__(self, other) -> Integer:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for &: %r and %r" % (Integer, other.__class__))
         return Integer(<int>self.value ^ (<Integer>other).value)
 
-    def __neg__(self) -> "Integer":
+    def __neg__(self) -> Integer:
         return Integer(-self.value)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
@@ -196,10 +218,12 @@ cdef class Float(ConstantInfo):
     cdef readonly float value
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "Float"]:
-        value, = unpack_f(buffer.read(4))
-        constant = cls(value)
-        return lambda _: constant
+    def read(cls, buffer: IO[bytes]) -> Float:
+        return cls(unpack_f(buffer.read(4))[0])
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+        raise Exception("Tried to derefence float constant.")
 
     def __init__(self, value: float) -> None:
         """
@@ -208,32 +232,32 @@ cdef class Float(ConstantInfo):
 
         self.value = value
 
-    def __add__(self, other: Any) -> "Float":
+    def __add__(self, other: Any) -> Float:
         if not isinstance(other, Float):
             raise TypeError("unsupported operand type(s) for +: %r and %r" % (Float, other.__class__))
         return Float(<float>self.value + (<Float>other).value)
 
-    def __sub__(self, other: Any) -> "Float":
+    def __sub__(self, other: Any) -> Float:
         if not isinstance(other, Float):
             raise TypeError("unsupported operand type(s) for -: %r and %r" % (Float, other.__class__))
         return Float(<float>self.value - (<Float>other).value)
 
-    def __mul__(self, other: Any) -> "Float":
+    def __mul__(self, other: Any) -> Float:
         if not isinstance(other, Float):
             raise TypeError("unsupported operand type(s) for *: %r and %r" % (Float, other.__class__))
         return Float(<float>self.value * (<Float>other).value)
 
-    def __truediv__(self, other: Any) -> "Float":
+    def __truediv__(self, other: Any) -> Float:
         if not isinstance(other, Float):
             raise TypeError("unsupported operand type(s) for /: %r and %r" % (Float, other.__class__))
         return Float(<float>self.value / (<Float>other).value)
 
-    def __mod__(self, other: Any) -> "Float":
+    def __mod__(self, other: Any) -> Float:
         if not isinstance(other, Float):
             raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Float, other.__class__))
         return Float(<float>self.value % (<Float>other).value)
 
-    def __neg__(self) -> "Float":
+    def __neg__(self) -> Float:
         return Float(-self.value)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
@@ -255,10 +279,12 @@ cdef class Long(ConstantInfo):
     cdef readonly long long value
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "Long"]:
-        value, = unpack_q(buffer.read(8))
-        constant = cls(value)
-        return lambda _: constant
+    def read(cls, buffer: IO[bytes]) -> Long:
+        return cls(unpack_q(buffer.read(8))[0])
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+        raise Exception("Tried to derefence long constant.")
 
     def __init__(self, value: int) -> None:
         """
@@ -267,57 +293,57 @@ cdef class Long(ConstantInfo):
 
         self.value = value
 
-    def __add__(self, other: Any) -> "Long":
+    def __add__(self, other: Any) -> Long:
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for +: %r and %r" % (Long, other.__class__))
         return Long(<long long>self.value + (<Long>other).value)
 
-    def __sub__(self, other: Any) -> "Long":
+    def __sub__(self, other: Any) -> Long:
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for -: %r and %r" % (Long, other.__class__))
         return Long(<long long>self.value - (<Long>other).value)
 
-    def __mul__(self, other: Any) -> "Long":
+    def __mul__(self, other: Any) -> Long:
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for *: %r and %r" % (Long, other.__class__))
         return Long(<long long>self.value * (<Long>other).value)
 
-    def __truediv__(self, other: Any) -> "Long":
+    def __truediv__(self, other: Any) -> Long:
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for /: %r and %r" % (Long, other.__class__))
         return Long(<long long>self.value / (<Long>other).value)
 
-    def __mod__(self, other: Any) -> "Long":
+    def __mod__(self, other: Any) -> Long:
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Long, other.__class__))
         return Long(<long long>self.value % (<Long>other).value)
 
-    def __lshift__(self, other: Any) -> "Long":
+    def __lshift__(self, other: Any) -> Long:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for <<: %r and %r" % (Long, other.__class__))
         return Long(<long long>self.value << (<Integer>other).value)
 
-    def __rshift__(self, other: Any) -> "Long":
+    def __rshift__(self, other: Any) -> Long:
         if not isinstance(other, Integer):
             raise TypeError("unsupported operand type(s) for >>: %r and %r" % (Long, other.__class__))
         return Long(<long long>self.value >> (<Integer>other).value)
 
-    def __and__(self, other: Any) -> "Long":
+    def __and__(self, other: Any) -> Long:
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, other.__class__))
         return Long(<long long>self.value & (<Long>other).value)
 
-    def __or__(self, other: Any) -> "Long":
+    def __or__(self, other: Any) -> Long:
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for |: %r and %r" % (Long, other.__class__))
         return Long(<long long>self.value | (<Long>other).value)
 
-    def __xor__(self, other) -> "Long":
+    def __xor__(self, other) -> Long:
         if not isinstance(other, Long):
             raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, other.__class__))
         return Long(<long long>self.value ^ (<Long>other).value)
 
-    def __neg__(self) -> "Long":
+    def __neg__(self) -> Long:
         return Long(-self.value)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
@@ -339,10 +365,12 @@ cdef class Double(ConstantInfo):
     cdef readonly double value
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "Double"]:
-        value, = unpack_d(buffer.read(8))
-        constant = cls(value)
-        return lambda _: constant
+    def read(cls, buffer: IO[bytes]) -> Double:
+        return cls(unpack_d(buffer.read(8))[0])
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+        raise Exception("Tried to derefence double constant.")
 
     def __init__(self, value: float) -> None:
         """
@@ -351,32 +379,32 @@ cdef class Double(ConstantInfo):
 
         self.value = value
 
-    def __add__(self, other: Any) -> "Double":
+    def __add__(self, other: Any) -> Double:
         if not isinstance(other, Double):
             raise TypeError("unsupported operand type(s) for +: %r and %r" % (Double, other.__class__))
         return Double(<double>self.value + (<Double>other).value)
 
-    def __sub__(self, other: Any) -> "Double":
+    def __sub__(self, other: Any) -> Double:
         if not isinstance(other, Double):
             raise TypeError("unsupported operand type(s) for -: %r and %r" % (Double, other.__class__))
         return Double(<double>self.value - (<Double>other).value)
 
-    def __mul__(self, other: Any) -> "Double":
+    def __mul__(self, other: Any) -> Double:
         if not isinstance(other, Double):
             raise TypeError("unsupported operand type(s) for *: %r and %r" % (Double, other.__class__))
         return Double(<double>self.value * (<Double>other).value)
 
-    def __truediv__(self, other: Any) -> "Double":
+    def __truediv__(self, other: Any) -> Double:
         if not isinstance(other, Double):
             raise TypeError("unsupported operand type(s) for /: %r and %r" % (Double, other.__class__))
         return Double(<double>self.value / (<Double>other).value)
 
-    def __mod__(self, other: Any) -> "Double":
+    def __mod__(self, other: Any) -> Double:
         if not isinstance(other, Double):
             raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Double, other.__class__))
         return Double(<double>self.value % (<Double>other).value)
 
-    def __neg__(self) -> "Double":
+    def __neg__(self) -> Double:
         return Double(-self.value)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
@@ -402,9 +430,15 @@ cdef class Class(ConstantInfo):
             return self.name
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "Class"]:
-        name_index, = unpack_H(buffer.read(2))
-        return lambda dynamic_deref: cls(dynamic_deref(name_index).value)
+    def read(cls, buffer: IO[bytes]) -> int:
+        return unpack_H(buffer.read(2))[0]
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> Class:
+        name = (<dict>lookups).get(info, None)
+        if not isinstance(name, UTF8):
+            raise TypeError("Expected type %r, got %r." % (UTF8, name.__class__))
+        return cls(name.value)
 
     def __init__(self, name: str) -> None:
         """
@@ -441,9 +475,15 @@ cdef class String(ConstantInfo):
     cdef readonly str value
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "String"]:
-        value_index, = unpack_H(buffer.read(2))
-        return lambda dynamic_deref: cls(dynamic_deref(value_index).value)
+    def read(cls, buffer: IO[bytes]) -> int:
+        return unpack_H(buffer.read(2))[0]
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> String:
+        value = (<dict>lookups).get(info, None)
+        if not isinstance(value, UTF8):
+            raise TypeError("Expected type %r, got %r." % (UTF8, value.__class__))
+        return cls(value.value)
 
     def __init__(self, value: str) -> None:
         """
@@ -471,15 +511,28 @@ cdef class FieldRef(ConstantInfo):
     cdef readonly NameAndType name_and_type
 
     property value:
-        def __get__(self) -> Tuple[Class, "NameAndType"]:
+        def __get__(self) -> Tuple[Class, NameAndType]:
             return self.class_, self.name_and_type
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "FieldRef"]:
-        class_index, name_and_type_index = unpack_HH(buffer.read(4))
-        return lambda dynamic_deref: cls(dynamic_deref(class_index), dynamic_deref(name_and_type_index))
+    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+        return unpack_HH(buffer.read(4))
 
-    def __init__(self, class_: Class, name_and_type: "NameAndType") -> None:
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[FieldRef, None]:
+        class_ = (<dict>lookups).get(info[0], None)
+        if class_ is None:
+            return None
+        elif not isinstance(class_, Class):
+            raise TypeError("Expected type %r, got %r." % (Class, class_.__class__))
+        name_and_type = (<dict>lookups).get(info[1], None)
+        if name_and_type is None:
+            return None
+        elif not isinstance(name_and_type, NameAndType):
+            raise TypeError("Expected type %r, got %r." % (NameAndType, name_and_type.__class__))
+        return cls(class_, name_and_type)
+
+    def __init__(self, class_: Class, name_and_type: NameAndType) -> None:
         """
         :param class_: The class that the field belongs to.
         :param name_and_type: The name and type of the field.
@@ -514,15 +567,28 @@ cdef class MethodRef(ConstantInfo):
     cdef readonly NameAndType name_and_type
 
     property value:
-        def __get__(self) -> Tuple[Class, "NameAndType"]:
+        def __get__(self) -> Tuple[Class, NameAndType]:
             return self.class_, self.name_and_type
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "MethodRef"]:
-        class_index, name_and_type_index = unpack_HH(buffer.read(4))
-        return lambda dynamic_deref: cls(dynamic_deref(class_index), dynamic_deref(name_and_type_index))
+    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+        return unpack_HH(buffer.read(4))
 
-    def __init__(self, class_: Class, name_and_type: "NameAndType") -> None:
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[MethodRef, None]:
+        class_ = (<dict>lookups).get(info[0], None)
+        if class_ is None:
+            return None
+        elif not isinstance(class_, Class):
+            raise TypeError("Expected type %r, got %r." % (Class, class_.__class__))
+        name_and_type = (<dict>lookups).get(info[1], None)
+        if name_and_type is None:
+            return None
+        elif not isinstance(name_and_type, NameAndType):
+            raise TypeError("Expected type %r, got %r." % (NameAndType, name_and_type.__class__))
+        return cls(class_, name_and_type)
+
+    def __init__(self, class_: Class, name_and_type: NameAndType) -> None:
         """
         :param class_: The class that the method belongs to.
         :param name_and_type: The name and type of the field.
@@ -555,9 +621,22 @@ cdef class InterfaceMethodRef(MethodRef):
     since = Version(45, 0)
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "InterfaceMethodRef"]:
-        class_index, name_and_type_index = unpack_HH(buffer.read(4))
-        return lambda dynamic_deref: cls(dynamic_deref(class_index), dynamic_deref(name_and_type_index))
+    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+        return unpack_HH(buffer.read(4))
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[InterfaceMethodRef, None]:
+        class_ = (<dict>lookups).get(info[0], None)
+        if class_ is None:
+            return None
+        elif not isinstance(class_, Class):
+            raise TypeError("Expected type %r, got %r." % (Class, class_.__class__))
+        name_and_type = (<dict>lookups).get(info[1], None)
+        if name_and_type is None:
+            return None
+        elif not isinstance(name_and_type, NameAndType):
+            raise TypeError("Expected type %r, got %r." % (NameAndType, name_and_type.__class__))
+        return cls(class_, name_and_type)
 
 
 cdef class NameAndType(ConstantInfo):
@@ -576,9 +655,18 @@ cdef class NameAndType(ConstantInfo):
             return self.name, self.descriptor
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "NameAndType"]:
-        name_index, descriptor_index = unpack_HH(buffer.read(4))
-        return lambda dynamic_deref: cls(dynamic_deref(name_index).value, dynamic_deref(descriptor_index).value)
+    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+        return unpack_HH(buffer.read(4))
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> NameAndType:
+        name = (<dict>lookups).get(info[0], None)
+        if not isinstance(name, UTF8):
+            raise TypeError("Expected type %r, got %r." % (UTF8, name.__class__))
+        descriptor = (<dict>lookups).get(info[1], None)
+        if not isinstance(descriptor, UTF8):
+            raise TypeError("Expected type %r, got %r." % (UTF8, descriptor.__class__))
+        return cls(name.value, descriptor.value)
 
     def __init__(self, name: str, descriptor_: str) -> None:
         """
@@ -588,6 +676,7 @@ cdef class NameAndType(ConstantInfo):
 
         self.name = name
         self.descriptor = descriptor_
+        # TODO: Parse type descriptor
 
     def __repr__(self) -> str:
         return "<NameAndType(name=%r, descriptor=%s) at %x>" % (self.name, self.descriptor, id(self))
@@ -627,9 +716,17 @@ cdef class MethodHandle(ConstantInfo):
             return self.reference_kind, self.reference
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "MethodHandle"]:
-        reference_kind, reference_index = unpack_BH(buffer.read(3))
-        return lambda dynamic_deref: cls(reference_kind, dynamic_deref(reference_index))
+    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+        return unpack_BH(buffer.read(3))
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[MethodHandle, None]:
+        reference = (<dict>lookups).get(info[1], None)
+        if reference is None:
+            return None
+        elif not isinstance(reference, FieldRef) and not isinstance(reference, MethodRef):
+            raise TypeError("Expected type %r or %r, got %r." (FieldRef, MethodRef, reference.__class__))
+        return cls(info[0], reference)
 
     def __init__(self, reference_kind: int, reference: Union[FieldRef, MethodRef, InterfaceMethodRef]) -> None:
         """
@@ -656,15 +753,23 @@ cdef class MethodType(ConstantInfo):
     since = Version(51, 0)
 
     cdef readonly str descriptor
+    cdef readonly tuple argument_types
+    cdef readonly object return_type
 
     property value:
         def __get__(self) -> str:
             return self.descriptor
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "MethodType"]:
-        index, = unpack_H(buffer.read(2))
-        return lambda dynamic_deref: cls(dynamic_deref(index).value)
+    def read(cls, buffer: IO[bytes]) -> int:
+        return unpack_H(buffer.read(2))[0]
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> MethodType:
+        descriptor = (<dict>lookups).get(info, None)
+        if not isinstance(descriptor, UTF8):
+            raise TypeError("Expected type %r, got %r." % (UTF8, descriptor.__class__))
+        return cls(descriptor.value)
 
     def __init__(self, descriptor_: str) -> None:
         """
@@ -672,6 +777,7 @@ cdef class MethodType(ConstantInfo):
         """
 
         self.descriptor = descriptor_
+        self.argument_types, self.return_type = descriptor.parse_method_descriptor(descriptor_, do_raise=False)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(class_file.constant_pool.add_utf8(self.descriptor)))
@@ -691,10 +797,22 @@ cdef class Dynamic(ConstantInfo):
     cdef readonly int bootstrap_method_attr_index
     cdef readonly NameAndType name_and_type
 
+    property value:
+        def __get__(self) -> Tuple[int, NameAndType]:
+            return (self.bootstrap_method_attr_index, self.name_and_type)
+
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "Dynamic"]:
-        bootstrap_method_attr_index, name_and_type_index = unpack_HH(buffer.read(4))
-        return lambda dynamic_deref: cls(bootstrap_method_attr_index, dynamic_deref(name_and_type_index))
+    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+        return unpack_HH(buffer.read(4))
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[Dynamic, None]:
+        name_and_type = (<dict>lookups).get(info[1], None)
+        if name_and_type is None:  # Can't dereference it yet
+            return None
+        elif not isinstance(name_and_type, NameAndType):
+            raise TypeError("Expected type %r, got %r." % (NameAndType, name_and_type.__class__))
+        return cls(info[0], name_and_type)
 
     def __init__(self, bootstrap_method_attr_index: int, name_and_type: NameAndType) -> None:
         """
@@ -727,9 +845,17 @@ cdef class InvokeDynamic(Dynamic):
     since = Version(51, 0)
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "InvokeDynamic"]:
-        bootstrap_method_attr_index, name_and_type_index = unpack_HH(buffer.read(4))
-        return lambda dynamic_deref: cls(bootstrap_method_attr_index, dynamic_deref(name_and_type_index))
+    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+        return unpack_HH(buffer.read(4))
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[InvokeDynamic, None]:
+        name_and_type = (<dict>lookups).get(info[1], None)
+        if name_and_type is None:  # Can't dereference it yet
+            return None
+        elif not isinstance(name_and_type, NameAndType):
+            raise TypeError("Expected type %r, got %r." % (NameAndType, name_and_type.__class__))
+        return cls(info[0], name_and_type)
 
 
 cdef class Module(ConstantInfo):
@@ -747,9 +873,15 @@ cdef class Module(ConstantInfo):
             return self.name
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "Module"]:
-        index, = unpack_H(buffer.read(2))
-        return lambda dynamic_deref: cls(dynamic_deref(index).value)
+    def read(cls, buffer: IO[bytes]) -> int:
+        return unpack_H(buffer.read(2))[0]
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> Module:
+        name = (<dict>lookups).get(info, None)
+        if not isinstance(name, UTF8):
+            raise TypeError("Expected type %r, got %r." % (UTF8, name.__class__))
+        return cls(name.value)
 
     def __init__(self, name: str) -> None:
         """
@@ -777,9 +909,15 @@ cdef class Package(ConstantInfo):
             return self.name
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Callable[[Callable[[int], Constant]], "Package"]:
-        index, = unpack_H(buffer.read(2))
-        return lambda dynamic_deref: cls(dynamic_deref(index).value)
+    def read(cls, buffer: IO[bytes]) -> int:
+        return unpack_H(buffer.read(2))[0]
+
+    @classmethod
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> Package:
+        name = (<dict>lookups).get(info, None)
+        if not isinstance(name, UTF8):
+            raise TypeError("Expected type %r, got %r." % (UTF8, name.__class__))
+        return cls(name.value)
 
     def __init__(self, name: str) -> None:
         """
@@ -817,39 +955,41 @@ cdef class ConstantPool:
         constants_count, = unpack_H(buffer.read(2))
         # logger.debug("Reading %i constant pool entries..." % (constants_count - 1))
 
-        cdef dict lookups = {}  # We'll store the lookups first
-        def dynamic_deref(index: int, visited: List[int]) -> Constant:
-            """
-            Dynamic dereferencing initially for constants with recursion detection.
-            """
-
-            if index in visited:
-                raise ValueError("Recursive constant at index %i." % index)
-            visited.append(index)
-            deref = lookups[index](lambda index_: dynamic_deref(index_, visited))
-            visited.pop()
-            return deref
-
+        cdef list uncomputed = []  # Constants we haven't computed yet
         cdef int offset = 1  # The constant pool starts at offset 1
+
         while offset < constants_count:
             tag, = buffer.read(1)
-            if not tag in _constant_map:
+            constant = _constant_map.get(tag, None)
+            if constant is None:
                 raise ValueError("Unknown constant tag: %i." % tag)
-            constant = _constant_map[tag]
             if constant.since > version:
                 raise ValueError("Constant %r is not supported in version %s." % (constant, version))
-            lookups[offset] = constant.read(buffer)
+
+            info = constant.read(buffer)
+
+            if isinstance(info, ConstantInfo):
+                constant_pool._forward_entries[offset] = info
+                constant_pool._backward_entries[info] = offset
+            else:
+                uncomputed.append((offset, constant, info))
+
             offset += 1
             if constant.wide:
                 offset += 1
+
         constant_pool._index = offset
 
-        # logger.debug("Dereferencing %i constant pool entries..." % len(lookups))
-        for index, lookup in lookups.items():
-            constant = lookup(lambda index_: dynamic_deref(index_, []))
+        # FIXME: Could cause an infinite loop, check for this
+        while uncomputed:
+            offset, constant, info = uncomputed.pop(0)
+            value = constant.dereference(constant_pool._forward_entries, info)
+            if value is None:
+                uncomputed.append((offset, constant, info))
+                continue
 
-            constant_pool._forward_entries[index] = constant
-            constant_pool._backward_entries[constant] = index
+            constant_pool._forward_entries[offset] = value
+            constant_pool._backward_entries[value] = offset
 
         return constant_pool
 
@@ -1058,7 +1198,7 @@ CONSTANTS = (
     Package,
 )
 
-_constant_map = {constant.tag: constant for constant in CONSTANTS}
+cdef dict _constant_map = {constant.tag: constant for constant in CONSTANTS}
 
 
 from . import descriptor

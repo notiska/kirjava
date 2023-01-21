@@ -236,58 +236,60 @@ def next_argument(signature: str, force_read: bool = False) -> Tuple[Union[TypeA
 
 def parse_field_signature(
         signature: str,
+        *,
         force_read: bool = False,
-        dont_throw: bool = False,
+        do_raise: bool = True,
 ) -> BaseType:
     """
     Parses a field's signature.
 
     :param signature: The signature to parse.
     :param force_read: Force the already parsed field signature to be returned, even if there is an error.
-    :param dont_throw: Don't throw an exception if an error occurs while parsing.
+    :param do_raise: Raises an exception if an error occurs while parsing. Otherwise, an InvalidType is returned.
     :return: The parsed signature.
     """
 
     if not force_read and not signature:
-        if dont_throw:
-            return InvalidType(signature)
-        raise ValueError("Signature is empty.")
+        if do_raise:
+            raise ValueError("Signature is empty.")
+        return InvalidType(signature)
 
     type_, remaining = next_argument(signature, force_read)
     if not force_read:
         # Check for trailing data
         if remaining:
-            if dont_throw:
-                return InvalidType(signature)
-            raise ValueError("Trailing data %r in signature." % remaining)
+            if do_raise:
+                raise ValueError("Trailing data %r in signature." % remaining)
+            return InvalidType(signature)
 
         # Check type is valid
         if isinstance(type_, VoidType) or isinstance(type_, InvalidType) or isinstance(type_, TypeArgumentList):
-            if dont_throw:
-                return InvalidType(signature)
-            raise TypeError("Invalid type argument %r found." % type_)
+            if do_raise:
+                raise TypeError("Invalid type argument %r found." % type_)
+            return InvalidType(signature)
 
     return type_
 
 
 def parse_method_signature(
         signature: str,
+        *,
         force_read: bool = False,
-        dont_throw: bool = False,
+        do_raise: bool = True,
 ) -> Union[Tuple[TypeArgumentList, Tuple[BaseType, ...], BaseType, Tuple[ClassOrInterfaceType, ...]], InvalidType]:
     """
     Parses a method signature.
 
     :param signature: The signature to parse.
     :param force_read: Force the already parsed method signature to be returned, even if there is an error.
-    :param dont_throw: Don't throw an exception if an error occurs, instead return an InvalidType.
+    :param do_raise: Raises an exception if an error occurs. Otherwise, returns an InvalidType.
     :return: The parsed signature (type parameters, argument types, the return type and exception types).
     """
 
     if not force_read and not signature:
-        if dont_throw:
-            return InvalidType(signature)
-        raise ValueError("Signature is empty.")
+        if do_raise:
+            raise ValueError("Signature is empty.")
+        return InvalidType(signature)
 
     preceding, arguments_signature, remaining = _find_enclosing(signature, "(", ")")
     
@@ -321,32 +323,32 @@ def parse_method_signature(
     if not force_read:
         # Checking for leading / trailing data
         if preceding:
-            if dont_throw:
-                return InvalidType(signature)
-            raise ValueError("Leading data %r in signature." % preceding)
+            if do_raise:
+                raise ValueError("Leading data %r in signature." % preceding)
+            return InvalidType(signature)
 
         if remaining:
-            if dont_throw:
-                return InvalidType(signature)
-            raise ValueError("Trailing data %r in signature." % remaining)
+            if do_raise:
+                raise ValueError("Trailing data %r in signature." % remaining)
+            return InvalidType(signature)
 
         # Check we have a list for the type parameters
         if not isinstance(type_parameters, TypeArgumentList):
-            if dont_throw:
-                return InvalidType(signature)
-            raise TypeError("Expected %r for type parameters, found %r." % (TypeArgumentList, type_parameters))
+            if do_raise:
+                raise TypeError("Expected %r for type parameters, found %r." % (TypeArgumentList, type_parameters))
+            return InvalidType(signature)
 
         # Check the type parameters are actually type parameters
         for type_parameter in type_parameters:
             if not isinstance(type_parameter, TypeParameter):
-                if dont_throw:
-                    return InvalidType(signature)
-                raise TypeError("Expected %r in type parameters, found %r." % (TypeParameter, type_parameter))
+                if do_raise:
+                    raise TypeError("Expected %r in type parameters, found %r." % (TypeParameter, type_parameter))
+                return InvalidType(signature)
                 
         if arguments_signature is None:
-            if dont_throw:
-                return InvalidType(signature)
-            raise ValueError("No argument types found.")
+            if do_raise:
+                raise ValueError("No argument types found.")
+            return InvalidType(signature)
             
         for argument_type in argument_types:
             if (
@@ -355,42 +357,43 @@ def parse_method_signature(
                 isinstance(argument_type, TypeParameter) or 
                 isinstance(argument_type, TypeArgumentList)
             ):
-                if dont_throw:
-                    return InvalidType(signature)
-                raise TypeError("Invalid argument type %r found." % argument_type)
+                if do_raise:
+                    raise TypeError("Invalid argument type %r found." % argument_type)
+                return InvalidType(signature)
                 
         if isinstance(return_type, InvalidType) or isinstance(return_type, TypeParameter) or isinstance(return_type, TypeArgumentList):
-            if dont_throw:
-                return InvalidType(signature)
-            raise TypeError("Invalid return type %r found." % return_type)
+            if do_raise:
+                raise TypeError("Invalid return type %r found." % return_type)
+            return InvalidType(signature)
                 
         for exception_type in exception_types:
             if not isinstance(exception_type, ClassOrInterfaceType) and not isinstance(exception_type, TypeVariable):
-                if dont_throw:
-                    return InvalidType(signature)
-                raise TypeError("Expected %r in exception types, found %r." % (ClassOrInterfaceType, exception_type))
+                if do_raise:
+                    raise TypeError("Expected %r in exception types, found %r." % (ClassOrInterfaceType, exception_type))
+                return InvalidType(signature)
 
     return type_parameters, argument_types, return_type, exception_types
 
 
 def parse_class_signature(
         signature: str,
+        *,
         force_read: bool = True,
-        dont_throw: bool = False
+        do_raise: bool = True,
 ) -> Union[Tuple[TypeArgumentList, ClassOrInterfaceType, Tuple[ClassOrInterfaceType, ...]], InvalidType]:
     """
     Parses a class signature.
 
     :param signature: The signature to parse.
     :param force_read: Force the already parsed method signature to be returned, even if there is an error.
-    :param dont_throw: Don't throw an exception if an error occurs, instead return an InvalidType.
+    :param do_raise: Raises an exception if an error occurs. Otherwise, returns an InvalidType.
     :return: The parsed signature.
     """
 
     if not signature:
-        if dont_throw:
-            return InvalidType(signature)
-        raise ValueError("Signature is empty.")
+        if do_raise:
+            raise ValueError("Signature is empty.")
+        return InvalidType(signature)
 
     type_parameters, remaining = next_argument(signature)
     if not isinstance(type_parameters, TypeArgumentList):
@@ -408,29 +411,29 @@ def parse_class_signature(
     if not force_read:
         # Check for trailing data
         if remaining:
-            if dont_throw:
-                return InvalidType(signature)
-            raise ValueError("Trailing data %r in signature." % remaining)
+            if do_raise:
+                raise ValueError("Trailing data %r in signature." % remaining)
+            return InvalidType(signature)
 
         # Check the type parameters are valid
         for type_parameter in type_parameters:
             if not isinstance(type_parameter, TypeParameter):
-                if dont_throw:
-                    return InvalidType(signature)
-                raise TypeError("Expected %r in type parameters, found %r." % (TypeParameter, type_parameter))
+                if do_raise:
+                    raise TypeError("Expected %r in type parameters, found %r." % (TypeParameter, type_parameter))
+                return InvalidType(signature)
 
         # Check super class type is valid
         if not isinstance(super_class_type, ClassOrInterfaceType):
-            if dont_throw:
-                return InvalidType(signature)
-            raise TypeError("Expected %r in exception types, found %r." % (ClassOrInterfaceType, super_class_type))
+            if do_raise:
+                raise TypeError("Expected %r in exception types, found %r." % (ClassOrInterfaceType, super_class_type))
+            return InvalidType(signature)
 
         # Check interface types are valid
         for interface_type in interface_types:
             if not isinstance(interface_type, ClassOrInterfaceType):
-                if dont_throw:
-                    return InvalidType(signature)
-                raise TypeError("Expected %r in interface types, found %r." % (ClassOrInterfaceType, interface_type))
+                if do_raise:
+                    raise TypeError("Expected %r in interface types, found %r." % (ClassOrInterfaceType, interface_type))
+                return InvalidType(signature)
 
     return type_parameters, super_class_type, interface_types
 

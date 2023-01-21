@@ -39,15 +39,11 @@ class MethodInfo(Method):
         descriptor_ = class_file.constant_pool.get_utf8(descriptor_index)
 
         try:
-            type_ = descriptor.parse_method_descriptor(
-                descriptor_,
-                force_read=False,
-                dont_throw=False,
-            )
+            type_ = descriptor.parse_method_descriptor(descriptor_)
             argument_types, return_type = type_
 
         except Exception as error:
-            type_ = descriptor.parse_method_descriptor(descriptor_, force_read=False, dont_throw=True)
+            type_ = descriptor.parse_method_descriptor(descriptor_, do_raise=False)
 
             if not isinstance(type_, tuple) or len(type_) != 2:
                 argument_types = type_
@@ -353,13 +349,9 @@ class FieldInfo(Field):
         descriptor_ = class_file.constant_pool.get_utf8(descriptor_index)
 
         try:
-            type_ = descriptor.parse_field_descriptor(
-                descriptor_,
-                force_read=False,
-                dont_throw=False,
-            )
+            type_ = descriptor.parse_field_descriptor(descriptor_)
         except Exception as error:  # force_read=True won't throw
-            type_ = descriptor.parse_field_descriptor(descriptor_, force_read=False, dont_throw=True)
+            type_ = descriptor.parse_field_descriptor(descriptor_, do_raise=False)
 
             logger.warning("Invalid descriptor %r in class %r: %r" % (descriptor_, class_file.name, error.args[0]))
             logger.debug("Invalid descriptor on field %r." % ("%s#%s" % (class_file.name, name)), exc_info=True)

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "load",
-    "disassemble",
+    "load", "dump",
+    "disassemble", "assemble",
 )
 
 """
@@ -33,6 +33,22 @@ def load(file_data_or_stream: Union[str, bytes, IO[bytes]]) -> ClassFile:
     return ClassFile.read(file_data_or_stream)
 
 
+def dump(classfile: ClassFile, file_or_stream: Union[str, IO[bytes]]) -> None:
+    """
+    Writes a classfile to the provided file or binary stream.
+
+    :param classfile: The classfile to write.
+    :param file_or_stream: The file or stream to write the classfile to.
+    """
+
+    if isinstance(file_or_stream, str):
+        with open(file_or_stream, "rb") as stream:
+            classfile.write(stream)
+        return
+
+    classfile.write(file_or_stream)
+
+
 def disassemble(method: MethodInfo, ignore_flags: bool = False) -> InsnGraph:
     """
     Disassembles the provided method. If the method has multiple Code attributes, the first is chosen.
@@ -55,3 +71,14 @@ def disassemble(method: MethodInfo, ignore_flags: bool = False) -> InsnGraph:
     if code is None:
         return InsnGraph(method)  # Just create an empty instruction graph
     return InsnGraph.disassemble(code)
+
+
+def assemble(graph: InsnGraph, **kwargs: bool) -> None:
+    """
+    Assembles the provided graph and sets the code attribute of the method it belongs to.
+
+    :param graph: The graph to assemble.
+    :param kwargs: Any extra arguments to pass to the assemble method (see InsnGraph.assemble()).
+    """
+
+    graph.method.code = graph.assemble(**kwargs)
