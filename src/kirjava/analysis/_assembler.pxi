@@ -16,26 +16,27 @@ from .liveness cimport *
 from .source import InstructionInBlock
 from .trace cimport *
 from .. import types
-from ..classfile import instructions
 from ..classfile.attributes.code import StackMapTable
 from ..classfile.attributes.method import Code
 from ..classfile.constants import Class
-from ..classfile.instructions import (
+from ..instructions import jvm as instructions
+from ..instructions.jvm import (
     Instruction, ConditionalJumpInstruction, JumpInstruction,
     LookupSwitchInstruction, ReturnInstruction, TableSwitchInstruction,
 )
 from ..types.verification import Uninitialized
-from ..verifier import Error
+from ..verifier import ErrorType
+from ..verifier._verifier cimport Error, Verifier
 
 _assembler_logger = logging.getLogger("kirjava.analysis._assembler")
 
 
 cdef inline int _write_block(
         InsnGraph graph,
+        Verifier verifier,
         int offset,
         InsnBlock block,
         object code,
-        list errors,
         dict offsets,
         dict jumps,
         dict switches,
@@ -56,7 +57,7 @@ cdef inline int _write_block(
         return offset
     # No instructions means nothing to write, so skip this block. Keep in mind if we do have out edges though, we may
     # need to add jumps to account for impossible fallthroughs.
-    elif not block and not graph._forward_edges[block]:
+    elif not block and not graph._forward_edges.get(block, False):
         return offset
 
     if offsets:  # Have we actually written any yet?
@@ -138,7 +139,7 @@ cdef inline int _write_block(
 
             # Write the block immediately, adjusting the offset too
             offset = _write_block(
-                graph, offset, intermediary, code, errors, offsets, jumps, switches, exceptions, temporary, inlined,
+                graph, verifier, offset, intermediary, code, offsets, jumps, switches, exceptions, temporary, inlined,
             )
             _assembler_logger.debug("    - Generated %s to account for edge %s." % (intermediary, edge))
 
@@ -151,11 +152,11 @@ cdef inline int _write_block(
     code.instructions.update(instructions_)  # Add the new instructions to the code
 
     if unbound_jumps:
-        errors.append(Error(Error.Type.INVALID_BLOCK, block, "block has unbound jumps"))
+        verifier.report(Error(ErrorType.INVALID_BLOCK, block, "block has unbound jumps"))
     if unbound_returns:
-        errors.append(Error(Error.Type.INVALID_BLOCK, block, "block has unbound returns"))
+        verifier.report(Error(ErrorType.INVALID_BLOCK, block, "block has unbound returns"))
     if unbound_athrows:
-        errors.append(Error(Error.Type.INVALID_BLOCK, block, "block has unbound athrows"))
+        verifier.report(Error(ErrorType.INVALID_BLOCK, block, "block has unbound athrows"))
 
     # if multiple_returns:
     #     errors.append(Error(Error.Type.INVALID_BLOCK, block, "block has multiple return instructions"))
@@ -204,7 +205,7 @@ cdef inline int _write_block(
     # Check that all the edges are valid
 
     if multiple_fallthroughs:
-        errors.append(Error(Error.Type.INVALID_BLOCK, block, "multiple fallthrough edges on block"))
+        verifier.report(Error(ErrorType.INVALID_BLOCK, block, "multiple fallthrough edges on block"))
 
     # cdef int delta
     cdef bint is_conditional
@@ -212,7 +213,7 @@ cdef inline int _write_block(
 
     if jump_edge is not None:
         if multiple_jumps:
-            errors.append(Error(Error.Type.INVALID_BLOCK, block, "multiple jumps on block"))
+            verifier.report(Error(ErrorType.INVALID_BLOCK, block, "multiple jumps on block"))
 
         jump_instruction = jump_edge.instruction.copy()
         is_conditional = isinstance(jump_instruction, ConditionalJumpInstruction)
@@ -230,9 +231,8 @@ cdef inline int _write_block(
             len(graph._forward_edges[jump_edge.to]) <= 1
         ):
             offset = _write_block(
-                graph, offset, jump_edge.to, code,
-                errors, offsets,
-                jumps, switches, exceptions,
+                graph, verifier, offset, jump_edge.to, code,
+                offsets, jumps, switches, exceptions,
                 temporary, inlined, inline=True,
             )
             inlined[jump_edge] = offsets[jump_edge.to][-1][:-1]
@@ -266,22 +266,22 @@ cdef inline int _write_block(
             # We also need to adjust the offset and bounds of the block
             offsets[block][-1] = (start, offset, news)
 
-        if jump_edge.__class__ is JsrJumpEdge:
-            if fallthrough_edge.__class__ is not JsrFallthroughEdge:
-                errors.append(Error(
-                    Error.Type.INVALID_BLOCK, block, "jsr jump edge with no jsr fallthrough edge on block",
+        if type(jump_edge) is JsrJumpEdge:
+            if type(fallthrough_edge) is not JsrFallthroughEdge:
+                verifier.report(Error(
+                    ErrorType.INVALID_BLOCK, block, "jsr jump edge with no jsr fallthrough edge on block",
                 ))
         elif is_conditional and fallthrough_edge is None:
-            errors.append(Error(
-                Error.Type.INVALID_BLOCK, block, "conditional jump edge with no fallthrough edge on block",
+            verifier.report(Error(
+                ErrorType.INVALID_BLOCK, block, "conditional jump edge with no fallthrough edge on block",
             ))
         elif not is_conditional and fallthrough_edge is not None:
-            errors.append(Error(
-                Error.Type.INVALID_BLOCK, block, "unconditional jump edge with a fallthrough edge on block",
+            verifier.report(Error(
+                ErrorType.INVALID_BLOCK, block, "unconditional jump edge with a fallthrough edge on block",
             ))
 
         if switch_edges:
-            errors.append(Error(Error.Type.INVALID_BLOCK, block, "jump and switch edges on block"))
+            verifier.report(Error(ErrorType.INVALID_BLOCK, block, "jump and switch edges on block"))
 
     elif switch_edges:
         switch_instruction: Union[TableSwitchInstruction, LookupSwitchInstruction, None] = None
@@ -295,8 +295,8 @@ cdef inline int _write_block(
         switch_instruction = switch_instruction.copy()
 
         if multiple:
-            errors.append(Error(
-                Error.Type.INVALID_BLOCK, block,
+            verifier.report(Error(
+                ErrorType.INVALID_BLOCK, block,
                 "block has multiple switch edges which reference different switch instructions",
             ))
 
@@ -328,7 +328,7 @@ cdef inline int _write_block(
         offsets[block][-1] = (start, offset, news)
 
     if not has_out_edges and block != graph.return_block and block != graph.rethrow_block:
-        errors.append(Error(Error.Type.INVALID_BLOCK, block, "block has no out edges"))
+        verifier.report(Error(ErrorType.INVALID_BLOCK, block, "block has no out edges"))
 
     if fallthrough_edge is not None:
         offsets_ = offsets.get(fallthrough_edge.to, None)
@@ -345,9 +345,8 @@ cdef inline int _write_block(
             # could create an infinite loop, which is not good lol.
             if fallthrough_edge.to.inline_ and fallthrough_edge.to != block:
                 offset = _write_block(
-                    graph, offset, fallthrough_edge.to, code,
-                    errors, offsets,
-                    jumps, switches, exceptions,
+                    graph, verifier, offset, fallthrough_edge.to, code,
+                    offsets, jumps, switches, exceptions,
                     temporary, inlined, inline=True,
                 )
                 # Note down where we inlined the block at
@@ -377,7 +376,7 @@ cdef inline int _write_block(
 
 
 cdef void _adjust_jumps_and_add_exception_handlers(
-        object code, list errors, dict jumps, dict switches, list exceptions, dict offsets, dict inlined,
+        Verifier verifier, object code, dict jumps, dict switches, list exceptions, dict offsets, dict inlined,
 ) except *:
     """
     Adjusts jump offsets to be absolute, given their corresponding edges and adds exception handlers to the code from
@@ -403,8 +402,8 @@ cdef void _adjust_jumps_and_add_exception_handlers(
             #     errors.append(Error(Error.Type.INVALID_EDGE, jump_edge, "jump edge to block with no instructions"))
             #     continue
             # raise Exception("Internal error while adjusting offset for jump edge %r." % jump_edge)
-            errors.append(Error(
-                Error.Type.INVALID_EDGE, jump_edge,
+            verifier.report(Error(
+                ErrorType.INVALID_EDGE, jump_edge,
                 "jump edge to unknown block", "use graph.add() to add it to the graph",
             ))
             continue
@@ -426,8 +425,8 @@ cdef void _adjust_jumps_and_add_exception_handlers(
                 #     ))
                 #     continue
                 # raise Exception("Internal error while adjusting offset for switch edge %r." % switch_edge)
-                errors.append(Error(
-                    Error.Type.INVALID_EDGE, switch_edge,
+                verifier.report(Error(
+                    ErrorType.INVALID_EDGE, switch_edge,
                     "switch edge to unknown block", "use graph.add() to add it to the graph",
                 ))
                 continue
@@ -450,8 +449,8 @@ cdef void _adjust_jumps_and_add_exception_handlers(
             # If there are multiple offsets for the exception handler, simply just pick the first one.
             (handler, _, _), *extra = offsets[exception_edge.to]
             if extra:
-                errors.append(Error(
-                    Error.Type.INVALID_EDGE, exception_edge,
+                verifier.report(Error(
+                    ErrorType.INVALID_EDGE, exception_edge,
                     "multiple exception handler targets", "is the handler inlined?",
                 ))
 
@@ -477,7 +476,7 @@ cdef inline void _simplify_exception_ranges(object code, list exceptions, dict o
 
 
 cdef inline void _nop_out_dead_blocks_and_compute_frames(
-        InsnGraph graph, Trace trace, object checker, object code, list errors,
+        InsnGraph graph, Verifier verifier, Trace trace, object code,
         dict jumps, dict switches, list exceptions,
         set dead, dict offsets, dict inlined,
         bint compress_frames,
@@ -492,7 +491,7 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
     # Variables that'll be used later
     cdef InsnBlock block
     cdef InsnEdge edge
-    cdef State state
+    cdef Frame frame
 
     if dead:
         # The standard state we'll use for these dead blocks' stackmap frames, since these are never actually visited,
@@ -500,8 +499,8 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
         # throwable on the stack lol.
         # Might be cool in the future to be able to work out the entry constraints for such blocks with some form of
         # stack delta analysis, but that's a bit too much work for now.
-        state = State(0)
-        state.push(None, types.throwable_t)
+        frame = Frame(verifier)
+        frame.push(types.throwable_t)
 
         _assembler_logger.debug(" - %i dead block(s):" % len(dead))
         for block in dead:
@@ -512,7 +511,7 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
             _assembler_logger.debug("    - %s (written at %s)" % (
                 block, ", ".join(map(str, (start for start, _, _ in offsets[block]))),
             ))
-            dead_frames[block] = state
+            dead_frames[block] = frame
 
             for start, end, _ in offsets[block]:
                 last = end - 1
@@ -542,15 +541,15 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
     stackmap_table = StackMapTable(code)
     cdef dict stackmap_frames = {
         # Create the bootstrap (implicit) frame
-        -1: (graph.entry_block, tuple(trace.states[graph.entry_block].keys())[0].unfreeze()),
+        -1: (graph.entry_block, trace.frames[graph.entry_block][0][0]),
     }
     cdef set visited = set()
     cdef Liveness liveness = Liveness.from_trace(trace)
 
     # Add the dead stackmap frames first.
-    for block, state in dead_frames.items():
+    for block, frame in dead_frames.items():
         for start, _, _ in offsets[block]:
-            stackmap_frames[start] = (block, state)
+            stackmap_frames[start] = (block, frame)
 
     # Add all the blocks that are jump targets in some sense (this includes exception handler targets), as we
     # don't actually need to write all the states basic blocks, contrary to what the JVM spec says, instead we
@@ -558,8 +557,8 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
     # states from different paths.
 
     cdef list offsets_
-    cdef State base
-    cdef FrozenState frozen
+    cdef list frames
+    cdef Frame base
 
     for edge in itertools.chain(jumps.values(), *switches.values(), exceptions):
         if edge is None:
@@ -571,42 +570,42 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
 
         # We can split constraints on inlined blocks
         if block.inline_ and edge in inlined:
-            states = trace.states[edge.from_]
+            frames = trace.frames[edge.from_]
             offsets_ = (inlined[edge],)
         elif block in visited:  # Don't check this for inline edges, obviously
             continue
         else:
             visited.add(block)
-            states = trace.states[block]
+            frames = trace.frames[block]
             offsets_ = offsets[block]
 
         # print(edge)
-        for frozen in states:
-            # print(", ".join(map(str, state.locals.values())))
+        for frame, _ in frames:
+            # print("[", ", ".join(map(str, frozen.stack)), "]")
             if base is None:
-                base = frozen.unfreeze()
+                base = frame
                 continue
 
             # Check that the stack is merge-able
-            if len(frozen.stack) > len(base.stack):
-                errors.append(Error(
-                    Error.Type.INVALID_STACK_MERGE, edge,
+            if len(frame.stack) > len(base.stack):
+                verifier.report(Error(
+                    ErrorType.INVALID_STACK_MERGE, edge,
                     "stack overrun, expected stack size %i for edge, got size %i" % (
-                        len(base.stack), len(frozen.stack),
+                        len(base.stack), len(frame.stack),
                     ),
                 ))
-            elif len(frozen.stack) < len(base.stack):
-                errors.append(Error(
-                    Error.Type.INVALID_STACK_MERGE, edge,
+            elif len(frame.stack) < len(base.stack):
+                verifier.report(Error(
+                    ErrorType.INVALID_STACK_MERGE, edge,
                     "stack underrun, expected stack size %i for edge, got size %i" % (
-                        len(base.stack), len(frozen.stack),
+                        len(base.stack), len(frame.stack),
                     ),
                 ))
 
-            for index, (entry_a, entry_b) in enumerate(zip(base.stack, frozen.stack)):
-                if not checker.check_merge(entry_a.type, entry_b.type):
-                    errors.append(Error(
-                        Error.Type.INVALID_STACK_MERGE, edge,
+            for index, (entry_a, entry_b) in enumerate(zip(base.stack, frame.stack)):
+                if not verifier.checker.check_merge(entry_a.type, entry_b.type):
+                    verifier.report(Error(
+                        ErrorType.INVALID_STACK_MERGE, edge,
                         "invalid stack type merge at index %i (%s, via %s and %s, via %s)" % (
                             index, entry_a.type, entry_a.source, entry_b.type, entry_b.source,
                         ),
@@ -614,64 +613,66 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
 
                 # FIXME: Multiple sources for uninitialised type? Need to improve how offsets are calculated.
 
-                merged = checker.merge(entry_a.type, entry_b.type)
+                merged = verifier.checker.merge(entry_a.type, entry_b.type)
                 if merged != entry_a.type or merged != entry_b.type:  # Has the merge changed the entry?
-                    base.stack[index] = Entry(-base.id, None, merged, parents=(), merges=(entry_a, entry_b))
+                    base.stack[index] = entry_a.cast(None, merged)
 
             for index in liveness.entries[block]:
                 entry_a = base.locals.get(index, None)
-                entry_b = frozen.locals.get(index, None)
+                entry_b = frame.locals.get(index, None)
 
                 if entry_a is None and entry_b is None:
-                    errors.append(Error(
-                        Error.Type.INVALID_LOCALS_MERGE, edge,
+                    verifier.report(Error(
+                        ErrorType.INVALID_LOCALS_MERGE, edge,
                         "illegal locals type merge at index %i, expected live local" % index,
                     ))
                     continue
                 elif entry_a is None:
-                    errors.append(Error(
-                        Error.Type.INVALID_LOCALS_MERGE, edge,
+                    verifier.report(Error(
+                        ErrorType.INVALID_LOCALS_MERGE, edge,
                         "invalid locals type merge at index %i, expected live local (have %s via %s)" % (
                             index, entry_b.type, entry_b.source,
                         ),
                     ))
-                    base.set(entry_b.source, index, entry_b)
+                    base.set(index, entry_b)
                     continue
                 elif entry_b is None:
-                    errors.append(Error(
-                        Error.Type.INVALID_LOCALS_MERGE, edge,
+                    verifier.report(Error(
+                        ErrorType.INVALID_LOCALS_MERGE, edge,
                         "invalid locals type merge at index %i, expected live local (have %s via %s)" % (
                             index, entry_a.type, entry_a.source,
                         ),
                     ))
                     continue
 
-                if not checker.check_merge(entry_a.type, entry_b.type):
-                    errors.append(Error(
-                        Error.Type.INVALID_LOCALS_MERGE, edge,
+                if not verifier.checker.check_merge(entry_a.type, entry_b.type):
+                    verifier.report(Error(
+                        ErrorType.INVALID_LOCALS_MERGE, edge,
                         "invalid locals type merge at index %i (%s via %s and %s via %s)" % (
                             index, entry_a.type, entry_a.source, entry_b.type, entry_b.source,
                         ),
                     ))
 
-                merged = checker.merge(entry_a.type, entry_b.type)
+                merged = verifier.checker.merge(entry_a.type, entry_b.type)
                 if merged != entry_a.type or merged != entry_b.type:
-                    base.locals[index] = Entry(-base.id, None, merged, parents=(), merges=(entry_a, entry_b))
+                    base.locals[index] = entry_a.cast(None, merged)
 
         for start, _, _ in offsets_:
             stackmap_frames[start] = (block, base)
 
-    cdef frozenset live
+    cdef set live
     cdef list locals_
     cdef list stack
-    cdef Entry entry
-    cdef bint wide_skip
 
-    for offset, (block, state) in sorted(stackmap_frames.items(), key=lambda item: item[0]):
+    cdef Entry entry
+    cdef bint wide
+
+    for offset in sorted(stackmap_frames):
+        block, frame = stackmap_frames[offset]
         # The bootstrap (implicit) frame requires that all types are explicit and there are no tops, so we don't
         # take the liveness for the entry block, instead we just use the local indices to indicate that all the
         # locals are "live".
-        live = liveness.entries[block] if offset >= 0 else frozenset(state.locals.keys())
+        live = liveness.entries[block] if offset >= 0 else set(frame.locals.keys())
 
         locals_ = []
         stack = []
@@ -679,14 +680,14 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
         max_local = 0  # We can truncate trailing tops from the locals
         max_actual = max((0,) + tuple(live))
 
-        if state.locals:
-            wide_skip = False
-            for index in range(max(state.locals) + 1):
-                if wide_skip:
-                    wide_skip = False
+        if frame.locals:
+            wide = False
+            for index in range(max(frame.locals) + 1):
+                if wide:
+                    wide = False
                     continue
 
-                entry = state.locals.get(index, state._top)
+                entry = frame.locals.get(index, frame.top)
 
                 # Note: uninitializedThis must be specified, live or not.
                 if not index in live and entry.type != types.uninit_this_t:
@@ -701,8 +702,8 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
                         done = False
                         for _, _, news in offsets[entry.source.block]:
                             if done:
-                                errors.append(Error(
-                                    Error.Type.INVALID_TYPE, entry.source,
+                                verifier.report(Error(
+                                    ErrorType.INVALID_TYPE, entry.source,
                                     "unable to determine source of uninitialised type as block is written multiple times",
                                 ))
                                 break
@@ -712,12 +713,12 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
 
                     locals_.append(entry.type)
                     max_local = len(locals_)
-                    wide_skip = entry.type.internal_size > 1
+                    wide = entry.type.internal_size > 1
 
             locals_ = locals_[:max_local]
 
-        for entry in state.stack:
-            if entry == state._top:
+        for entry in frame.stack:
+            if entry == frame.top:
                 continue
             elif (
                 isinstance(entry.type, Uninitialized) and
@@ -727,8 +728,8 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
                 done = False
                 for _, _, news in offsets[entry.source.block]:
                     if done:
-                        errors.append(Error(
-                            Error.Type.INVALID_TYPE, entry.source,
+                        verifier.report(Error(
+                            ErrorType.INVALID_TYPE, entry.source,
                             "unable to determine source of uninitialised type as block is written multiple times",
                         ))
                         break

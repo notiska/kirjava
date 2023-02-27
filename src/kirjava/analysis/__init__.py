@@ -6,7 +6,7 @@ __all__ = (
     "JumpEdge", "FallthroughEdge", "ExceptionEdge",
     "InsnGraph",
     "Liveness",
-    "Entry", "State", "Trace",
+    "Entry", "Frame", "FrameDelta", "Trace",
 )
 
 """

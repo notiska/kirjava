@@ -149,52 +149,52 @@ cdef class Integer(ConstantInfo):
 
     def __add__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Integer, other.__class__))
+            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Integer, type(other)))
         return Integer(<int>self.value + (<Integer>other).value)
 
     def __sub__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Integer, other.__class__))
+            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Integer, type(other)))
         return Integer(<int>self.value - (<Integer>other).value)
 
     def __mul__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Integer, other.__class__))
+            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Integer, type(other)))
         return Integer(<int>self.value * (<Integer>other).value)
 
     def __truediv__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Integer, other.__class__))
+            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Integer, type(other)))
         return Integer(<int>self.value / (<Integer>other).value)
 
     def __mod__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Integer, other.__class__))
+            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Integer, type(other)))
         return Integer(<int>self.value % (<Integer>other).value)
 
     def __lshift__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for <<: %r and %r" % (Integer, other.__class__))
+            raise TypeError("unsupported operand type(s) for <<: %r and %r" % (Integer, type(other)))
         return Integer(<int>self.value << (<Integer>other).value)
 
     def __rshift__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for >>: %r and %r" % (Integer, other.__class__))
+            raise TypeError("unsupported operand type(s) for >>: %r and %r" % (Integer, type(other)))
         return Integer(<int>self.value >> (<Integer>other).value)
 
     def __and__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Integer, other.__class__))
+            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Integer, type(other)))
         return Integer(<int>self.value & (<Integer>other).value)
 
     def __or__(self, other: Any) -> Integer:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for |: %r and %r" % (Integer, other.__class__))
+            raise TypeError("unsupported operand type(s) for |: %r and %r" % (Integer, type(other)))
         return Integer(<int>self.value | (<Integer>other).value)
 
     def __xor__(self, other) -> Integer:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Integer, other.__class__))
+            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Integer, type(other)))
         return Integer(<int>self.value ^ (<Integer>other).value)
 
     def __neg__(self) -> Integer:
@@ -234,27 +234,27 @@ cdef class Float(ConstantInfo):
 
     def __add__(self, other: Any) -> Float:
         if not isinstance(other, Float):
-            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Float, other.__class__))
+            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Float, type(other)))
         return Float(<float>self.value + (<Float>other).value)
 
     def __sub__(self, other: Any) -> Float:
         if not isinstance(other, Float):
-            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Float, other.__class__))
+            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Float, type(other)))
         return Float(<float>self.value - (<Float>other).value)
 
     def __mul__(self, other: Any) -> Float:
         if not isinstance(other, Float):
-            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Float, other.__class__))
+            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Float, type(other)))
         return Float(<float>self.value * (<Float>other).value)
 
     def __truediv__(self, other: Any) -> Float:
         if not isinstance(other, Float):
-            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Float, other.__class__))
+            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Float, type(other)))
         return Float(<float>self.value / (<Float>other).value)
 
     def __mod__(self, other: Any) -> Float:
         if not isinstance(other, Float):
-            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Float, other.__class__))
+            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Float, type(other)))
         return Float(<float>self.value % (<Float>other).value)
 
     def __neg__(self) -> Float:
@@ -295,52 +295,52 @@ cdef class Long(ConstantInfo):
 
     def __add__(self, other: Any) -> Long:
         if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Long, other.__class__))
+            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Long, type(other)))
         return Long(<long long>self.value + (<Long>other).value)
 
     def __sub__(self, other: Any) -> Long:
         if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Long, other.__class__))
+            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Long, type(other)))
         return Long(<long long>self.value - (<Long>other).value)
 
     def __mul__(self, other: Any) -> Long:
         if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Long, other.__class__))
+            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Long, type(other)))
         return Long(<long long>self.value * (<Long>other).value)
 
     def __truediv__(self, other: Any) -> Long:
         if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Long, other.__class__))
+            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Long, type(other)))
         return Long(<long long>self.value / (<Long>other).value)
 
     def __mod__(self, other: Any) -> Long:
         if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Long, other.__class__))
+            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Long, type(other)))
         return Long(<long long>self.value % (<Long>other).value)
 
     def __lshift__(self, other: Any) -> Long:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for <<: %r and %r" % (Long, other.__class__))
+            raise TypeError("unsupported operand type(s) for <<: %r and %r" % (Long, type(other)))
         return Long(<long long>self.value << (<Integer>other).value)
 
     def __rshift__(self, other: Any) -> Long:
         if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for >>: %r and %r" % (Long, other.__class__))
+            raise TypeError("unsupported operand type(s) for >>: %r and %r" % (Long, type(other)))
         return Long(<long long>self.value >> (<Integer>other).value)
 
     def __and__(self, other: Any) -> Long:
         if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, other.__class__))
+            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, type(other)))
         return Long(<long long>self.value & (<Long>other).value)
 
     def __or__(self, other: Any) -> Long:
         if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for |: %r and %r" % (Long, other.__class__))
+            raise TypeError("unsupported operand type(s) for |: %r and %r" % (Long, type(other)))
         return Long(<long long>self.value | (<Long>other).value)
 
     def __xor__(self, other) -> Long:
         if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, other.__class__))
+            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, type(other)))
         return Long(<long long>self.value ^ (<Long>other).value)
 
     def __neg__(self) -> Long:
@@ -381,27 +381,27 @@ cdef class Double(ConstantInfo):
 
     def __add__(self, other: Any) -> Double:
         if not isinstance(other, Double):
-            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Double, other.__class__))
+            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Double, type(other)))
         return Double(<double>self.value + (<Double>other).value)
 
     def __sub__(self, other: Any) -> Double:
         if not isinstance(other, Double):
-            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Double, other.__class__))
+            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Double, type(other)))
         return Double(<double>self.value - (<Double>other).value)
 
     def __mul__(self, other: Any) -> Double:
         if not isinstance(other, Double):
-            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Double, other.__class__))
+            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Double, type(other)))
         return Double(<double>self.value * (<Double>other).value)
 
     def __truediv__(self, other: Any) -> Double:
         if not isinstance(other, Double):
-            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Double, other.__class__))
+            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Double, type(other)))
         return Double(<double>self.value / (<Double>other).value)
 
     def __mod__(self, other: Any) -> Double:
         if not isinstance(other, Double):
-            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Double, other.__class__))
+            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Double, type(other)))
         return Double(<double>self.value % (<Double>other).value)
 
     def __neg__(self) -> Double:
@@ -437,7 +437,7 @@ cdef class Class(ConstantInfo):
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> Class:
         name = (<dict>lookups).get(info, None)
         if not isinstance(name, UTF8):
-            raise TypeError("Expected type %r, got %r." % (UTF8, name.__class__))
+            raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
         return cls(name.value)
 
     def __init__(self, name: str) -> None:
@@ -482,7 +482,7 @@ cdef class String(ConstantInfo):
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> String:
         value = (<dict>lookups).get(info, None)
         if not isinstance(value, UTF8):
-            raise TypeError("Expected type %r, got %r." % (UTF8, value.__class__))
+            raise TypeError("Expected type %r, got %r." % (UTF8, type(value)))
         return cls(value.value)
 
     def __init__(self, value: str) -> None:
@@ -524,12 +524,12 @@ cdef class FieldRef(ConstantInfo):
         if class_ is None:
             return None
         elif not isinstance(class_, Class):
-            raise TypeError("Expected type %r, got %r." % (Class, class_.__class__))
+            raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
         name_and_type = (<dict>lookups).get(info[1], None)
         if name_and_type is None:
             return None
         elif not isinstance(name_and_type, NameAndType):
-            raise TypeError("Expected type %r, got %r." % (NameAndType, name_and_type.__class__))
+            raise TypeError("Expected type %r, got %r." % (NameAndType, type(name_and_type)))
         return cls(class_, name_and_type)
 
     def __init__(self, class_: Class, name_and_type: NameAndType) -> None:
@@ -580,12 +580,12 @@ cdef class MethodRef(ConstantInfo):
         if class_ is None:
             return None
         elif not isinstance(class_, Class):
-            raise TypeError("Expected type %r, got %r." % (Class, class_.__class__))
+            raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
         name_and_type = (<dict>lookups).get(info[1], None)
         if name_and_type is None:
             return None
         elif not isinstance(name_and_type, NameAndType):
-            raise TypeError("Expected type %r, got %r." % (NameAndType, name_and_type.__class__))
+            raise TypeError("Expected type %r, got %r." % (NameAndType, type(name_and_type)))
         return cls(class_, name_and_type)
 
     def __init__(self, class_: Class, name_and_type: NameAndType) -> None:
@@ -630,12 +630,12 @@ cdef class InterfaceMethodRef(MethodRef):
         if class_ is None:
             return None
         elif not isinstance(class_, Class):
-            raise TypeError("Expected type %r, got %r." % (Class, class_.__class__))
+            raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
         name_and_type = (<dict>lookups).get(info[1], None)
         if name_and_type is None:
             return None
         elif not isinstance(name_and_type, NameAndType):
-            raise TypeError("Expected type %r, got %r." % (NameAndType, name_and_type.__class__))
+            raise TypeError("Expected type %r, got %r." % (NameAndType, type(name_and_type)))
         return cls(class_, name_and_type)
 
 
@@ -662,10 +662,10 @@ cdef class NameAndType(ConstantInfo):
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> NameAndType:
         name = (<dict>lookups).get(info[0], None)
         if not isinstance(name, UTF8):
-            raise TypeError("Expected type %r, got %r." % (UTF8, name.__class__))
+            raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
         descriptor = (<dict>lookups).get(info[1], None)
         if not isinstance(descriptor, UTF8):
-            raise TypeError("Expected type %r, got %r." % (UTF8, descriptor.__class__))
+            raise TypeError("Expected type %r, got %r." % (UTF8, type(descriptor)))
         return cls(name.value, descriptor.value)
 
     def __init__(self, name: str, descriptor_: str) -> None:
@@ -725,7 +725,7 @@ cdef class MethodHandle(ConstantInfo):
         if reference is None:
             return None
         elif not isinstance(reference, FieldRef) and not isinstance(reference, MethodRef):
-            raise TypeError("Expected type %r or %r, got %r." (FieldRef, MethodRef, reference.__class__))
+            raise TypeError("Expected type %r or %r, got %r." (FieldRef, MethodRef, type(reference)))
         return cls(info[0], reference)
 
     def __init__(self, reference_kind: int, reference: Union[FieldRef, MethodRef, InterfaceMethodRef]) -> None:
@@ -768,7 +768,7 @@ cdef class MethodType(ConstantInfo):
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> MethodType:
         descriptor = (<dict>lookups).get(info, None)
         if not isinstance(descriptor, UTF8):
-            raise TypeError("Expected type %r, got %r." % (UTF8, descriptor.__class__))
+            raise TypeError("Expected type %r, got %r." % (UTF8, type(descriptor)))
         return cls(descriptor.value)
 
     def __init__(self, descriptor_: str) -> None:
@@ -811,7 +811,7 @@ cdef class Dynamic(ConstantInfo):
         if name_and_type is None:  # Can't dereference it yet
             return None
         elif not isinstance(name_and_type, NameAndType):
-            raise TypeError("Expected type %r, got %r." % (NameAndType, name_and_type.__class__))
+            raise TypeError("Expected type %r, got %r." % (NameAndType, type(name_and_type)))
         return cls(info[0], name_and_type)
 
     def __init__(self, bootstrap_method_attr_index: int, name_and_type: NameAndType) -> None:
@@ -854,7 +854,7 @@ cdef class InvokeDynamic(Dynamic):
         if name_and_type is None:  # Can't dereference it yet
             return None
         elif not isinstance(name_and_type, NameAndType):
-            raise TypeError("Expected type %r, got %r." % (NameAndType, name_and_type.__class__))
+            raise TypeError("Expected type %r, got %r." % (NameAndType, type(name_and_type)))
         return cls(info[0], name_and_type)
 
 
@@ -880,7 +880,7 @@ cdef class Module(ConstantInfo):
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> Module:
         name = (<dict>lookups).get(info, None)
         if not isinstance(name, UTF8):
-            raise TypeError("Expected type %r, got %r." % (UTF8, name.__class__))
+            raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
         return cls(name.value)
 
     def __init__(self, name: str) -> None:
@@ -916,7 +916,7 @@ cdef class Package(ConstantInfo):
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> Package:
         name = (<dict>lookups).get(info, None)
         if not isinstance(name, UTF8):
-            raise TypeError("Expected type %r, got %r." % (UTF8, name.__class__))
+            raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
         return cls(name.value)
 
     def __init__(self, name: str) -> None:
@@ -1005,7 +1005,7 @@ cdef class ConstantPool:
         return len(self._forward_entries)
 
     def __contains__(self, item: Any) -> bool:
-        if item.__class__ is int:
+        if type(item) is int:
             return item in self._forward_entries
         elif isinstance(item, ConstantInfo):
             return item in self._backward_entries
@@ -1013,22 +1013,22 @@ cdef class ConstantPool:
         return False
 
     def __getitem__(self, item: Any) -> Union[ConstantInfo, int]:
-        if item.__class__ is int:
+        if type(item) is int:
             constant = self._forward_entries.get(item, None)
             if constant is not None:
                 return constant
             return Index(item)
 
         elif isinstance(item, ConstantInfo):
-            if item.__class__ is Index:
+            if type(item) is Index:
                 return item.value
             return self._backward_entries[item]
 
-        raise TypeError("Type %r is not a valid index for %r." % (item.__class__, self))
+        raise TypeError("Type %r is not a valid index for %r." % (type(item), self))
 
     def __setitem__(self, index: int, item: Any) -> None:
         if isinstance(item, ConstantInfo):
-            if item.__class__ is Index:
+            if type(item) is Index:
                 return  # Nothing to do here
 
             self._forward_entries[index] = item
@@ -1104,7 +1104,7 @@ cdef class ConstantPool:
             if default is not None:
                 return default
             raise ValueError("Index %i not in constant pool." % index)
-        elif constant.__class__ is not UTF8:
+        elif type(constant) is not UTF8:
             if default is not None:
                 return default
             raise TypeError("Index %i is not a valid UTF-8 constant." % index)
@@ -1128,9 +1128,9 @@ cdef class ConstantPool:
         :return: The index of the added constant.
         """
 
-        if constant.__class__ is str:
+        if type(constant) is str:
             constant = UTF8(constant)
-        elif constant.__class__ is Index:
+        elif type(constant) is Index:
             return constant.value
 
         index = self._backward_entries.get(constant, None)

@@ -39,7 +39,7 @@ JVM types, (somewhat loosely) from the Oracle specification.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Iterable
 
 
 class VerificationType(ABC):
@@ -94,19 +94,36 @@ class TypeArgument(ABC):
     ...
 
 
-class TypeArgumentList(list):  # TODO: Make this not a list
+class TypeArgumentList:
     """
     A list of type arguments.
     """
 
+    __slots__ = ("arguments",)
+
+    def __init__(self, arguments: Iterable[TypeArgument]) -> None:
+        """
+        :param arguments: The type arguments.
+        """
+
+        self.arguments = tuple(arguments)
+
     def __repr__(self) -> str:
-        return "<TypeArgumentList(%s) at %x>" % (super().__repr__(), id(self))
+        return "<TypeArgumentList(arguments=%r) at %x>" % (self.arguments, id(self))
 
     def __str__(self) -> str:
-        return "<%s>" % (", ".join(map(str, self)))
+        return "<%s>" % (", ".join(map(str, self.arguments)))
+
+    def __eq__(self, other: Any) -> bool:
+        if other is self:
+            return True
+        return isinstance(other, TypeArgumentList) and other.arguments == self.arguments
 
     def __hash__(self) -> int:
-        return hash(tuple(self))
+        return hash(self.arguments)
+
+    def __bool__(self) -> bool:
+        return bool(self.arguments)
 
 
 class InvalidType(BaseType):
@@ -128,7 +145,7 @@ class InvalidType(BaseType):
         return "invalid"
 
     def __eq__(self, other: Any) -> bool:
-        return other.__class__ is InvalidType and other.descriptor == self.descriptor
+        return type(other) is InvalidType and other.descriptor == self.descriptor
 
     def __hash__(self) -> int:
         return hash(self.descriptor)
@@ -152,7 +169,7 @@ class PrimitiveType(BaseType, ABC):
         return self.name
 
     def __eq__(self, other: Any) -> bool:
-        return other is self or other.__class__ is self.__class__
+        return other is self or type(other) is self.__class__
 
 
 class ReferenceType(BaseType, ABC):
@@ -164,7 +181,7 @@ class ReferenceType(BaseType, ABC):
         return "<%s() at %x>" % (self.__class__.__name__, id(self))
 
     def __eq__(self, other: Any) -> bool:
-        return other is self or other.__class__ is self.__class__
+        return other is self or type(other) is self.__class__
 
     @abstractmethod
     def rename(self, name: str) -> "ReferenceType":

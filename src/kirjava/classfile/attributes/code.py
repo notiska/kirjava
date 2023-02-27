@@ -77,7 +77,7 @@ class StackMapTable(AttributeInfo):
         Writes a verification type to a buffer.
         """
 
-        type_class = type_.__class__
+        type_class = type(type_)
 
         if type_class is ClassOrInterfaceType:
             buffer.write(bytes((7,)))

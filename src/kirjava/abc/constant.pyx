@@ -32,7 +32,7 @@ cdef class Constant:
         return repr(self.value)
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, self.__class__) and other.value == self.value  # or other == self.value
+        return type(other) is self.__class__ and other.value == self.value  # or other == self.value
 
     def __hash__(self) -> int:
         return hash(self.value)

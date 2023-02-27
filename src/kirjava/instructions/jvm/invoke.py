@@ -4,24 +4,21 @@
 Invocation instructions.
 """
 
-from abc import ABC
-from typing import Any, IO, List, Tuple, Union
+from typing import Any, IO, List
 
 from . import Instruction
-from .. import descriptor, ClassFile
-from ..constants import Class as Class_, InterfaceMethodRef, InvokeDynamic, MethodRef, NameAndType
 from ... import _argument, types
-from ...abc import Class, Source, TypeChecker
-from ...analysis.trace import Entry, State
-from ...types import BaseType, ReferenceType
+from ...analysis.trace import Entry, Frame
+from ...classfile import descriptor, ClassFile
+from ...classfile.constants import Class, InterfaceMethodRef, InvokeDynamic, MethodRef, NameAndType
 from ...types.reference import ClassOrInterfaceType
 from ...types.verification import This, Uninitialized
-from ...verifier import Error
 
 # TODO: Signature polymorphic methods (check specification)
+# FIXME: Clean this file up lol
 
 
-class InvokeInstruction(Instruction, ABC):
+class InvokeInstruction(Instruction):
     """
     An instruction that invokes a method.
     """
@@ -55,7 +52,7 @@ class InvokeInstruction(Instruction, ABC):
 
     def __eq__(self, other: Any) -> bool:
         return (
-            other.__class__ is self.__class__ and
+            type(other) is self.__class__ and
             other.class_ == self.class_ and
             other.name == self.name and
             other.argument_types == self.argument_types and
@@ -74,10 +71,10 @@ class InvokeInstruction(Instruction, ABC):
         self.argument_types, self.return_type = descriptor.parse_method_descriptor(method_ref.name_and_type.descriptor)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
-        if self.class_.__class__ is ClassOrInterfaceType:
-            class_ = Class_(self.class_.name)
+        if type(self.class_) is ClassOrInterfaceType:
+            class_ = Class(self.class_.name)
         else:
-            class_ = Class_(descriptor.to_descriptor(self.class_))
+            class_ = Class(descriptor.to_descriptor(self.class_))
         method_ref = MethodRef(
             class_, NameAndType(self.name, descriptor.to_descriptor(self.argument_types, self.return_type)),
         )
@@ -85,29 +82,17 @@ class InvokeInstruction(Instruction, ABC):
 
         super().write(class_file, buffer, wide)
 
-    def _trace_arguments(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> List[Entry]:
+    def _trace_arguments(self, frame: Frame) -> None:  # List[Entry]:
         """
         Partial tracing for the arguments this instruction should accept.
         """
 
-        argument_entries = []
-
         for argument_type in reversed(self.argument_types):
             argument_type = argument_type.to_verification_type()
-
-            entry, *_ = state.pop(source, argument_type.internal_size, tuple_=True)
-            argument_entries.append(entry)
-
-            if not checker.check_merge(argument_type, entry.type):
-                errors.append(Error(
-                    Error.Type.INVALID_TYPE, source,
-                    "expected type %s" % argument_type, "got %s (via %s)" % (entry.type, entry.source),
-                ))
-
-        return argument_entries
+            frame.pop(argument_type.internal_size, expect=argument_type)
 
 
-class InvokeVirtualInstruction(InvokeInstruction, ABC):
+class InvokeVirtualInstruction(InvokeInstruction):
     """
     An instruction that invokes a virtual method.
     """
@@ -119,21 +104,14 @@ class InvokeVirtualInstruction(InvokeInstruction, ABC):
         types.unsatisfiedlinkerror_t,
     )
 
-    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        argument_entries = self._trace_arguments(source, state, errors, checker)
-        entry = state.pop(source)
-
-        if not checker.check_merge(self.class_, entry.type):
-            errors.append(Error(
-                Error.Type.INVALID_TYPE, source,
-                "expected type %s" % self.class_, "got %s (via %s)" % (entry.type, entry.source),
-            ))
-
+    def trace(self, frame: Frame) -> None:
+        self._trace_arguments(frame)
+        frame.pop(expect=self.class_)
         if self.return_type != types.void_t:
-            state.push(source, self.return_type.to_verification_type(), parents=tuple(argument_entries) + (entry,))
+            frame.push(self.return_type.to_verification_type())
 
 
-class InvokeSpecialInstruction(InvokeVirtualInstruction, ABC):
+class InvokeSpecialInstruction(InvokeVirtualInstruction):
     """
     An instruction that is similar to invokevirtual, except it has handling for special methods.
     """
@@ -145,40 +123,34 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction, ABC):
         types.unsatisfiedlinkerror_t,
     )
 
-    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        argument_entries = self._trace_arguments(source, state, errors, checker)
-        entry = state.pop(source)
+    def trace(self, frame: Frame) -> None:
+        self._trace_arguments(frame)
+        entry = frame.pop(expect=self.class_)
 
         if self.name == "<init>" and self.return_type == types.void_t:
             if entry.type == types.uninit_this_t:
-                state.replace(source, entry, This(entry.type.class_), merges=(entry,))
+                frame.replace(entry, This(entry.type.class_))
                 return
-            elif entry.type.__class__ is Uninitialized:  # Unverified code can cause this not to be an uninitialized type
-                state.replace(source, entry, entry.type.class_, merges=(entry,))
+            elif type(entry.type) is Uninitialized:  # Unverified code can cause this not to be an uninitialized type
+                frame.replace(entry, entry.type.class_)
                 return
-
-        if not checker.check_merge(self.class_, entry.type):
-            errors.append(Error(
-                Error.Type.INVALID_TYPE, source,
-                "expected type %s" % self.class_, "got %s (via %s)" % (entry.type, entry.source),
-            ))
 
         if self.return_type != types.void_t:
-            state.push(source, self.return_type.to_verification_type(), parents=(*argument_entries, entry))
+            frame.push(self.return_type.to_verification_type())
 
 
-class InvokeStaticInstruction(InvokeInstruction, ABC):
+class InvokeStaticInstruction(InvokeInstruction):
     """
     An instruction that invokes a static method.
     """
 
-    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        argument_entries = self._trace_arguments(source, state, errors, checker)
+    def trace(self, frame: Frame) -> None:
+        self._trace_arguments(frame)
         if self.return_type != types.void_t:
-            state.push(source, self.return_type.to_verification_type(), parents=tuple(argument_entries))
+            frame.push(self.return_type.to_verification_type())
 
 
-class InvokeInterfaceInstruction(InvokeVirtualInstruction, ABC):
+class InvokeInterfaceInstruction(InvokeVirtualInstruction):
     """
     An instruction that invokes an interface method.
     """
@@ -206,10 +178,10 @@ class InvokeInterfaceInstruction(InvokeVirtualInstruction, ABC):
         return self.__class__(self.class_, self.name, self.argument_types, self.return_type, count=self.count)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
-        if self.class_.__class__ is ClassOrInterfaceType:
-            class_ = Class_(self.class_.name)
+        if type(self.class_) is ClassOrInterfaceType:
+            class_ = Class(self.class_.name)
         else:
-            class_ = Class_(descriptor.to_descriptor(self.class_))
+            class_ = Class(descriptor.to_descriptor(self.class_))
         method_ref = InterfaceMethodRef(
             class_, NameAndType(self.name, descriptor.to_descriptor(self.argument_types, self.return_type)),
         )
@@ -218,7 +190,7 @@ class InvokeInterfaceInstruction(InvokeVirtualInstruction, ABC):
         Instruction.write(self, class_file, buffer, wide)
 
 
-class InvokeDynamicInstruction(InvokeStaticInstruction, ABC):
+class InvokeDynamicInstruction(InvokeStaticInstruction):
     """
     An instruction that invokes a dynamically computed callsite.
     """
@@ -251,7 +223,7 @@ class InvokeDynamicInstruction(InvokeStaticInstruction, ABC):
 
     def __eq__(self, other: Any) -> bool:
         return (
-            other.__class__ is self.__class__ and
+            type(other) is self.__class__ and
             other.bootstrap_method_attr_index == self.bootstrap_method_attr_index and
             other.name == self.name and
             other.argument_types == self.argument_types and

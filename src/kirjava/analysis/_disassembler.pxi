@@ -6,8 +6,8 @@ Similarly to the assembler: kept in a separate file because graph.py was previou
 import itertools
 import logging
 
-from ..classfile import instructions
-from ..classfile.instructions import ConditionalJumpInstruction, JsrInstruction, JumpInstruction, ReturnInstruction
+from ..instructions import jvm as instructions
+from ..instructions.jvm import ConditionalJumpInstruction, JsrInstruction, JumpInstruction, ReturnInstruction
 
 _disassembler_logger = logging.getLogger("kirjava.analysis._disassembler")
 

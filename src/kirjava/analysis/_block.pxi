@@ -1,8 +1,8 @@
-from typing import Any, Iterable, Iterator, List, Tuple, Union
+from typing import Any, Iterable, Iterator, List, Tuple, Type, Union
 
 from ..abc.graph cimport Block, RethrowBlock, ReturnBlock
-from ..classfile import instructions
-from ..classfile.instructions import MetaInstruction, Instruction, JumpInstruction, ReturnInstruction
+from ..instructions import jvm as instructions
+from ..instructions.jvm import Instruction, JumpInstruction, ReturnInstruction
 
 
 cdef class InsnBlock(Block):
@@ -55,24 +55,24 @@ cdef class InsnBlock(Block):
         return item in self._instructions
 
     def __getitem__(self, item: Any) -> Union[Tuple[Instruction, ...], Instruction]:
-        if item.__class__ is int or item.__class__ is slice:
+        if type(item) is int or type(item) is slice:
             return self._instructions[item]
-        raise TypeError("Expected int or slice, got %r." % item.__class__)
+        raise TypeError("Expected int or slice, got %r." % type(item))
 
     def __setitem__(self, key: Any, value: Any) -> None:
-        if key.__class__ is int:
-            if value.__class__ is MetaInstruction:
+        if type(key) is int:
+            if type(value) is type:
                 value = value()
-            elif not isinstance(value, Instruction):
+            if not isinstance(value, Instruction):
                 raise ValueError("Expected an instruction, got %r." % value)
 
             self._check_instruction(value)
             self._instructions[key] = value
         else:
-            raise TypeError("Expected int, got %r." % key.__class__)
+            raise TypeError("Expected int, got %r." % type(key))
 
     def __delitem__(self, item: Any) -> None:
-        if item.__class__ is int or item.__class__ is slice:
+        if type(item) is int or type(item) is slice:
             del self._instructions[item]
 
     def copy(self, label: Union[int, None] = None, deep: bool = True) -> "InsnBlock":
@@ -103,7 +103,7 @@ cdef class InsnBlock(Block):
 
     # ------------------------------ Public API ------------------------------ #
 
-    def append(self, instruction: Union[MetaInstruction, Instruction], do_raise: bool = True) -> Instruction:
+    def append(self, instruction: Union[Type[Instruction], Instruction], do_raise: bool = True) -> Instruction:
         """
         Adds an instruction to this block.
 
@@ -112,9 +112,9 @@ cdef class InsnBlock(Block):
         :return: The same instruction.
         """
 
-        if instruction.__class__ is MetaInstruction:
+        if type(instruction) is type:
             instruction = instruction()  # Should throw at this point, if invalid
-        elif not isinstance(instruction, Instruction):
+        if not isinstance(instruction, Instruction):
             raise ValueError("Expected an instruction, got %r." % instruction)
 
         if do_raise:
@@ -123,7 +123,7 @@ cdef class InsnBlock(Block):
 
         return instruction
 
-    def insert(self, index: int, instruction: Union[MetaInstruction, Instruction], do_raise: bool = True) -> Instruction:
+    def insert(self, index: int, instruction: Union[Type[Instruction], Instruction], do_raise: bool = True) -> Instruction:
         """
         Inserts an instruction at the given index.
 
@@ -133,9 +133,9 @@ cdef class InsnBlock(Block):
         :return: The same instruction.
         """
 
-        if instruction.__class__ is MetaInstruction:
+        if type(instruction) is type:
             instruction = instruction()
-        elif not isinstance(instruction, Instruction):
+        if not isinstance(instruction, Instruction):
             raise ValueError("Expected an instruction, got %r." % instruction)
 
         if do_raise:

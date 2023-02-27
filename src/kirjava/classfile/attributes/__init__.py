@@ -101,15 +101,15 @@ def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes], fail
     """
 
     name_index, attribute_length = unpack_HI(buffer.read(6))
-    name = class_file.constant_pool.get_utf8(name_index, "<invalid>")  # FIXME: Yes or no?
+    name = class_file.constant_pool.get_utf8(name_index, "")
 
     offset = buffer.tell()
     if name in _attribute_map:
         attribute = _attribute_map[name]
         version_valid = attribute.since <= class_file.version
         location_valid = (
-            parent.__class__ in attribute.locations or
-            parent.__class__.__name__ in attribute.locations  # To avoid circular import nightmares
+            type(parent) in attribute.locations or
+            type(parent).__name__ in attribute.locations  # To avoid circular import nightmares
         )
         if version_valid and location_valid:
             try:
@@ -133,10 +133,7 @@ def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes], fail
 
             except Exception as error:
                 # raise error
-                # logger.error("Couldn't read attribute %r in class %r: %r" % (
-                #     name, class_file.name, error,
-                # ))
-                logger.debug(error, exc_info=True)
+                logger.debug("Couldn't read attribute %r in class %r: %r" % (name, class_file.name, error), exc_info=True)
     else:
         logger.debug("Unknown attribute %r in class %r." % (name, class_file.name))
 

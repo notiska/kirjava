@@ -25,10 +25,10 @@ def load(file_data_or_stream: Union[str, bytes, IO[bytes]]) -> ClassFile:
     :return: The classfile that was read.
     """
 
-    if file_data_or_stream.__class__ is str:
+    if type(file_data_or_stream) is str:
         with open(file_data_or_stream, "rb") as stream:
             return ClassFile.read(stream)
-    elif file_data_or_stream.__class__ is bytes:
+    elif type(file_data_or_stream) is bytes:
         return ClassFile.read(BytesIO(file_data_or_stream))
     return ClassFile.read(file_data_or_stream)
 
@@ -42,7 +42,7 @@ def dump(classfile: ClassFile, file_or_stream: Union[str, IO[bytes]]) -> None:
     """
 
     if isinstance(file_or_stream, str):
-        with open(file_or_stream, "rb") as stream:
+        with open(file_or_stream, "wb") as stream:
             classfile.write(stream)
         return
 
@@ -59,7 +59,7 @@ def disassemble(method: MethodInfo, ignore_flags: bool = False) -> InsnGraph:
     """
 
     if not isinstance(method, MethodInfo):
-        raise TypeError("Expected type %r, got %r." % (MethodInfo, method.__class__))
+        raise TypeError("Expected type %r, got %r." % (MethodInfo, type(method)))
 
     if not ignore_flags:
         if method.is_abstract:

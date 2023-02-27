@@ -6,6 +6,7 @@ from typing import Dict, IO, Tuple, Union
 
 from . import descriptor
 from ._struct import *
+from .constants import ConstantInfo
 from .. import _argument
 from ..abc import Field, Method
 from ..types import BaseType
@@ -168,6 +169,17 @@ class MethodInfo(Method):
             self.access_flags &= ~MethodInfo.ACC_VARARGS
 
     @property
+    def is_native(self) -> bool:
+        return bool(self.access_flags & MethodInfo.ACC_NATIVE)
+
+    @is_native.setter
+    def is_native(self, value: bool) -> None:
+        if value:
+            self.access_flags |= MethodInfo.ACC_NATIVE
+        else:
+            self.access_flags &= ~MethodInfo.ACC_NATIVE
+
+    @property
     def is_abstract(self) -> bool:
         return bool(self.access_flags & MethodInfo.ACC_ABSTRACT)
 
@@ -179,15 +191,15 @@ class MethodInfo(Method):
             self.access_flags &= ~MethodInfo.ACC_ABSTRACT
 
     @property
-    def is_native(self) -> bool:
-        return bool(self.access_flags & MethodInfo.ACC_NATIVE)
+    def is_strict(self) -> bool:
+        return bool(self.access_flags & MethodInfo.ACC_STRICT)
 
-    @is_native.setter
-    def is_native(self, value: bool) -> None:
+    @is_strict.setter
+    def is_strict(self, value: bool) -> None:
         if value:
-            self.access_flags |= MethodInfo.ACC_NATIVE
+            self.access_flags |= MethodInfo.ACC_STRICT
         else:
-            self.access_flags &= ~MethodInfo.ACC_NATIVE
+            self.access_flags &= ~MethodInfo.ACC_STRICT
 
     @property
     def is_synthetic(self) -> bool:
@@ -230,8 +242,10 @@ class MethodInfo(Method):
         :return: The code attribute for this method, None if it doesn't have one.
         """
 
-        code, *_ = self.attributes.get(Code.name_, (None,))
-        return code
+        for attribute in self.attributes.get(Code.name_, ()):
+            if isinstance(attribute, Code):  # Find the first valid Code attribute.
+                return attribute
+        return None
 
     @code.setter
     def code(self, value: Union["Code", None]) -> None:
@@ -240,7 +254,7 @@ class MethodInfo(Method):
         """
 
         if value is None:
-            del self.attributes[Code.name_]
+            self.attributes.pop(Code.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
@@ -257,8 +271,9 @@ class MethodInfo(Method):
             is_synchronized: bool = False,
             is_bridge: bool = False,
             is_varargs: bool = False,
-            is_abstract: bool = False,
             is_native: bool = False,
+            is_abstract: bool = False,
+            is_strict: bool = False,
             is_synthetic: bool = False,
     ) -> None:
         """
@@ -286,8 +301,9 @@ class MethodInfo(Method):
         self.is_synchronized = is_synchronized
         self.is_bridge = is_bridge
         self.is_varargs = is_varargs
-        self.is_abstract = is_abstract
         self.is_native = is_native
+        self.is_abstract = is_abstract
+        self.is_strict = is_strict
         self.is_synthetic = is_synthetic
 
         self.attributes: Dict[str, Tuple[AttributeInfo, ...]] = {}
@@ -493,6 +509,30 @@ class FieldInfo(Field):
     def type(self, value: BaseType) -> None:
         self._type = value
 
+    @property
+    def value(self) -> Union[ConstantInfo, None]:
+        """
+        :return: The value in the ConstantValue attribute of this field, if it has one.
+        """
+
+        for attribute in self.attributes.get(ConstantValue.name_, ()):
+            if isinstance(attribute, ConstantValue):
+                return attribute.value
+        return None
+
+    @value.setter
+    def value(self, value: Union[ConstantInfo, None]) -> None:
+        """
+        Sets the constant in the ConstantValue attribute of this field.
+
+        :param value: The constant to set it to. If None, removes the ConstantValue attribute.
+        """
+
+        if value is None:
+            self.attributes.pop(ConstantValue.name_, None)
+        else:
+            self.attributes[ConstantValue.name_] = (ConstantValue(self, value),)
+
     def __init__(
             self,
             class_: "ClassFile",
@@ -568,4 +608,5 @@ class FieldInfo(Field):
 
 
 from . import attributes
+from .attributes.field import ConstantValue
 from .attributes.method import Code

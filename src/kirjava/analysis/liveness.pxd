@@ -13,5 +13,5 @@ cdef class Liveness:
     cdef readonly InsnGraph graph
     cdef readonly Trace trace
 
-    cdef readonly object entries
-    cdef readonly object exits
+    cdef readonly dict entries
+    cdef readonly dict exits

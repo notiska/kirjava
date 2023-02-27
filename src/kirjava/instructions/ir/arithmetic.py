@@ -15,6 +15,9 @@ class UnaryExpression(Expression, ABC):
     An expression that takes in one value.
     """
 
+    precedence: int = ...  # Higher means it binds earlier
+    operator: str = ...
+
     def __init__(self, value: Value) -> None:
         """
         :param value: The value to operate on.
@@ -25,6 +28,14 @@ class UnaryExpression(Expression, ABC):
     def __repr__(self) -> str:
         return "<%s(value=%r) at %x>" % (self.__class__.__name__, self.value, id(self))
 
+    def __str__(self) -> str:
+        if (
+            isinstance(self.value, BinaryExpression) or
+            (isinstance(self.value, UnaryExpression) and self.value.precedence < self.precedence)
+        ):
+            return "%s(%s)" % (self.operator, self.value)
+        return "%s%s" % (self.operator, self.value)
+
     def get_type(self) -> BaseType:
         return self.value.get_type()
 
@@ -33,6 +44,9 @@ class BinaryExpression(Expression, ABC):
     """
     An arithmetic expression that takes in two values.
     """
+
+    precedence: int = ...
+    operator: str = ...
 
     def __init__(self, left: Value, right: Value) -> None:
         """
@@ -46,6 +60,17 @@ class BinaryExpression(Expression, ABC):
     def __repr__(self) -> str:
         return "<%s(left=%r, right=%r) at %x>" % (self.__class__.__name__, self.left, self.right, id(self))
 
+    def __str__(self) -> str:
+        left = self.left
+        right = self.right
+
+        if isinstance(left, BinaryExpression) and left.precedence < self.precedence:
+            left = "(%s)" % left
+        if isinstance(right, BinaryExpression) and right.precedence < self.precedence:
+            right = "(%s)" % right
+
+        return "%s %s %s" % (left, self.operator, right)
+
     def get_type(self) -> BaseType:
         return self.left.get_type()  # TODO: Merge types
 
@@ -57,6 +82,9 @@ class AdditionExpression(BinaryExpression):
     Adds two values.
     """
 
+    precedence: int = 2
+    operator = "+"
+
     def __str__(self) -> str:
         return "%s + %s" % (self.left, self.right)
 
@@ -66,8 +94,8 @@ class SubtractionExpression(BinaryExpression):
     Subtracts two values.
     """
 
-    def __str__(self) -> str:
-        return "%s - %s" % (self.left, self.right)
+    precedence: int = 2
+    operator = "-"
 
 
 class MultiplicationExpression(BinaryExpression):
@@ -75,8 +103,8 @@ class MultiplicationExpression(BinaryExpression):
     Multiplies two values.
     """
 
-    def __str__(self) -> str:
-        return "%s * %s" % (self.left, self.right)
+    precedence: int = 3
+    operator = "*"
 
 
 class DivisionExpression(BinaryExpression):
@@ -84,8 +112,8 @@ class DivisionExpression(BinaryExpression):
     Divides two values.
     """
 
-    def __str__(self) -> str:
-        return "%s / %s" % (self.left, self.right)
+    precedence: int = 3
+    operator = "/"
 
 
 class ModuloExpression(BinaryExpression):
@@ -93,8 +121,8 @@ class ModuloExpression(BinaryExpression):
     Gets the remainder of two values.
     """
 
-    def __str__(self) -> str:
-        return "%s %% %s" % (self.left, self.right)
+    precedence: int = 3
+    operator = "%"
 
 
 class NegationExpression(UnaryExpression):
@@ -102,8 +130,8 @@ class NegationExpression(UnaryExpression):
     Negates a value.
     """
 
-    def __str__(self) -> str:
-        return "-%s" % self.value
+    precedence: int = 5
+    operator = "-"
 
 
 class ShiftLeftExpression(BinaryExpression):
@@ -111,8 +139,8 @@ class ShiftLeftExpression(BinaryExpression):
     A binary shift left expression.
     """
 
-    def __str__(self) -> str:
-        return "%s << %s" % (self.left, self.right)
+    precedence = 1
+    operator = "<<"
 
 
 class ShiftRightExpression(BinaryExpression):
@@ -120,8 +148,8 @@ class ShiftRightExpression(BinaryExpression):
     A binary shift right expression.
     """
 
-    def __str__(self) -> str:
-        return "%s >> %s" % (self.left, self.right)
+    precedence = 1
+    operator = ">>"
 
 
 class UnsignedShiftRightExpression(BinaryExpression):
@@ -129,8 +157,8 @@ class UnsignedShiftRightExpression(BinaryExpression):
     A binary shift right expression, doesn't conserve the sign.
     """
 
-    def __str__(self) -> str:
-        return "%s >>> %s" % (self.left, self.right)
+    precedence = 1
+    operator = ">>>"
 
 
 class BitwiseAndExpression(BinaryExpression):
@@ -138,8 +166,8 @@ class BitwiseAndExpression(BinaryExpression):
     A bitwise and between two values.
     """
 
-    def __str__(self) -> str:
-        return "%s & %s" % (self.left, self.right)
+    precedence = 0
+    operator = "&"
 
 
 class BitwiseOrExpression(BinaryExpression):
@@ -147,8 +175,8 @@ class BitwiseOrExpression(BinaryExpression):
     A bitwise or between two values.
     """
 
-    def __str__(self) -> str:
-        return "%s | %s" % (self.left, self.right)
+    precedence = 0
+    operator = "|"
 
 
 class BitwiseXorExpression(BinaryExpression):
@@ -156,8 +184,8 @@ class BitwiseXorExpression(BinaryExpression):
     A bitwise xor between two values.
     """
 
-    def __str__(self) -> str:
-        return "%s ^ %s" % (self.left, self.right)
+    precedence = 0
+    operator = "^"
 
 
 # ------------------------------ Comparisons ------------------------------ #

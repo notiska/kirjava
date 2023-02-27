@@ -6,7 +6,7 @@ Verifies that class, method and field names are valid.
 
 from typing import List
 
-from .. import Error
+from ..abc import Error
 
 
 def check_binary_name(name: str, errors: List[Error]) -> None:

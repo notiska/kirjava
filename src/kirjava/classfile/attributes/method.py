@@ -52,7 +52,7 @@ class Code(AttributeInfo):
         """
 
         if value is None:
-            del self.attributes[StackMapTable.name_]
+            self.attributes.pop(StackMapTable.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
@@ -86,7 +86,7 @@ class Code(AttributeInfo):
 
         self.instructions.clear()
         # Copy to a new BytesIO object as some instructions are byte-aligned to the start of the code
-        self.instructions.update(instructions.read_instructions(
+        self.instructions.update(_instructions.read_instructions(
             class_file, BytesIO(buffer.read(code_length)), code_length,
         ))
 
@@ -103,7 +103,7 @@ class Code(AttributeInfo):
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         code = BytesIO()
-        instructions.write_instructions(self.instructions, class_file, code)
+        _instructions.write_instructions(self.instructions, class_file, code)
         code = code.getvalue()
 
         if class_file.version < self._LEGACY_VERSION:
@@ -220,5 +220,5 @@ class Exceptions(AttributeInfo):
             buffer.write(pack_H(class_file.constant_pool.add(exception)))
 
 
-from .. import instructions
-from ..instructions import Instruction
+from .. import _instructions
+from ...instructions.jvm import Instruction

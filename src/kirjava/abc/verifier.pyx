@@ -2,11 +2,11 @@
 # cython: language_level=3
 
 __all__ = (
-    "TypeChecker", "Verifier",
+    "TypeChecker",
 )
 
 """
-A bytecode verifier implementation.
+Classfile verifier abstract classes.
 """
 
 import typing
@@ -74,21 +74,20 @@ cdef class TypeChecker:
 
         ...
 
-    def merge(self, expected: Union["VerificationType", None], actual: "VerificationType") -> "VerificationType":
+    def merge(
+            self,
+            expected: Union["VerificationType", None],
+            actual: "VerificationType",
+            *,
+            fallback: Union["VerificationType", None] = None,
+    ) -> "VerificationType":
         """
         Merges the two provided types.
 
         :param expected: The expected type that we should have.
         :param actual: The actual type that we've been given.
+        :param fallback: A fallback type to use if a merged type could not be determined.
         :return: The merged type.
         """
 
         ...
-
-
-cdef class Verifier:
-    """
-    The abstract base class for a bytecode verifier implementation.
-    """
-
-    ...

@@ -2,8 +2,8 @@ from typing import Any, Union
 
 from .. import types
 from ..abc.graph cimport Edge
-from ..classfile import instructions
-from ..classfile.instructions import (
+from ..instructions import jvm as instructions
+from ..instructions.jvm import (
     Instruction, JsrInstruction, LookupSwitchInstruction,
     RetInstruction, TableSwitchInstruction,
 )
@@ -28,7 +28,7 @@ cdef class InsnEdge(Edge):
         if other is self:
             return True
         return (
-            other.__class__ is self.__class__ and
+            type(other) is self.__class__ and
             (<InsnEdge>other).from_ == self.from_ and
             (<InsnEdge>other).to == self.to and
             (<InsnEdge>other).instruction == self.instruction

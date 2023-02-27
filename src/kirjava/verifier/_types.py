@@ -56,9 +56,9 @@ class BasicTypeChecker(TypeChecker):
             return True
         elif (
             (
-                actual.__class__ is This or
-                actual.__class__ is Uninitialized or
-                actual.__class__ is UninitializedThis
+                type(actual) is This or
+                type(actual) is Uninitialized or
+                type(actual) is UninitializedThis
             ) and actual.class_ is not None
         ):
             return expected.can_merge(actual.class_)
@@ -66,29 +66,35 @@ class BasicTypeChecker(TypeChecker):
 
     def check_reference(self, actual: VerificationType) -> bool:
         if (
-            actual.__class__ is ClassOrInterfaceType or  # Faster checks for more common reference types
-            actual.__class__ is ArrayType or
-            actual.__class__ is Uninitialized or
+            type(actual) is ClassOrInterfaceType or  # Faster checks for more common reference types
+            type(actual) is ArrayType or
+            type(actual) is Uninitialized or
             isinstance(actual, ReferenceType)  # Just to be sure we didn't miss anything
         ):
             return True
         return actual == types.null_t or actual == types.this_t or actual == types.uninit_this_t
 
     def check_class(self, actual: VerificationType) -> bool:
-        return actual.__class__ is ClassOrInterfaceType or actual == types.null_t
+        return type(actual) is ClassOrInterfaceType or actual == types.null_t
 
     def check_array(self, actual: VerificationType) -> bool:
-        return actual.__class__ is ArrayType or actual == types.null_t
+        return type(actual) is ArrayType or actual == types.null_t
 
     def check_category(self, actual: VerificationType, category: int = 2) -> bool:
         return actual.internal_size == category
 
-    def merge(self, expected: Union[VerificationType, None], actual: VerificationType) -> VerificationType:
+    def merge(
+            self,
+            expected: Union[VerificationType, None],
+            actual: VerificationType,
+            *,
+            fallback: Union[VerificationType, None] = None,
+    ) -> VerificationType:
         if expected is None:
-            return actual  # Might need to fall back sometimes, unfortunately
+            return actual if fallback is None else fallback  # Might need to fall back sometimes, unfortunately
         elif expected == actual:
             return actual  # Could preserve any extra metadata, which is good :)
-        return expected
+        return expected if fallback is None else fallback
 
 
 class FullTypeChecker(BasicTypeChecker):
@@ -99,16 +105,22 @@ class FullTypeChecker(BasicTypeChecker):
     def __init__(self) -> None:
         self._supertype_cache: Dict[Tuple[str, str], ClassOrInterfaceType] = {}
 
-    def merge(self, expected: Union[VerificationType, None], actual: VerificationType) -> VerificationType:
+    def merge(
+            self,
+            expected: Union[VerificationType, None],
+            actual: VerificationType,
+            *,
+            fallback: Union[VerificationType, None] = None,
+    ) -> VerificationType:
         if expected is None:
-            return actual
+            return actual if fallback is None else fallback
         elif expected == actual:
             return actual
 
         elif self.check_merge(expected, actual):
             # Merging class types
 
-            if expected.__class__ is ClassOrInterfaceType and actual.__class__ is ClassOrInterfaceType:
+            if type(expected) is ClassOrInterfaceType and type(actual) is ClassOrInterfaceType:
                 common: Union[ClassOrInterfaceType, None] = self._supertype_cache.get((expected.name, actual.name), None)
                 if common is not None:
                     return common
@@ -176,13 +188,15 @@ class FullTypeChecker(BasicTypeChecker):
                     return common
 
                 # FIXME: We can do better than this, just needs more analysis of field and invocation instructions
-                self._supertype_cache[expected.name, actual.name] = types.object_t
-                return types.object_t  # java/lang/Object it is then :(
+                if fallback is None or type(fallback) is not ClassOrInterfaceType:
+                    fallback = types.object_t  # java/lang/Object it is then :(
+                self._supertype_cache[expected.name, actual.name] = fallback
+                return fallback
 
             # Merging null types
 
             if expected == types.null_t:
-                return actual  # TODO: Specify that the type is nullable maybe?
+                return actual
             elif actual == types.null_t:
                 return expected
 
@@ -196,13 +210,13 @@ class FullTypeChecker(BasicTypeChecker):
                     return actual
                 elif actual.class_ is None:
                     return expected
-                return This(self.merge(expected.class_, actual.class_))  # TODO: Figure out type bounds?
+                return This(self.merge(expected.class_, actual.class_, fallback=fallback))
             elif expected_this:
-                return This(self.merge(expected.class_, actual))
+                return This(self.merge(expected.class_, actual, fallback=fallback))
             elif actual_this:
                 if actual.class_ is None:
                     return actual
-                return This(self.merge(expected, actual.class_))
+                return This(self.merge(expected, actual.class_, fallback=fallback))
 
             # Merging uninitializedThis types
 
@@ -214,13 +228,13 @@ class FullTypeChecker(BasicTypeChecker):
                     return actual
                 elif actual.class_ is None:
                     return expected
-                return UninitializedThis(self.merge(expected.class_, actual.class_))
+                return UninitializedThis(self.merge(expected.class_, actual.class_, fallback=fallback))
             elif expected_uninit_this:
-                return UninitializedThis(self.merge(expected.class_, actual))
+                return UninitializedThis(self.merge(expected.class_, actual, fallback=fallback))
             elif actual_uninit_this:
                 if actual.class_ is None:
                     return actual
-                return UninitializedThis(self.merge(expected, actual.class_))
+                return UninitializedThis(self.merge(expected, actual.class_, fallback=fallback))
 
             # Merging uninitialised types
 
@@ -232,13 +246,13 @@ class FullTypeChecker(BasicTypeChecker):
                     return actual
                 elif actual.class_ is None:
                     return expected
-                return Uninitialized(actual.offset, self.merge(expected.class_, actual.class_))
+                return Uninitialized(actual.offset, self.merge(expected.class_, actual.class_, fallback=fallback))
             elif expected_uninit:
-                return Uninitialized(expected.offset, self.merge(expected.class_, actual))
+                return Uninitialized(expected.offset, self.merge(expected.class_, actual, fallback=fallback))
             elif actual_uninit:
                 if actual.class_ is None:
                     return actual
-                return Uninitialized(actual.offset, self.merge(expected, actual.class_))
+                return Uninitialized(actual.offset, self.merge(expected, actual.class_, fallback=fallback))
 
             # TODO: Array types
 

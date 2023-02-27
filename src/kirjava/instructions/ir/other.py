@@ -4,9 +4,28 @@
 IR expressions/statements that are not unique enough to fit into their own categories.
 """
 
-from typing import Union
+from typing import Iterable, Union
 
 from ...abc import Statement, Value
+
+
+class CompoundStatement(Statement):
+    """
+    Multiple statements in a row.
+    """
+
+    def __init__(self, statements: Iterable[Statement]) -> None:
+        """
+        :param statements: The statements.
+        """
+
+        self.statements = list(statements)
+
+    def __repr__(self) -> str:
+        return "<CompoundStatement(%r) at %x>" % (self.statements, id(self))
+
+    def __str__(self) -> str:
+        return "\n".join(map(str, self.statements))
 
 
 class ThrowStatement(Statement):
@@ -61,7 +80,7 @@ class MonitorEnterStatement(Statement):
         return "<MonitorEnterStatement(object=%r) at %x>" % (self.object, id(self))
 
     def __str__(self) -> str:
-        return "monitorenter %s" % self.object
+        return "monitorenter (%s)" % self.object
 
 
 class MonitorExitStatement(Statement):
@@ -80,4 +99,4 @@ class MonitorExitStatement(Statement):
         return "<MonitorExitStatement(object=%r) at %x>" % (self.object, id(self))
 
     def __str__(self) -> str:
-        return "monitorexit %s" % self.object
+        return "monitorexit (%s)" % self.object

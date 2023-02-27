@@ -67,7 +67,7 @@ def to_descriptor(*values: Union[Tuple[BaseType, ...], BaseType], do_raise: bool
         if base_type is not None:
             descriptor += base_type
         else:
-            value_class = value.__class__
+            value_class = type(value)
 
             if value_class is ClassOrInterfaceType:
                 descriptor += "L%s;" % value.name
@@ -100,7 +100,7 @@ cpdef inline tuple next_argument(str descriptor):  # -> Tuple[BaseType, str]:
 
     elif descriptor[0] == "[":
         element_type, descriptor = next_argument(descriptor[1:])  # FIXME: This could be done so much better
-        if element_type.__class__ is ArrayType:
+        if type(element_type) is ArrayType:
             element_type.dimension += 1  # Evil
             array_type = element_type
         else:
@@ -147,7 +147,7 @@ def parse_field_descriptor(
             return InvalidType(descriptor)
 
         # Check the type is valid
-        if type_ == types.void_t or type_.__class__ is InvalidType:
+        if type_ == types.void_t or type(type_) is InvalidType:
             if do_raise:
                 raise TypeError("Invalid type argument %r found." % type_)
             return InvalidType(descriptor)
@@ -210,13 +210,13 @@ def parse_method_descriptor(
 
         # Check the types in the arguments are valid (i.e. no void types)
         for argument_type in argument_types:
-            if argument_type == types.void_t or argument_type.__class__ is InvalidType:
+            if argument_type == types.void_t or type(argument_type) is InvalidType:
                 if do_raise:
                     raise TypeError("Invalid argument type %r found." % argument_type)
                 return InvalidType(descriptor)
 
         # Check the return type is valid
-        if return_type.__class__ is InvalidType:
+        if type(return_type) is InvalidType:
             raise TypeError("Invalid return type %r found." % return_type)
 
     return tuple(argument_types), return_type

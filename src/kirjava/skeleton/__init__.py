@@ -280,7 +280,7 @@ class _SkeletonMethod(Method):
 
     __slots__ = (
         "_is_public", "_is_private", "_is_protected", "_is_static", "_is_final", "_is_synchronized",
-        "_is_bridge", "_is_varargs", "_is_abstract", "_is_native", "_is_synthetic",
+        "_is_bridge", "_is_varargs", "_is_native", "_is_abstract", "_is_strict", "_is_synthetic",
         "_name", "_argument_types", "_return_type", "_class",
     )
 
@@ -317,12 +317,16 @@ class _SkeletonMethod(Method):
         return self._is_varargs
 
     @property
+    def is_native(self) -> bool:
+        return self._is_native
+
+    @property
     def is_abstract(self) -> bool:
         return self._is_abstract
 
     @property
-    def is_native(self) -> bool:
-        return self._is_native
+    def is_strict(self) -> bool:
+        return self._is_strict
 
     @property
     def is_synthetic(self) -> bool:
@@ -354,8 +358,9 @@ class _SkeletonMethod(Method):
             is_synchronized: bool = False,
             is_bridge: bool = False,
             is_varargs: bool = False,
-            is_abstract: bool = False,
             is_native: bool = False,
+            is_abstract: bool = False,
+            is_strict: bool = False,
             is_synthetic: bool = False,
     ) -> None:
         """
@@ -382,8 +387,9 @@ class _SkeletonMethod(Method):
         self._is_synchronized = is_synchronized
         self._is_bridge = is_bridge
         self._is_varargs = is_varargs
-        self._is_abstract = is_abstract
         self._is_native = is_native
+        self._is_abstract = is_abstract
+        self._is_strict = is_strict
         self._is_synthetic = is_synthetic
 
     def __repr__(self) -> str:

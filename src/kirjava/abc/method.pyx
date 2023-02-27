@@ -110,6 +110,17 @@ cdef class Method:
         def __set__(self, value: bool) -> None:
             ...
 
+    property is_native:
+        """
+        Does this method reference a function defined in a native binary?
+        """
+
+        def __get__(self) -> bool:
+            ...
+
+        def __set__(self, value: bool) -> None:
+            ...
+
     property is_abstract:
         """
         Does this method have a provided implementation?
@@ -121,9 +132,9 @@ cdef class Method:
         def __set__(self, value: bool) -> None:
             ...
 
-    property is_native:
+    property is_strict:
         """
-        Does this method reference a function defined in a native binary?
+        Does this method use FP-strict floating point mode?
         """
 
         def __get__(self) -> bool:

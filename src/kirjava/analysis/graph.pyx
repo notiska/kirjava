@@ -92,16 +92,12 @@ cdef class InsnGraph(Graph):
                     self.method.class_.version.name, StackMapTable.since.name,
                 ))
 
-        checker = FullTypeChecker()  # TODO: Allow specified type checker through verifier parameter
-        cdef list errors = []
-
-        trace = Trace.from_graph(self, checker)
-        errors.extend(trace.errors)
-
+        cdef Verifier verifier = Verifier(FullTypeChecker())  # TODO: Allow specified type checker through verifier parameter
+        cdef Trace trace = Trace.from_graph(self, verifier)
         code = Code(self.method, trace.max_stack, trace.max_locals)
 
         logger.debug(" - Method trace information:")
-        logger.debug("    - %i error(s)." % len(trace.errors))
+        logger.debug("    - %i error(s)." % len(verifier._errors))
         logger.debug("    - %i leaf edge(s), %i back edge(s), %i subroutine(s)." % (
             len(trace.leaf_edges), len(trace.back_edges), sum(map(len, trace.subroutines.values())),
         ))
@@ -111,9 +107,9 @@ cdef class InsnGraph(Graph):
         # exception offsets for later adjustment, as we don't know all the offsets while we're writing.
 
         cdef int offset = 0
-        # Record the blocks that have been written and their start/end offsets as well as new instruction mappings (this
-        # for keeping track of uninitialised types, hacky, I know). Note that blocks can actually be written multiple
-        # times if they have inline=True, so take that into account.
+        # Record the blocks that have been written and their start/end offsets as well as new instruction mappings
+        # (this for keeping track of uninitialised types, hacky, I know). Note that blocks can actually be written
+        # multiple times if they have inline=True, so take that into account.
         cdef dict offsets = {}
         cdef set dead = set()
 
@@ -122,24 +118,25 @@ cdef class InsnGraph(Graph):
         cdef list exceptions = []
         cdef dict inlined = {}
 
-        logger.debug(" - Writing %i block(s):" % len(self._blocks))
-
         # We'll record blocks that we've created for the purpose of assembling so that we can remove them later, as we
         # don't want to alter the state of the graph.
         cdef set temporary = set()
 
+        logger.debug(" - Writing %i block(s):" % len(self._blocks))
+
         # Write the entry block first, no matter what
         offset = _write_block(
-            self, offset, self.entry_block, code, errors, offsets, jumps, switches, exceptions, temporary, inlined,
+            self, verifier, offset, self.entry_block, code, offsets, jumps, switches, exceptions, temporary, inlined,
         )
-        for _, block in sorted(self._blocks.items(), key=lambda item: item[0]):
+        for label in sorted(self._blocks):
+            block = self._blocks[label]
             if block in offsets:
                 continue
-            if remove_dead_blocks and not block in trace.states:
+            if remove_dead_blocks and not block in trace.frames:
                 dead.add(block)
                 continue
             offset = _write_block(
-                self, offset, block, code, errors, offsets, jumps, switches, exceptions, temporary, inlined,
+                self, verifier, offset, block, code, offsets, jumps, switches, exceptions, temporary, inlined,
             )
 
         # We may need to forcefully write any inline blocks if we have direct jumps to them.
@@ -150,7 +147,7 @@ cdef class InsnGraph(Graph):
             for edge in itertools.chain(jumps.values(), *switches.values(), exceptions):
                 if edge is not None and edge.to == block:
                     offset = _write_block(
-                        self, offset, block, code, errors, offsets, jumps, switches, exceptions, temporary, inlined,
+                        self, verifier, offset, block, code, offsets, jumps, switches, exceptions, temporary, inlined,
                     )
                     logger.debug(" - Force write %s due to non-inlined edge reference." % block)
                     break
@@ -162,25 +159,23 @@ cdef class InsnGraph(Graph):
         if inlined:
             logger.debug("    - %i block(s) inlined." % len(inlined))
 
-        _adjust_jumps_and_add_exception_handlers(code, errors, jumps, switches, exceptions, offsets, inlined)
+        _adjust_jumps_and_add_exception_handlers(verifier, code, jumps, switches, exceptions, offsets, inlined)
         if simplify_exception_ranges:
             _simplify_exception_ranges(code, exceptions, offsets)
 
         if compute_frames:
             _nop_out_dead_blocks_and_compute_frames(
-                self, trace, checker,
-                code, errors,
+                self, verifier, trace, code,
                 jumps, switches, exceptions,
                 dead, offsets, inlined,
                 compress_frames,
             )
 
-        if errors:
-            if do_raise:
-                raise VerifyError(errors)
+        if do_raise and verifier._errors:
+            verifier.raise_()
 
-            logger.debug(" - %i error(s) during assembling:" % len(errors))
-            for error in errors:
+            logger.debug(" - %i error(s) during assembling:" % len(verifier._errors))
+            for error in verifier._errors:
                 logger.debug("    - %s" % error)
 
         return code
@@ -205,7 +200,7 @@ cdef class InsnGraph(Graph):
             self,
             from_: InsnBlock,
             to: InsnBlock,
-            jump: Union[MetaInstruction, Instruction] = instructions.goto,
+            jump: Union[Type[Instruction], Instruction] = instructions.goto,
             overwrite: bool = True,
     ) -> JumpEdge:
         """
@@ -218,7 +213,7 @@ cdef class InsnGraph(Graph):
         :return: The jump edge that was created.
         """
 
-        if jump.__class__ is MetaInstruction:
+        if type(jump) is type:
             jump = jump()
 
         if isinstance(jump, JsrInstruction) or jump == instructions.ret:
@@ -251,7 +246,7 @@ cdef class InsnGraph(Graph):
         if priority is None:  # Determine this automatically
             priority = 0
             for edge in self._forward_edges.get(from_, ()):
-                if edge.__class__ is ExceptionEdge and edge.priority >= priority:
+                if isinstance(edge, ExceptionEdge) and edge.priority >= priority:
                     priority = edge.priority + 1
 
         edge = ExceptionEdge(from_, to, priority, exception)

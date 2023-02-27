@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "variable",
+    "graph", "variable",
     "IRGraph",
 )
 
 """
-Kirjava IR constructs.
+Kirjava IR analysis stuff.
 """
 
 from . import graph, variable

@@ -138,7 +138,7 @@ def next_argument(signature: str, force_read: bool = False) -> Tuple[Union[TypeA
         else:
             return next_argument_(signature)
 
-        type_arguments = TypeArgumentList()
+        type_arguments = []
         while arguments_signature:
             type_, arguments_signature = next_argument(arguments_signature, force_read)
             if isinstance(type_, InvalidType) and not force_read:
@@ -146,7 +146,7 @@ def next_argument(signature: str, force_read: bool = False) -> Tuple[Union[TypeA
 
             type_arguments.append(type_)
 
-        inner_type_arguments = TypeArgumentList()
+        inner_type_arguments = []
         while inner_arguments_signature:
             type_, inner_arguments_signature = next_argument(inner_arguments_signature, force_read)
             if isinstance(type_, InvalidType) and not force_read:
@@ -170,7 +170,7 @@ def next_argument(signature: str, force_read: bool = False) -> Tuple[Union[TypeA
         _, middle, end = _find_enclosing(signature, "<", ">")
         if not middle:
             return InvalidType(end), ""
-        type_variables = TypeArgumentList()  # The type variables that we've found
+        type_variables = []  # The type variables that we've found
 
         while middle:
             identifier, *remaining = middle.split(":")
@@ -209,7 +209,7 @@ def next_argument(signature: str, force_read: bool = False) -> Tuple[Union[TypeA
                 if part or not remaining:
                     break
 
-        return type_variables, end
+        return TypeArgumentList(type_variables), end
 
     elif char == "^":
         argument, signature_ = next_argument(signature[1:], force_read)
@@ -297,7 +297,7 @@ def parse_method_signature(
     if preceding:
         type_parameters, preceding = next_argument(preceding, force_read)
     else:
-        type_parameters = TypeArgumentList()
+        type_parameters = TypeArgumentList(())
 
     # Find the argument types
     argument_types = []
@@ -398,7 +398,7 @@ def parse_class_signature(
     type_parameters, remaining = next_argument(signature)
     if not isinstance(type_parameters, TypeArgumentList):
         super_class_type = type_parameters
-        type_parameters = TypeArgumentList()
+        type_parameters = TypeArgumentList(())
     else:
         super_class_type, remaining = next_argument(remaining)
 

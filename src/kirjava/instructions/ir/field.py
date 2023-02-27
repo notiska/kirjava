@@ -4,6 +4,7 @@
 Field related IR expressions/statements.
 """
 
+from .cast import TypeCastExpression
 from ...abc import Expression, Statement, Value
 from ...types import BaseType
 from ...types.reference import ClassOrInterfaceType
@@ -31,6 +32,8 @@ class GetFieldExpression(Expression):
         )
 
     def __str__(self) -> str:
+        if isinstance(self.instance, TypeCastExpression):
+            return "(%s).%s" % (self.instance, self.name)
         return "%s.%s" % (self.instance, self.name)
 
     def get_type(self) -> BaseType:
@@ -87,6 +90,8 @@ class SetFieldStatement(Statement):
         )
 
     def __str__(self) -> str:
+        if isinstance(self.value, TypeCastExpression):
+            return "(%s).%s = %s" % (self.instance, self.name, self.value)
         return "%s.%s = %s" % (self.instance, self.name, self.value)
 
 

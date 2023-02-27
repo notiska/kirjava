@@ -192,9 +192,9 @@ cdef class Graph:
         return iter(self._blocks.values())
 
     def __getitem__(self, item: Any) -> Block:
-        if item.__class__ is int:
+        if type(item) is int:
             return self._blocks[item]
-        raise TypeError("Expected int, got %r." % item.__class__)
+        raise TypeError("Expected int, got %r." % type(item))
 
     # ------------------------------ Internal API ------------------------------ #
 
@@ -273,7 +273,7 @@ cdef class Graph:
                 forward.add(edge)
             else:
                 for edge_ in forward:
-                    if edge_.__class__ is edge.__class__:
+                    if type(edge_) is type(edge):
                         conflicts.add(edge_)
 
                 if len(conflicts) >= edge.limit:

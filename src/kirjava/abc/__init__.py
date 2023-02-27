@@ -6,11 +6,12 @@ __all__ = (
     "Class", "Field", "Method",
     "Block", "Edge", "Graph", "RethrowBlock", "ReturnBlock",
     "Expression", "Statement", "Value",
-    "TypeChecker", "Verifier",
+    "TypeChecker",
 )
 
 """
 Abstract base classes for different concepts used throughout Kirjava.
+Note: ABC isn't actually used anymore due to performance reasons.
 """
 
 

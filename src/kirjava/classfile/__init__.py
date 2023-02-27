@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "attributes", "constants", "descriptor", "instructions", "members", "signature",
+    "attributes", "constants", "descriptor", "members", "signature",
     "ClassFile", "FieldInfo", "MethodInfo",
 )
 
@@ -500,6 +500,6 @@ class ClassFile(Class_):
         logger.debug("Wrote classfile %r in %.1fms." % (self.name, (time.perf_counter_ns() - start) / 1_000_000))
 
 
-from . import attributes, constants, descriptor, instructions, members, signature
+from .members import FieldInfo, MethodInfo  # Important that these are imported first, I <3 Python
+from . import attributes, constants, descriptor, members, signature
 from .constants import ConstantPool, Class
-from .members import FieldInfo, MethodInfo

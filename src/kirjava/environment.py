@@ -40,6 +40,20 @@ def register_classes(*classes: Tuple[Class, ...]) -> None:
         register_class(class_)
 
 
+def unregister_class(name: str) -> Class:
+    """
+    Unregisters the class with the given name.
+
+    :param name: The name of the class to unregister.
+    :return: The class that was unregistered.
+    """
+
+    class_ = _classes.pop(name, None)
+    if class_ is None:
+        raise LookupError("Couldn't find class by name %r." % name)
+    return class_
+
+
 def find_class(name: str) -> Class:
     """
     Retrieves a class from the environment.
