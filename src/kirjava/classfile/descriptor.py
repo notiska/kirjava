@@ -63,7 +63,7 @@ def to_descriptor(*values: Union[Tuple[BaseType, ...], BaseType], do_raise: bool
     descriptor = ""
 
     for value in values:
-        base_type = _BACKWARD_BASE_TYPES.get(value, None)
+        base_type = _BACKWARD_BASE_TYPES.get(value)
         if base_type is not None:
             descriptor += base_type
         else:
@@ -109,7 +109,7 @@ def next_argument(descriptor: str) -> Tuple[BaseType, str]:
         return array_type, descriptor
 
     else:
-        base_type = _FORWARD_BASE_TYPES.get(descriptor[0], None)
+        base_type = _FORWARD_BASE_TYPES.get(descriptor[0])
         if base_type is not None:
             return base_type, descriptor[1:]
         return InvalidType(descriptor), ""

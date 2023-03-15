@@ -16,6 +16,8 @@ class Constant:
     A Java constant (some piece of information that is constant).
     """
 
+    __slots__ = ("value", "_hash")
+
     def __init__(self, value: Any) -> None:
         self.value = value
         self._hash = hash(self.value)

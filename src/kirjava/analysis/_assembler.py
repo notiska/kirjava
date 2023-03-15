@@ -67,7 +67,7 @@ def _write_block(
         return offset
     # No instructions means nothing to write, so skip this block. Keep in mind if we do have out edges though, we may
     # need to add jumps to account for impossible fallthroughs.
-    elif not block and not graph._forward_edges.get(block, False):
+    elif not block and not graph._forward_edges.get(block):
         return offset
 
     if offsets:  # Have we actually written any yet?
@@ -225,7 +225,7 @@ def _write_block(
         jump_instruction = jump_edge.instruction.copy()
         is_conditional = isinstance(jump_instruction, ConditionalJumpInstruction)
 
-        offsets_ = offsets.get(jump_edge.to, None)
+        offsets_ = offsets.get(jump_edge.to)
         if offsets_ is not None:  # If we have written the block already, we may need to add intermediary jumps
             start_ = min(map(lambda item: item[0], offsets_), key=lambda offset_: offset - offset_)
             delta = start_ - offset
@@ -338,7 +338,7 @@ def _write_block(
         verifier.report(Error(Error.Type.INVALID_BLOCK, block, "block has no out edges"))
 
     if fallthrough_edge is not None:
-        offsets_ = offsets.get(fallthrough_edge.to, None)
+        offsets_ = offsets.get(fallthrough_edge.to)
 
         if fallthrough_edge.to == graph.return_block or fallthrough_edge.to == graph.rethrow_block:
             # We need to add a return/athrow instruction and adjust the block's bounds
@@ -625,8 +625,8 @@ def _nop_out_dead_blocks_and_compute_frames(
                     base.stack[index] = entry_a.cast(None, merged)
 
             for index in liveness.entries[block]:
-                entry_a = base.locals.get(index, None)
-                entry_b = frame.locals.get(index, None)
+                entry_a = base.locals.get(index)
+                entry_b = frame.locals.get(index)
 
                 if entry_a is None and entry_b is None:
                     verifier.report(Error(

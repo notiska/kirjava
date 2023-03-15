@@ -207,7 +207,7 @@ class MultiANewArrayInstruction(Instruction):
     Creates a new multidimensional array with the given reference type.
     """
 
-    __slots__ = ("_index", "dimension")
+    __slots__ = ("type", "dimension", "_index")
 
     operands = {"_index": ">H", "dimension": ">B"}
 

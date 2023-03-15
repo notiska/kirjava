@@ -53,7 +53,7 @@ class LoadLocalInstruction(Instruction):
 
     def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
         entry = delta.pushes[0]
-        if not isinstance(associations.get(entry, None), Local):
+        if not isinstance(associations.get(entry), Local):
             associations[entry] = Local(self.index, entry.type)
 
 
@@ -136,7 +136,7 @@ class StoreLocalInstruction(Instruction):
         entry = delta.pops[-1]
         local = Local(scope.variable_id, self.index, entry.type)
 
-        if type(associations.get(entry, None)) is not Local:
+        if type(associations.get(entry)) is not Local:
             statement = DeclareStatement(local, associations[entry])
             associations[entry] = local
         else:

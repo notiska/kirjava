@@ -84,7 +84,7 @@ class Liveness:
                 live = exits.setdefault(block, set())
                 live.update(entries.get(previous, ()))
 
-                before = entries.get(block, None)
+                before = entries.get(block)
                 if before is None:
                     entries[block] = set()
                 live = live.copy()

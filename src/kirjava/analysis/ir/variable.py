@@ -39,7 +39,7 @@ class Scope:
         :return: Was the variable declared or does it already exist?
         """
 
-        declared = self.declared.get(variable.id, None)
+        declared = self.declared.get(variable.id)
         if declared is not None:
             if variable.type == declared.type:  # Correct types?
                 return False
@@ -55,7 +55,7 @@ class Scope:
         :return: The variable, if not found, a LookupError is raised.
         """
 
-        variable = self.declared.get(id_, None)
+        variable = self.declared.get(id_)
         if variable is not None:
             return variable
 

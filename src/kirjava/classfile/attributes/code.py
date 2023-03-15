@@ -10,7 +10,6 @@ Attributes found exclusively in the Code attribute.
 
 import logging
 import typing
-from abc import abstractmethod, ABC
 from typing import IO, Iterable, List, Optional, Tuple
 
 from . import AttributeInfo
@@ -26,6 +25,8 @@ if typing.TYPE_CHECKING:
     from .method import Code
 
 logger = logging.getLogger("kirjava.classfile.attributes.code")
+
+# TODO: https://github.com/jacoco/jacoco/wiki/CharacterRangeTable, https://bugs.openjdk.org/browse/CODETOOLS-7900337
 
 
 class StackMapTable(AttributeInfo):
@@ -46,6 +47,7 @@ class StackMapTable(AttributeInfo):
         """
 
         tag, = buffer.read(1)
+
         # The tags are somewhat sorted by their occurrence frequency. Some of the less common types are harder to
         # distinguish in terms of usage, but the most common types tend to be class, int and top, in that order.
         if tag == 7:
@@ -132,7 +134,7 @@ class StackMapTable(AttributeInfo):
                     self.frames.append(stack_frame.read(frame_type, class_file, buffer))
                     break
             else:
-               raise ValueError("Unknown stackmap frame type %i." % frame_type)
+                raise ValueError("Unknown stackmap frame type %i." % frame_type)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         buffer.write(pack_H(len(self.frames)))
@@ -141,7 +143,7 @@ class StackMapTable(AttributeInfo):
 
     # ------------------------------ Stack frame types ------------------------------ #
 
-    class StackMapFrame(ABC):
+    class StackMapFrame:
         """
         A stack map frame info structure.
         """
@@ -151,7 +153,7 @@ class StackMapTable(AttributeInfo):
         frame_type = range(-1, -1)
 
         @classmethod
-        @abstractmethod
+        # @abstractmethod
         def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.StackMapFrame":
             """
             Reads a stack map frame from a buffer.
@@ -174,7 +176,7 @@ class StackMapTable(AttributeInfo):
         def __repr__(self) -> str:
             return "<%s(offset_delta=%i) at %x>" % (self.__class__.__name__, self.offset_delta, id(self))
 
-        @abstractmethod
+        # @abstractmethod
         def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
             """
             Writes this stack map frame to a buffer.
@@ -189,6 +191,8 @@ class StackMapTable(AttributeInfo):
         """
         Indicates that this frame has the exact same locals as the previous frame and that the operand stack is empty.
         """
+
+        __slots__ = ()
 
         frame_type = range(0, 64)
 
@@ -306,6 +310,8 @@ class StackMapTable(AttributeInfo):
         Indicates that the frame has the exact same locals as the previous frame and that the operand stack is empty. The
         delta offset is explicitly given.
         """
+
+        __slots__ = ()
 
         frame_type = range(251, 252)
 

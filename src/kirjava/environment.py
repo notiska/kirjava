@@ -62,7 +62,7 @@ def find_class(name: str) -> Class:
     :return: The class.
     """
 
-    class_ = _classes.get(name, None)
+    class_ = _classes.get(name)
     if class_ is None:
         raise LookupError("Couldn't find class by name %r." % name)
     return class_

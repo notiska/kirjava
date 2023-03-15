@@ -554,7 +554,7 @@ class Frame:
         :return: The entry at that index.
         """
 
-        entry = self.locals.get(index, None)
+        entry = self.locals.get(index)
 
         if entry is not None:
             if not self._check_type(expect, entry):
@@ -585,7 +585,7 @@ class Frame:
         else:
             entry = entry_or_type
 
-        local = self.locals.get(index, None)
+        local = self.locals.get(index)
         if local == entry:
             return  # Nothing to do as the value is already set to this one
 
@@ -698,7 +698,7 @@ def _resolve_opaque_edge(
         verifier.report(Error(Error.Type.INVALID_EDGE, edge, "unknown opaque edge type"))
         return None
 
-    return_address = frame.locals.get(edge.instruction.index, None)
+    return_address = frame.locals.get(edge.instruction.index)
     if return_address is None:
         verifier.report(Error(Error.Type.INVALID_EDGE, edge, "no return address at local index %i" % edge.instruction.index))
         return None
@@ -876,7 +876,7 @@ class Trace:
         while True:
             back_edge, root, frame, edges = to_visit[-1]
             if not edges:
-                if root is not None and not graph._forward_edges.get(root.to, False):
+                if root is not None and not graph._forward_edges.get(root.to):
                     leaf_edges.add(root)
                 if not traversed:  # Nothing more to do
                     break

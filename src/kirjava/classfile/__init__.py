@@ -75,7 +75,6 @@ class ClassFile(Class_):
         for index in range(methods_count):
             MethodInfo.read(class_file, buffer)
 
-        class_file.attributes = {}
         attributes_count, = unpack_H(buffer.read(2))
         for index in range(attributes_count):
             attribute_info = attributes.read_attribute(class_file, class_file, buffer)

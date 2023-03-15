@@ -331,13 +331,13 @@ class Graph:
         self._blocks.setdefault(edge.from_.label, edge.from_)
         self._blocks.setdefault(edge.to.label, edge.to)
 
-        forward = self._forward_edges.get(edge.from_, None)
+        forward = self._forward_edges.get(edge.from_)
 
         if forward is not None and edge in forward:
             forward.remove(edge)
 
         if edge.to is not None:
-            backward = self._backward_edges.get(edge.to, None)
+            backward = self._backward_edges.get(edge.to)
             if backward is not None and edge in backward:
                 backward.remove(edge)
         else:

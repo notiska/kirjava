@@ -36,7 +36,7 @@ def read_instructions(class_file: ClassFile, buffer: IO[bytes], length: int) -> 
 
     while offset < length:
         opcode, = buffer.read(1)
-        instruction = instructions._opcode_map.get(opcode, None)
+        instruction = instructions._opcode_map.get(opcode)
         if instruction is None:
             raise ValueError("Unknown opcode: 0x%x." % opcode)
         instruction = instruction.__new__(instruction)

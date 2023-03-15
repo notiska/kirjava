@@ -5,7 +5,7 @@ JVM instructions.
 """
 
 import typing
-from typing import Any, Dict, IO, Optional, Tuple, Type
+from typing import Any, Callable, Dict, IO, Optional, Tuple, Type
 
 from ...abc import Source, Statement, Value
 from ...classfile.constants import Double, Float, Integer, Long
@@ -27,7 +27,7 @@ class Instruction(Source):
     opcode: int = ...
     mnemonic: str = ...
 
-    operands: Dict[str, str] = {}
+    operands:      Dict[str, str] = {}
     operands_wide: Dict[str, str] = {}
 
     throws: Tuple[ClassOrInterfaceType, ...] = ()
@@ -71,10 +71,10 @@ class Instruction(Source):
         # if wide and not self.operands_wide:
         #     raise Exception("%r cannot be read wide." % self)
 
-        for operand, format_ in (self.operands if not wide else self.operands_wide).items():
-            value, = struct.unpack(format_, buffer.read(struct.calcsize(format_)))
-            if operand != "_":
-                setattr(self, operand, value)
+        for name, size, unpack, _ in self._operands[wide]:
+            value, = unpack(buffer.read(size))
+            if name != "_":
+                setattr(self, name, value)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         """
@@ -88,11 +88,8 @@ class Instruction(Source):
         # if wide and not self.operands_wide:
         #     raise Exception("%r cannot be written wide." % self)
 
-        for operand, format_ in (self.operands if not wide else self.operands_wide).items():
-            value = 0
-            if operand != "_":
-                value = getattr(self, operand)
-            buffer.write(struct.pack(format_, value))
+        for name, _, _, pack in self._operands[wide]:
+            buffer.write(pack(getattr(self, name, 0)))  # Assume default as 0
 
     def get_size(self, offset: int, wide: bool) -> int:
         """
@@ -152,26 +149,36 @@ def new_instruction(
     :return: The created instruction class.
     """
 
-    if base is None:
-        base = Instruction
-    if operands is None:
-        operands = {}
-    if operands_wide is None:
-        operands_wide = {}
+    base = base or Instruction
 
     # namespace["__qualname__"] = mnemonic
-    namespace["opcode"] = opcode
+    namespace["opcode"]   = opcode
     namespace["mnemonic"] = mnemonic
-    namespace["operands"] = base.operands.copy()
-    namespace["operands"].update(operands)
-    namespace["operands_wide"] = base.operands_wide.copy()
-    namespace["operands_wide"].update(operands_wide)
-    if throws is not None:
-        namespace["throws"] = throws
 
-    if not "__slots__" in namespace:
-        namespace["__slots__"] = ()
-    namespace["__slots__"] = tuple(set(namespace["__slots__"]) | set(operands.keys()) | set(operands_wide.keys()))
+    namespace["operands"]      = operands or base.operands.copy()
+    namespace["operands_wide"] = operands_wide or base.operands_wide.copy()
+
+    namespace["throws"] = throws or base.throws
+
+    if operands is not None:
+        namespace["__slots__"] = tuple(operands.keys())
+
+    # Pre-compile the structs for the operands for faster reading/writing
+    operand_structs = []
+    for name, format_ in namespace["operands"].items():
+        struct_ = struct.Struct(format_)
+        operand_structs.append((name, struct_.size, struct_.unpack, struct_.pack))
+
+    if namespace["operands_wide"]:
+        operand_structs_wide = []
+        for name, format_ in namespace["operands_wide"].items():
+            struct_ = struct.Struct(format_)
+            operand_structs_wide.append((name, struct_.size, struct_.unpack, struct_.pack))
+
+    else:
+        operand_structs_wide = operand_structs
+
+    namespace["_operands"] = (operand_structs, operand_structs_wide)
 
     return type(mnemonic, (base,), namespace)
 

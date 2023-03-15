@@ -127,7 +127,7 @@ def _create_blocks_and_edges(
                 graph.connect(RetEdge(block, None, instruction), overwrite=False, check=False)
 
             elif not is_jsr:  # jsr instructions are handled more specifically
-                to = starting.get(offset + instruction.offset, None)
+                to = starting.get(offset + instruction.offset)
                 edge = JumpEdge(block, to, instruction)
                 if to is not None:
                     instruction.offset = None
@@ -144,7 +144,7 @@ def _create_blocks_and_edges(
             if isinstance(instruction, ConditionalJumpInstruction):
                 graph.connect(FallthroughEdge(previous, block), overwrite=False, check=False)
             elif is_jsr:
-                to = starting.get(offset + instruction.offset, None)
+                to = starting.get(offset + instruction.offset)
                 edge = JsrJumpEdge(previous, to, instruction)
                 if to is not None:
                     instruction.offset = None
@@ -168,7 +168,7 @@ def _create_blocks_and_edges(
                 edges.append(edge)
 
             for index, offset_ in enumerate(instruction.offsets.copy()):
-                to = starting.get(offset + offset_, None)
+                to = starting.get(offset + offset_)
                 edge = SwitchEdge(block, to, instruction, index)
                 if to is not None:
                     # FIXME: Remove individual offsets, might have unbound switch edges
@@ -194,7 +194,7 @@ def _create_blocks_and_edges(
 
             offsets = instruction.offsets
             for value, offset_ in offsets.copy().items():
-                to = starting.get(offset + offset_, None)
+                to = starting.get(offset + offset_)
                 edge = SwitchEdge(block, to, instruction, value)
                 if to is not None:
                     offsets.pop(value)
@@ -233,11 +233,11 @@ def _create_blocks_and_edges(
                 # not an accurate representation of what would happen, instead we want to maintain the correctness of
                 # the actual instructions.
                 # An example:
-                # goto +32767
-                # return
+                #  goto +32767
+                #  return
                 # In this case, we want to maintain that the return instruction comes directly after the invalid goto.
 
-                to = graph._blocks.get(edge.from_.label + 1, None)
+                to = graph._blocks.get(edge.from_.label + 1)
                 if block is not None:
                     # If the jump is conditional, this will already exist, but the _connect method should ensure that we
                     # don't get duplicates.
@@ -257,7 +257,7 @@ def _create_blocks_and_edges(
     for start, block in starting.items():
         for index, handler in enumerate(code.exception_table):
             if handler.start_pc <= start < handler.end_pc:
-                target = starting.get(handler.handler_pc, None)
+                target = starting.get(handler.handler_pc)
                 if target is not None:
                     type_ = handler.catch_type.type if handler.catch_type is not None else None
                     graph.connect(ExceptionEdge(block, target, index, type_), overwrite=False, check=False)

@@ -36,7 +36,7 @@ class JumpInstruction(Instruction):
         return "%s %+i" % (self.mnemonic, self.offset)
 
     def __eq__(self, other: Any) -> bool:
-        return (type(other) is self.__class__ and other.offset == self.offset) or other is self.__class__
+        return (type(other) is type(self) and other.offset == self.offset) or other is type(self)
 
     def copy(self) -> "JumpInstruction":
         return self.__class__(self.offset)
@@ -105,7 +105,7 @@ class RetInstruction(JumpInstruction):
         return "%s %i" % (self.mnemonic, self.index)
 
     def __eq__(self, other: Any) -> bool:
-        return (type(other) is self.__class__ and other.index == self.index) or other is self.__class__
+        return (type(other) is type(self) and other.index == self.index) or other is type(self)
 
     def copy(self) -> "RetInstruction":
         return self.__class__(self.index)
@@ -223,8 +223,8 @@ class TableSwitchInstruction(Instruction):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return other is self.__class__ or (
-            type(other) is self.__class__ and
+        return other is type(self) or (
+            type(other) is type(self) and
             other.default == self.default and
             other.low == self.low and
             other.high == self.high and
@@ -281,8 +281,8 @@ class LookupSwitchInstruction(Instruction):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return other is self.__class__ or (
-            type(other) is self.__class__ and
+        return other is type(self) or (
+            type(other) is type(self) and
             other.default == self.default and
             other.offsets == self.offsets
         )

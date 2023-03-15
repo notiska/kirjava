@@ -82,7 +82,7 @@ class IRGraph(Graph):
             associations[entry] = param
 
         for block in graph.blocks:
-            states = trace.deltas.get(block, None)
+            states = trace.deltas.get(block)
             if states is None:
                 continue  # Block is not visited, so we don't need to worry about it
 

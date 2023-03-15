@@ -121,11 +121,11 @@ class FullTypeChecker(BasicTypeChecker):
             # Merging class types
 
             if type(expected) is ClassOrInterfaceType and type(actual) is ClassOrInterfaceType:
-                common: Optional[ClassOrInterfaceType] = self._supertype_cache.get((expected.name, actual.name), None)
+                common: Optional[ClassOrInterfaceType] = self._supertype_cache.get((expected.name, actual.name))
                 if common is not None:
                     return common
                 else:
-                    common = self._supertype_cache.get((actual.name, expected.name), None)
+                    common = self._supertype_cache.get((actual.name, expected.name))
                     if common is not None:
                         self._supertype_cache[expected.name, actual.name] = common
                         return common

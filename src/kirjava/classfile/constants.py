@@ -20,6 +20,8 @@ class ConstantInfo(Constant):
     Represents a value in the constant pool.
     """
 
+    __slots__ = ()
+
     tag = -1
     wide = False
     since = Version(45, 0)
@@ -63,6 +65,8 @@ class Index(ConstantInfo):
     A special type of constant that represents an invalid index in the constant pool.
     """
 
+    __slots__ = ("index",)
+
     @property
     def value(self) -> int:
         return self.index
@@ -92,6 +96,8 @@ class UTF8(ConstantInfo):
     """
     An MUTF-8 constant.
     """
+
+    __slots__ = ()
 
     tag = 1
     since = Version(45, 0)
@@ -124,6 +130,8 @@ class Integer(ConstantInfo):
     """
     A 32-bit signed integer constant.
     """
+
+    __slots__ = ()
 
     tag = 3
     since = Version(45, 0)
@@ -208,6 +216,8 @@ class Float(ConstantInfo):
     A 32-bit float constant.
     """
 
+    __slots__ = ()
+
     tag = 4
     since = Version(45, 0)
 
@@ -265,6 +275,8 @@ class Long(ConstantInfo):
     """
     A 64-bit signed integer constant.
     """
+
+    __slots__ = ()
 
     tag = 5
     wide = True
@@ -350,6 +362,8 @@ class Double(ConstantInfo):
     A 64-bit float constant.
     """
 
+    __slots__ = ()
+
     tag = 6
     wide = True
     since = Version(45, 0)
@@ -409,6 +423,8 @@ class Class(ConstantInfo):
     A class constant.
     """
 
+    __slots__ = ("name", "type")
+
     tag = 7
     since = Version(45, 0)
 
@@ -418,7 +434,7 @@ class Class(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "Class":
-        name = lookups.get(info, None)
+        name = lookups.get(info)
         if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
         return cls(name.value)
@@ -455,6 +471,8 @@ class String(ConstantInfo):
     A string constant.
     """
 
+    __slots__ = ()
+
     tag = 8
     since = Version(45, 0)
 
@@ -464,7 +482,7 @@ class String(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "String":
-        value = lookups.get(info, None)
+        value = lookups.get(info)
         if type(value) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(value)))
         return cls(value.value)
@@ -481,6 +499,8 @@ class FieldRef(ConstantInfo):
     A reference to a field.
     """
 
+    __slots__ = ("class_", "name_and_type")
+
     tag = 9
     since = Version(45, 0)
 
@@ -490,12 +510,12 @@ class FieldRef(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["FieldRef"]:
-        class_ = lookups.get(info[0], None)
+        class_ = lookups.get(info[0])
         if class_ is None:
             return None
         elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type = lookups.get(info[1], None)
+        name_and_type = lookups.get(info[1])
         if name_and_type is None:
             return None
         elif type(name_and_type) is not NameAndType:
@@ -532,6 +552,8 @@ class MethodRef(ConstantInfo):
     A reference to a method.
     """
 
+    __slots__ = ("class_", "name_and_type")
+
     tag = 10
     since = Version(45, 0)
 
@@ -541,12 +563,12 @@ class MethodRef(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["MethodRef"]:
-        class_ = lookups.get(info[0], None)
+        class_ = lookups.get(info[0])
         if class_ is None:
             return None
         elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type = lookups.get(info[1], None)
+        name_and_type = lookups.get(info[1])
         if name_and_type is None:
             return None
         elif type(name_and_type) is not NameAndType:
@@ -593,12 +615,12 @@ class InterfaceMethodRef(MethodRef):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["InterfaceMethodRef"]:
-        class_ = lookups.get(info[0], None)
+        class_ = lookups.get(info[0])
         if class_ is None:
             return None
         elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type = lookups.get(info[1], None)
+        name_and_type = lookups.get(info[1])
         if name_and_type is None:
             return None
         elif type(name_and_type) is not NameAndType:
@@ -611,6 +633,8 @@ class NameAndType(ConstantInfo):
     A name and type constant.
     """
 
+    __slots__ = ("name", "descriptor")
+
     tag = 12
     since = Version(45, 0)
 
@@ -620,10 +644,10 @@ class NameAndType(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> "NameAndType":
-        name = lookups.get(info[0], None)
+        name = lookups.get(info[0])
         if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
-        descriptor = lookups.get(info[1], None)
+        descriptor = lookups.get(info[1])
         if type(descriptor) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(descriptor)))
         return cls(name.value, descriptor.value)
@@ -657,6 +681,8 @@ class MethodHandle(ConstantInfo):
     A constant used to represent a method handle.
     """
 
+    __slots__ = ("reference_kind", "reference")
+
     tag = 15
     since = Version(51, 0)
 
@@ -676,7 +702,7 @@ class MethodHandle(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["MethodHandle"]:
-        reference = lookups.get(info[1], None)
+        reference = lookups.get(info[1])
         if reference is None:
             return None
         elif type(reference) is not FieldRef and not isinstance(reference, MethodRef):
@@ -706,6 +732,8 @@ class MethodType(ConstantInfo):
     A constant used to represent the descriptor of a method.
     """
 
+    __slots__ = ("descriptor", "argument_types", "return_type")
+
     tag = 16
     since = Version(51, 0)
 
@@ -715,7 +743,7 @@ class MethodType(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "MethodType":
-        descriptor = lookups.get(info, None)
+        descriptor = lookups.get(info)
         if type(descriptor) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(descriptor)))
         return cls(descriptor.value)
@@ -742,6 +770,8 @@ class Dynamic(ConstantInfo):
     Represents a dynamically computed constant.
     """
 
+    __slots__ = ("bootstrap_method_attr_index", "name_and_type")
+
     tag = 17
     since = Version(55, 0)
 
@@ -751,7 +781,7 @@ class Dynamic(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["Dynamic"]:
-        name_and_type = lookups.get(info[1], None)
+        name_and_type = lookups.get(info[1])
         if name_and_type is None:  # Can't dereference it yet
             return None
         elif type(name_and_type) is not NameAndType:
@@ -787,6 +817,8 @@ class InvokeDynamic(Dynamic):
     A constant used to reference an entity (field, method, interface method) dynamically.
     """
 
+    __slots__ = ()
+
     tag = 18
     since = Version(51, 0)
 
@@ -796,7 +828,7 @@ class InvokeDynamic(Dynamic):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["InvokeDynamic"]:
-        name_and_type = lookups.get(info[1], None)
+        name_and_type = lookups.get(info[1])
         if name_and_type is None:  # Can't dereference it yet
             return None
         elif type(name_and_type) is not NameAndType:
@@ -809,6 +841,8 @@ class Module(ConstantInfo):
     A constant that is used to represent a module.
     """
 
+    __slots__ = ("name",)
+
     tag = 19
     since = Version(53, 0)
 
@@ -818,7 +852,7 @@ class Module(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "Module":
-        name = lookups.get(info, None)
+        name = lookups.get(info)
         if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
         return cls(name.value)
@@ -841,6 +875,8 @@ class Package(ConstantInfo):
     A constant that is used to represent a package exported or opened by a module.
     """
 
+    __slots__ = ("name",)
+
     tag = 20
     since = Version(53, 0)
 
@@ -850,7 +886,7 @@ class Package(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "Package":
-        name = lookups.get(info, None)
+        name = lookups.get(info)
         if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
         return cls(name.value)
@@ -873,6 +909,8 @@ class ConstantPool:
     The constant pool structure.
     """
 
+    __slots__ = ("_index", "_forward_entries", "_backward_entries")
+
     @classmethod
     def read(cls, version: Version, buffer: IO[bytes]) -> "ConstantPool":
         """
@@ -893,7 +931,7 @@ class ConstantPool:
 
         while offset < constants_count:
             tag, = buffer.read(1)
-            constant = _constant_map.get(tag, None)
+            constant = _constant_map.get(tag)
             if constant is None:
                 raise ValueError("Unknown constant tag: %i." % tag)
             if constant.since > version:
@@ -948,7 +986,7 @@ class ConstantPool:
 
     def __getitem__(self, item: Any) -> Union[ConstantInfo, int]:
         if type(item) is int:
-            constant = self._forward_entries.get(item, None)
+            constant = self._forward_entries.get(item)
             if constant is not None:
                 return constant
             return Index(item)
@@ -1013,7 +1051,7 @@ class ConstantPool:
         :return: The constant at that index.
         """
 
-        constant = self._forward_entries.get(index, None)
+        constant = self._forward_entries.get(index)
         if constant is not None:
             return constant
         if default is not None:
@@ -1033,7 +1071,7 @@ class ConstantPool:
         :return: The UTF-8 value of the constant.
         """
 
-        constant = self._forward_entries.get(index, None)
+        constant = self._forward_entries.get(index)
         if constant is None:
             if default is not None:
                 return default
@@ -1067,7 +1105,7 @@ class ConstantPool:
         elif type(constant) is Index:
             return constant.value
 
-        index = self._backward_entries.get(constant, None)
+        index = self._backward_entries.get(constant)
         if index is not None:
             return index
 
