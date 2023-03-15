@@ -1,19 +1,5 @@
 # Kirjava
-A Java bytecode manipulation library for Python.  
-
-**Disclaimer:** This library is still very much a WIP and is probably quite buggy, I am working to fix as many as I come across.
-
-## Why?
-I use this library in quite a few of my projects now so it's nicer to have it in one place at this point.  
-In its current state, I don't expect it to be used by anyone else, but if you do find some use in it, awesome :).  
-The API is unfortunately quite limited (see limitations) and somewhat unintuitive right now, I have plans to improve it in the future.  
-
-## Limitations
-1. Missing quite a few attributes.
-2. No jar file reading yet, even though the package exists.
-3. Although there is generic signature parsing, writing generic signatures is not yet implemented.
-4. Doesn't appear to handle multi-source uninitialized types correctly in the StackMapTable?
-5. The performance is good, but could still be improved.
+A Java bytecode library for Python.  
 
 ## Quickstart
 I might add documentation in the future, not sure yet lol. Anyway, here's the quickstart guide, for more usage, see [examples](examples/).
@@ -22,6 +8,8 @@ I might add documentation in the future, not sure yet lol. Anyway, here's the qu
 You can either:
 1. Clone this repository and install via `python3 setup.py install`.
 2. Install this library via pip: `pip3 install git+https://github.com/node3112/kirjava.git`.
+
+**You will need `python>=3.8` for this library to work correctly, any other versions are untested.**
 
 ### Getting started
 ```python3
@@ -95,3 +83,11 @@ In [9]: kirjava.dump(cf, "Test.class")
    ...: # with open("Test.class", "wb") as stream:
    ...: #     cf.write(stream)
 ```
+
+## Limitations
+(Stuff I still need to do, there are also a lot of todos scattered throughout the source).
+
+1. Missing some less important attributes.
+2. No jar file reading yet, even though the package exists.
+3. Although there is generic signature parsing, writing generic signatures is not yet implemented.
+4. The assembler is slow and cannot handle certain edge cases.
