@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
 import logging
-import struct
 import typing
-from typing import Dict, IO, Tuple, Union
+from typing import Dict, IO, Optional, Tuple
 
 from . import descriptor
+from ._struct import *
+from .constants import ConstantInfo
 from .. import _argument
 from ..abc import Field, Method
 from ..types import BaseType
@@ -22,7 +23,7 @@ class MethodInfo(Method):
     Represents a method in a class.
     """
 
-    __slots__ = ("_class", "_name", "_argument_types", "_return_type", "access_flags", "attributes")
+    __slots__ = ("_name", "_argument_types", "_return_type", "access_flags", "attributes")
 
     @classmethod
     def read(cls, class_file: "ClassFile", buffer: IO[bytes]) -> "MethodInfo":
@@ -34,35 +35,30 @@ class MethodInfo(Method):
         :return: The method info that was read.
         """
 
-        method_info = cls.__new__(cls)
-
-        method_info._class = class_file
-        method_info.access_flags, name_index, descriptor_index = struct.unpack(">HHH", buffer.read(6))
-        method_info._name = class_file.constant_pool.get_utf8(name_index)
+        access_flags, name_index, descriptor_index = unpack_HHH(buffer.read(6))
+        name = class_file.constant_pool.get_utf8(name_index)
         descriptor_ = class_file.constant_pool.get_utf8(descriptor_index)
 
         try:
-            type_ = descriptor.parse_method_descriptor(
-                descriptor_,
-                force_read=False,
-                dont_throw=False,
-            )
-            method_info._argument_types, method_info._return_type = type_
+            type_ = descriptor.parse_method_descriptor(descriptor_)
+            argument_types, return_type = type_
 
         except Exception as error:
-            type_ = descriptor.parse_method_descriptor(descriptor_, force_read=False, dont_throw=True)
+            type_ = descriptor.parse_method_descriptor(descriptor_, do_raise=False)
 
             if not isinstance(type_, tuple) or len(type_) != 2:
-                method_info._argument_types = type_
-                method_info._return_type = type_
+                argument_types = type_
+                return_type = type_
             else:
-                method_info._argument_types, method_info._return_type = type_
+                argument_types, return_type = type_
 
             logger.warning("Invalid descriptor %r in class %r: %r" % (descriptor_, class_file.name, error))
-            logger.debug("Invalid descriptor on method %r." % method_info, exc_info=True)
+            logger.debug("Invalid descriptor on method %r." % ("%s#%s" % (class_file.name, name)), exc_info=True)
 
-        method_info.attributes = {}
-        attributes_count, = struct.unpack(">H", buffer.read(2))
+        method_info = cls(class_file, name, argument_types, return_type)
+        method_info.access_flags = access_flags
+
+        attributes_count, = unpack_H(buffer.read(2))
         for index in range(attributes_count):
             attribute_info = attributes.read_attribute(method_info, class_file, buffer)
             method_info.attributes[attribute_info.name] = (
@@ -173,6 +169,17 @@ class MethodInfo(Method):
             self.access_flags &= ~MethodInfo.ACC_VARARGS
 
     @property
+    def is_native(self) -> bool:
+        return bool(self.access_flags & MethodInfo.ACC_NATIVE)
+
+    @is_native.setter
+    def is_native(self, value: bool) -> None:
+        if value:
+            self.access_flags |= MethodInfo.ACC_NATIVE
+        else:
+            self.access_flags &= ~MethodInfo.ACC_NATIVE
+
+    @property
     def is_abstract(self) -> bool:
         return bool(self.access_flags & MethodInfo.ACC_ABSTRACT)
 
@@ -184,15 +191,15 @@ class MethodInfo(Method):
             self.access_flags &= ~MethodInfo.ACC_ABSTRACT
 
     @property
-    def is_native(self) -> bool:
-        return bool(self.access_flags & MethodInfo.ACC_NATIVE)
+    def is_strict(self) -> bool:
+        return bool(self.access_flags & MethodInfo.ACC_STRICT)
 
-    @is_native.setter
-    def is_native(self, value: bool) -> None:
+    @is_strict.setter
+    def is_strict(self, value: bool) -> None:
         if value:
-            self.access_flags |= MethodInfo.ACC_NATIVE
+            self.access_flags |= MethodInfo.ACC_STRICT
         else:
-            self.access_flags &= ~MethodInfo.ACC_NATIVE
+            self.access_flags &= ~MethodInfo.ACC_STRICT
 
     @property
     def is_synthetic(self) -> bool:
@@ -230,26 +237,24 @@ class MethodInfo(Method):
         self._return_type = value
 
     @property
-    def class_(self) -> "ClassFile":
-        return self._class
-
-    @property
-    def code(self) -> Union["Code", None]:
+    def code(self) -> Optional["Code"]:
         """
         :return: The code attribute for this method, None if it doesn't have one.
         """
 
-        code, *_ = self.attributes.get(Code.name_, (None,))
-        return code
+        for attribute in self.attributes.get(Code.name_, ()):
+            if isinstance(attribute, Code):  # Find the first valid Code attribute.
+                return attribute
+        return None
 
     @code.setter
-    def code(self, value: Union["Code", None]) -> None:
+    def code(self, value: Optional["Code"]) -> None:
         """
         Sets this method's code attribute.
         """
 
         if value is None:
-            del self.attributes[Code.name_]
+            self.attributes.pop(Code.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
@@ -257,7 +262,7 @@ class MethodInfo(Method):
             self,
             class_: "ClassFile",
             name: str,
-            *descriptor_: _argument.MethodDescriptor,
+            *descriptor_: "_argument.MethodDescriptor",
             is_public: bool = False,
             is_private: bool = False,
             is_protected: bool = False,
@@ -266,8 +271,9 @@ class MethodInfo(Method):
             is_synchronized: bool = False,
             is_bridge: bool = False,
             is_varargs: bool = False,
-            is_abstract: bool = False,
             is_native: bool = False,
+            is_abstract: bool = False,
+            is_strict: bool = False,
             is_synthetic: bool = False,
     ) -> None:
         """
@@ -277,9 +283,10 @@ class MethodInfo(Method):
         :param return_type: The return type of this method.
         """
 
+        super().__init__(class_)
+
         self._name = name
         self._argument_types, self._return_type = _argument.get_method_descriptor(*descriptor_)
-        self._class = class_
 
         if class_ is not None and not self in class_._methods:
             class_._methods.append(self)
@@ -294,8 +301,9 @@ class MethodInfo(Method):
         self.is_synchronized = is_synchronized
         self.is_bridge = is_bridge
         self.is_varargs = is_varargs
-        self.is_abstract = is_abstract
         self.is_native = is_native
+        self.is_abstract = is_abstract
+        self.is_strict = is_strict
         self.is_synthetic = is_synthetic
 
         self.attributes: Dict[str, Tuple[AttributeInfo, ...]] = {}
@@ -309,10 +317,10 @@ class MethodInfo(Method):
         )
 
     def __str__(self) -> str:
-        if self._class is None:
+        if self.class_ is None:
             return "%s %s(%s)" % (self.return_type, self._name, ", ".join(map(str, self._argument_types)))
         return "%s#%s %s(%s)" % (
-            self._class.name, self.return_type, self._name, ", ".join(map(str, self._argument_types)),
+            self.class_.name, self.return_type, self._name, ", ".join(map(str, self._argument_types)),
         )
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
@@ -323,17 +331,13 @@ class MethodInfo(Method):
         :param buffer: The binary buffer to write to.
         """
 
-        if self._class is None:  # Might be explicitly writing this to a different classfile? Idk.
-            self._class = class_file
-
-        buffer.write(struct.pack(
-            ">HHH",
+        buffer.write(pack_HHH(
             self.access_flags,
             class_file.constant_pool.add_utf8(self._name),
             class_file.constant_pool.add_utf8(descriptor.to_descriptor(self._argument_types, self._return_type)),
         ))
 
-        buffer.write(struct.pack(">H", len(self.attributes)))
+        buffer.write(pack_H(len(self.attributes)))
         for attributes_ in self.attributes.values():
             for attribute in attributes_:
                 attributes.write_attribute(attribute, class_file, buffer)
@@ -356,27 +360,22 @@ class FieldInfo(Field):
         :return: The field info that was read.
         """
 
-        field_info = cls.__new__(cls)
-
-        field_info._class = class_file
-        field_info.access_flags, name_index, descriptor_index = struct.unpack(">HHH", buffer.read(6))
-        field_info._name = class_file.constant_pool.get_utf8(name_index)
+        access_flags, name_index, descriptor_index = unpack_HHH(buffer.read(6))
+        name = class_file.constant_pool.get_utf8(name_index)
         descriptor_ = class_file.constant_pool.get_utf8(descriptor_index)
 
         try:
-            field_info._type = descriptor.parse_field_descriptor(
-                descriptor_,
-                force_read=False,
-                dont_throw=False,
-            )
+            type_ = descriptor.parse_field_descriptor(descriptor_)
         except Exception as error:  # force_read=True won't throw
-            field_info._type = descriptor.parse_field_descriptor(descriptor_, force_read=False, dont_throw=True)
+            type_ = descriptor.parse_field_descriptor(descriptor_, do_raise=False)
 
             logger.warning("Invalid descriptor %r in class %r: %r" % (descriptor_, class_file.name, error.args[0]))
-            logger.debug("Invalid descriptor on field %r." % field_info, exc_info=True)
+            logger.debug("Invalid descriptor on field %r." % ("%s#%s" % (class_file.name, name)), exc_info=True)
 
-        field_info.attributes = {}
-        attributes_count, = struct.unpack(">H", buffer.read(2))
+        field_info = cls(class_file, name, type_)
+        field_info.access_flags = access_flags
+
+        attributes_count, = unpack_H(buffer.read(2))
         for index in range(attributes_count):
             attribute_info = attributes.read_attribute(field_info, class_file, buffer)
             field_info.attributes[attribute_info.name] = (
@@ -511,14 +510,34 @@ class FieldInfo(Field):
         self._type = value
 
     @property
-    def class_(self) -> "ClassFile":
-        return self._class
+    def value(self) -> Optional[ConstantInfo]:
+        """
+        :return: The value in the ConstantValue attribute of this field, if it has one.
+        """
+
+        for attribute in self.attributes.get(ConstantValue.name_, ()):
+            if isinstance(attribute, ConstantValue):
+                return attribute.value
+        return None
+
+    @value.setter
+    def value(self, value: Optional[ConstantInfo]) -> None:
+        """
+        Sets the constant in the ConstantValue attribute of this field.
+
+        :param value: The constant to set it to. If None, removes the ConstantValue attribute.
+        """
+
+        if value is None:
+            self.attributes.pop(ConstantValue.name_, None)
+        else:
+            self.attributes[ConstantValue.name_] = (ConstantValue(self, value),)
 
     def __init__(
             self,
             class_: "ClassFile",
             name: str,
-            type_: _argument.FieldDescriptor,
+            type_: "_argument.FieldDescriptor",
             is_public: bool = False,
             is_private: bool = False,
             is_protected: bool = False,
@@ -535,9 +554,10 @@ class FieldInfo(Field):
         :param type_: The type of this field.
         """
 
+        super().__init__(class_)
+
         self._name = name
         self._type = _argument.get_field_descriptor(type_)
-        self._class = class_
 
         if class_ is not None and not self in class_._fields:
             class_._fields.append(self)
@@ -560,9 +580,9 @@ class FieldInfo(Field):
         return "<FieldInfo(name=%r, type=%s) at %x>" % (self._name, self._type, id(self))
 
     def __str__(self) -> str:
-        if self._class is None:
+        if self.class_ is None:
             return "%s %s" % (self._type, self._name)
-        return "%s#%s %s" % (self._class.name, self._type, self._name)
+        return "%s#%s %s" % (self.class_.name, self._type, self._name)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         """
@@ -572,22 +592,21 @@ class FieldInfo(Field):
         :param buffer: The binary buffer to write to.
         """
 
-        if self._class is None:
-            self._class = class_file
+        if self.class_ is None:
+            self.class_ = class_file
 
-        buffer.write(struct.pack(
-            ">HHH",
+        buffer.write(pack_HHH(
             self.access_flags,
             class_file.constant_pool.add_utf8(self._name),
             class_file.constant_pool.add_utf8(descriptor.to_descriptor(self._type)),
         ))
 
-        buffer.write(struct.pack(">H", len(self.attributes)))
+        buffer.write(pack_H(len(self.attributes)))
         for attributes_ in self.attributes.values():
             for attribute in attributes_:
                 attributes.write_attribute(attribute, class_file, buffer)
 
 
 from . import attributes
+from .attributes.field import ConstantValue
 from .attributes.method import Code
-# from ..analysis.graph import InsnGraph

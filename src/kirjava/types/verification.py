@@ -5,7 +5,7 @@ Verification types.
 """
 
 import typing
-from typing import Any, Union
+from typing import Any, Optional
 
 from . import BaseType, ReferenceType, VerificationType
 from ..abc import Constant
@@ -26,7 +26,7 @@ class Top(VerificationType):
         return "top"
         
     def __eq__(self, other: Any) -> bool:
-        return other is self or other.__class__ is Top
+        return other is self or type(other) is Top
 
     def __hash__(self) -> int:
         return 7630704
@@ -50,7 +50,7 @@ class Null(Constant, VerificationType):  # Yes, it's a constant too, cos compati
         return "null"
 
     def __eq__(self, other: Any) -> bool:
-        return other is self or other.__class__ is Null
+        return other is self or type(other) is Null
 
     def __hash__(self) -> int:
         return 1853189228
@@ -70,7 +70,7 @@ class This(VerificationType):
 
     __slots__ = ("class_",)
 
-    def __init__(self, class_: Union["ClassOrInterfaceType", None] = None) -> None:
+    def __init__(self, class_: Optional["ClassOrInterfaceType"] = None) -> None:
         """
         :param class_: The this class reference, for easier access.
         """
@@ -86,7 +86,7 @@ class This(VerificationType):
     def __eq__(self, other: Any) -> bool:
         if other is self:
             return True
-        return other.__class__ is This and (self.class_ is None or other.class_ is None or other.class_ == self.class_)
+        return type(other) is This and (self.class_ is None or other.class_ is None or other.class_ == self.class_)
 
     def __hash__(self) -> int:
         return 1952999795
@@ -102,7 +102,7 @@ class Uninitialized(VerificationType):
 
     __slots__ = ("offset", "class_")
 
-    def __init__(self, offset: int = -1, class_: Union["ClassOrInterfaceType", None] = None) -> None:
+    def __init__(self, offset: int = -1, class_: Optional["ClassOrInterfaceType"] = None) -> None:
         """
         :param offset: The bytecode offset to the new instruction that created this type.
         :param class_: The class that is uninitialised, if applicable, otherwise None.
@@ -132,7 +132,7 @@ class Uninitialized(VerificationType):
     def __eq__(self, other: Any) -> bool:
         if other is self:
             return True
-        return other.__class__ is Uninitialized and other.offset == self.offset and other.class_ == self.class_
+        return type(other) is Uninitialized and other.offset == self.offset and other.class_ == self.class_
 
     def __hash__(self) -> int:
         return hash((8388342899208250724, self.offset, self.class_))
@@ -146,7 +146,7 @@ class UninitializedThis(Uninitialized):
     Used to denote an uninitialized this verification type.
     """
 
-    def __init__(self, class_: Union["ClassOrInterfaceType", None] = None) -> None:
+    def __init__(self, class_: Optional["ClassOrInterfaceType"] = None) -> None:
         super().__init__(-1, class_)
 
     def __str__(self) -> str:
@@ -155,7 +155,7 @@ class UninitializedThis(Uninitialized):
     def __eq__(self, other: Any) -> bool:
         if other is self:
             return True
-        return other.__class__ is UninitializedThis and (
+        return type(other) is UninitializedThis and (
             self.class_ is None or other.class_ is None or other.class_ == self.class_
         )
 

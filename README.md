@@ -1,20 +1,15 @@
 # Kirjava
-A Java bytecode manipulation library for Python.  
-
-**Disclaimer:** This library is still very much a WIP and is probably quite buggy, I am working to fix as many as I come across.
-
-## Why?
-I use this library in quite a few of my projects now so it's nicer to have it in one place at this point.  
-In its current state, I don't expect it to be used by anyone else, but if you do find some use in it, awesome :).  
-The API is unfortunately quite limited (see limitations) and somewhat unintuitive right now, I have plans to improve it in the future.  
-
-## Limitations
-1. Missing quite a few attributes.
-2. No jar file reading yet, even though the package exists.
-3. Although there is generic signature parsing, writing generic signatures is not yet implemented.
+A Java bytecode library for Python.  
 
 ## Quickstart
 I might add documentation in the future, not sure yet lol. Anyway, here's the quickstart guide, for more usage, see [examples](examples/).
+
+### Installing
+You can either:
+1. Clone this repository and install via `python3 setup.py install`.
+2. Install this library via pip: `pip3 install git+https://github.com/node3112/kirjava.git`.
+
+**You will need `python>=3.8` for this library to work correctly, any other versions are untested.**
 
 ### Getting started
 ```python3
@@ -30,9 +25,10 @@ classes as of right now, it may do more in the future however.
 
 ### Reading classfiles
 ```python3
-In [2]: with open("Test.class", "rb") as stream:
-   ...:     cf = kirjava.ClassFile.read(stream)
-   ...: 
+In [2]: cf = kirjava.load("Test.class")
+   ...: # This code is a shortcut, and is roughly equivalent to:
+   ...: # with open("Test.class", "rb") as stream:
+   ...: #     cf = kirjava.ClassFile.read(stream)
 
 In [3]: cf
 Out[3]: <ClassFile(name='Test') at 7ffab11a5740>
@@ -57,9 +53,12 @@ Out[5]: (<FieldInfo(name='field', type=int) at 7ffab12254e0>,)
 ### Editing methods  
 To abstract away some of the annoyances of creating valid bytecode, we can use `kirava.analysis.InsnGraph`:
 ```python3
-In [6]: graph = kirjava.analysis.InsnGraph.disassemble(cf.get_method("test"))
-   ...: graph.blocks  # The basic blocks that the disassembler created
-Out[6]: 
+In [6]: graph = kirjava.disassemble(cf.get_method("test"))
+   ...: # This is another shortcut, roughly equivalent to:
+   ...: # graph = kirjava.analysis.InsnGraph.disassemble(cf.get_method("test").code)
+
+In [7]: graph.blocks  # The basic blocks that the disassembler created
+Out[7]: 
 (<InsnBlock(label=0, instructions=[iload_1, ifne]) at 7ffab128b6a0>,
  <InsnBlock(label=1, instructions=[aload_0, iconst_0, putfield Test#int field]) at 7ffab1138770>,
  <InsnBlock(label=2, instructions=[aload_0, getfield Test#int field, ifgt]) at 7ffab14d6ac0>,
@@ -72,15 +71,23 @@ Out[6]:
 
 To reassemble the method:
 ```python3
-In [7]: code = graph.assemble()
-   ...: code
-Out[7]: <Code(max_stack=3, max_locals=2, exception_table=[]) at 7ffab1210900>
-In [8]: cf.get_method("test").code = code  # Put this code attribute back into the method
+In [8]: kirjava.assemble(graph)
+   ...: # This shortcut is roughly equivalent to:
+   ...: # graph.method.code = graph.assemble()
 ```
 
 ### Writing classfiles
 ```python3
-In [9]: with open("Test.class", "wb") as stream:
-   ...:     cf.write(stream)
-   ...: 
+In [9]: kirjava.dump(cf, "Test.class")
+   ...: # This shortcut is roughly equivalent to:
+   ...: # with open("Test.class", "wb") as stream:
+   ...: #     cf.write(stream)
 ```
+
+## Limitations
+(Stuff I still need to do, there are also a lot of todos scattered throughout the source).
+
+1. Missing some less important attributes.
+2. No jar file reading yet, even though the package exists.
+3. Although there is generic signature parsing, writing generic signatures is not yet implemented.
+4. The assembler is slow and cannot handle certain edge cases.

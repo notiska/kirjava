@@ -13,14 +13,15 @@
 Kirjava - A Java bytecode library for Python.
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.4"
 
 # Expose API
-from . import abc, analysis, classfile, environment, jarfile, skeleton
-from .abc import *
+from . import abc, analysis, classfile, environment, instructions, jarfile, skeleton, types, verifier
+from ._helper import *
+from .analysis import *
 from .classfile import *
 from .environment import *
-from .jarfile import *
+# from .jarfile import *
 from .version import *
 
 _initialised = False

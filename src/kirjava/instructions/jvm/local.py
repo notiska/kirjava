@@ -4,18 +4,22 @@
 Local-related instructions.
 """
 
-from abc import ABC
-from typing import Any, IO, List, Union
+from typing import Any, Dict, IO, Optional
 
 from . import Instruction
-from .. import ClassFile
+from ..ir.arithmetic import AdditionExpression
+from ..ir.variable import AssignStatement, DeclareStatement
+from ..ir.value import ConstantValue
 from ... import types
-from ...abc import Error, Source, TypeChecker
-from ...analysis.trace import State
+from ...abc import Value
+from ...analysis.ir.variable import Local, Scope
+from ...analysis.trace import Entry, Frame, FrameDelta
+from ...classfile import ClassFile
+from ...classfile.constants import Integer
 from ...types import BaseType
 
 
-class LoadLocalInstruction(Instruction, ABC):
+class LoadLocalInstruction(Instruction):
     """
     Loads the value from a local variable and pushes it to the stack.
     """
@@ -25,7 +29,7 @@ class LoadLocalInstruction(Instruction, ABC):
     operands = {"index": ">B"}
     operands_wide = {"index": ">H"}
 
-    type_: Union[BaseType, None] = ...  # None means don't check the type
+    type_: Optional[BaseType] = ...  # None means don't check the type
 
     def __init__(self, index: int) -> None:
         self.index = index
@@ -39,32 +43,26 @@ class LoadLocalInstruction(Instruction, ABC):
         return "%s %i" % (self.mnemonic, self.index)
 
     def __eq__(self, other: Any) -> bool:
-        return (other.__class__ is self.__class__ and other.index == self.index) or other is self.__class__
+        return (type(other) is self.__class__ and other.index == self.index) or other is self.__class__
 
     def copy(self) -> "LoadLocalInstruction":
         return self.__class__(self.index)
 
-    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        entry = state.get(source, self.index)
+    def trace(self, frame: Frame) -> None:
+        frame.push(frame.get(self.index, expect=self.type_))
 
-        error = None
-        if self.type_ is None:
-            if not checker.check_reference(entry.type):
-                error = Error(source, "expected reference type", "got %s (via %s)" % (entry.type, entry.source))
-        elif not checker.check_merge(self.type_, entry.type):
-            error = Error(source, "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source))
-
-        if error is not None:
-            errors.append(error)
-            state.push(source, checker.merge(self.type_, entry.type), parents=(entry,), merges=(entry,))
-        else:
-            state.push(source, entry)
+    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+        entry = delta.pushes[0]
+        if not isinstance(associations.get(entry), Local):
+            associations[entry] = Local(self.index, entry.type)
 
 
-class LoadLocalFixedInstruction(LoadLocalInstruction, ABC):
+class LoadLocalFixedInstruction(LoadLocalInstruction):
     """
     Loads the value from a fixed local variable and pushes it to the stack.
     """
+
+    __slots__ = ()
 
     operands = {}
     operands_wide = {}
@@ -72,7 +70,7 @@ class LoadLocalFixedInstruction(LoadLocalInstruction, ABC):
     index: int = ...
 
     def __init__(self) -> None:
-        super().__init__(self.__class__.index)
+        ...  # super().__init__(self.__class__.index)
 
     def __repr__(self) -> str:
         return "<LoadLocalFixedInstruction(opcode=0x%x, mnemonic=%s) at %x>" % (
@@ -83,7 +81,7 @@ class LoadLocalFixedInstruction(LoadLocalInstruction, ABC):
         return self.mnemonic
 
     def __eq__(self, other: Any) -> bool:
-        return other.__class__ is self.__class__ or other is self.__class__
+        return type(other) is self.__class__ or other is self.__class__
 
     def copy(self) -> "LoadLocalFixedInstruction":
         return self
@@ -95,7 +93,7 @@ class LoadLocalFixedInstruction(LoadLocalInstruction, ABC):
         ...
 
 
-class StoreLocalInstruction(Instruction, ABC):
+class StoreLocalInstruction(Instruction):
     """
     Stores the top value of the stack in the specified local index.
     """
@@ -105,7 +103,7 @@ class StoreLocalInstruction(Instruction, ABC):
     operands = {"index": ">B"}
     operands_wide = {"index": ">H"}
 
-    type_: Union[BaseType, None] = ...
+    type_: Optional[BaseType] = ...
 
     def __init__(self, index: int) -> None:
         self.index = index
@@ -119,37 +117,41 @@ class StoreLocalInstruction(Instruction, ABC):
         return "%s %i" % (self.mnemonic, self.index)
 
     def __eq__(self, other: Any) -> bool:
-        return (other.__class__ is self.__class__ and other.index == self.index) or other is self.__class__
+        return (type(other) is self.__class__ and other.index == self.index) or other is self.__class__
 
     def copy(self) -> "StoreLocalInstruction":
         return self.__class__(self.index)
 
-    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        error = None
+    def trace(self, frame: Frame) -> None:
         if self.type_ is not None:
-            entry, *_ = state.pop(source, self.type_.internal_size, tuple_=True)
-            if not checker.check_merge(self.type_, entry.type):
-                error = Error(source, "expected type %s" % self.type_, "got %s (via %s)" % (entry.type, entry.source))
+            *_, entry = frame.pop(self.type_.internal_size, tuple_=True)
         else:
-            entry = state.pop(source)
-            if not checker.check_merge(types.return_address_t, entry.type):  # Can also be used for returnAddresses
-                if not checker.check_reference(entry.type):
-                    error = Error(
-                        source, "expected reference type or returnAddress type",
-                        "got %s (via %s)" % (entry.type, entry.source),
-                    )
+            entry = frame.pop()
+        frame.set(self.index, entry, expect=self.type_)
 
-        if error is not None:
-            errors.append(error)
-            state.set(source, self.index, checker.merge(self.type_, entry.type), parents=entry.parents, merges=(entry,))
+    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> Optional[AssignStatement]:
+        if not self.index in delta.overwrites:
+            return None
+
+        entry = delta.pops[-1]
+        local = Local(scope.variable_id, self.index, entry.type)
+
+        if type(associations.get(entry)) is not Local:
+            statement = DeclareStatement(local, associations[entry])
+            associations[entry] = local
         else:
-            state.set(source, self.index, entry)
+            local = entry
+            statement = AssignStatement(local, associations[entry])
+
+        return statement
 
 
-class StoreLocalFixedInstruction(StoreLocalInstruction, ABC):
+class StoreLocalFixedInstruction(StoreLocalInstruction):
     """
     Stores the top value of the stack in a fixed local index.
     """
+
+    __slots__ = ()
 
     operands = {}
     operands_wide = {}
@@ -157,7 +159,7 @@ class StoreLocalFixedInstruction(StoreLocalInstruction, ABC):
     index: int = ...
 
     def __init__(self) -> None:
-        super().__init__(self.__class__.index)
+        ...  # super().__init__(self.__class__.index)
 
     def __repr__(self) -> str:
         return "<StoreLocalFixedInstruction(opcode=0x%x, mnemonic=%s) at %x>" % (
@@ -168,7 +170,7 @@ class StoreLocalFixedInstruction(StoreLocalInstruction, ABC):
         return self.mnemonic
 
     def __eq__(self, other: Any) -> bool:
-        return other.__class__ is self.__class__ or other is self.__class__
+        return type(other) is self.__class__ or other is self.__class__
 
     def copy(self) -> "StoreLocalFixedInstruction":
         return self
@@ -180,7 +182,7 @@ class StoreLocalFixedInstruction(StoreLocalInstruction, ABC):
         ...
 
 
-class IncrementLocalInstruction(Instruction, ABC):
+class IncrementLocalInstruction(Instruction):
     """
     Increments a local variable by a given amount.
     """
@@ -204,7 +206,7 @@ class IncrementLocalInstruction(Instruction, ABC):
 
     def __eq__(self, other: Any) -> bool:
         return (
-            other.__class__ is self.__class__ and
+            type(other) is self.__class__ and
             other.index == self.index and
             other.value == self.value
         ) or other is self.__class__
@@ -212,8 +214,11 @@ class IncrementLocalInstruction(Instruction, ABC):
     def copy(self) -> "IncrementLocalInstruction":
         return self.__class__(self.index, self.value)
 
-    def trace(self, source: Source, state: State, errors: List[Error], checker: TypeChecker) -> None:
-        entry = state.get(source, self.index)
-        if not checker.check_merge(types.int_t, entry.type):
-            errors.append(Error(source, "expected type int", "got %s (via %s)" % (entry.type, entry.source)))
-        state.set(source, self.index, types.int_t, parents=(entry,))
+    def trace(self, frame: Frame) -> None:
+        entry = frame.get(self.index, expect=types.int_t)
+        frame.set(self.index, types.int_t)
+
+    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> AssignStatement:
+        old, new = delta.overwrites[self.index]
+        associations[new] = AdditionExpression(associations[old], ConstantValue(Integer(self.value)))
+        return AssignStatement(associations[old], associations[new])

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import logging
-import struct
 import typing
 from typing import Any, IO
 
+from .._struct import *
 from ...version import Version
 
 if typing.TYPE_CHECKING:
@@ -100,16 +100,16 @@ def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes], fail
     :return: The attribute.
     """
 
-    name_index, attribute_length = struct.unpack(">HI", buffer.read(6))
-    name = class_file.constant_pool.get_utf8(name_index, "<invalid>")  # FIXME: Yes or no?
+    name_index, attribute_length = unpack_HI(buffer.read(6))
+    name = class_file.constant_pool.get_utf8(name_index, "")
 
     offset = buffer.tell()
     if name in _attribute_map:
         attribute = _attribute_map[name]
         version_valid = attribute.since <= class_file.version
         location_valid = (
-            parent.__class__ in attribute.locations or
-            parent.__class__.__name__ in attribute.locations  # To avoid circular import nightmares
+            type(parent) in attribute.locations or
+            type(parent).__name__ in attribute.locations  # To avoid circular import nightmares
         )
         if version_valid and location_valid:
             try:
@@ -133,10 +133,7 @@ def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes], fail
 
             except Exception as error:
                 # raise error
-                # logger.error("Couldn't read attribute %r in class %r: %r" % (
-                #     name, class_file.name, error,
-                # ))
-                logger.debug(error, exc_info=True)
+                logger.debug("Couldn't read attribute %r in class %r: %r" % (name, class_file.name, error), exc_info=True)
     else:
         logger.debug("Unknown attribute %r in class %r." % (name, class_file.name))
 
@@ -167,5 +164,5 @@ def write_attribute(attribute: AttributeInfo, class_file: "ClassFile", buffer: I
     current = buffer.tell()
 
     buffer.seek(start)
-    buffer.write(struct.pack(">HI", class_file.constant_pool.add_utf8(attribute.name), current - start - 6))
+    buffer.write(pack_HI(class_file.constant_pool.add_utf8(attribute.name), current - start - 6))
     buffer.seek(current)

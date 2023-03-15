@@ -9,107 +9,67 @@ Abstract base classes for graph representations of methods.
 """
 
 import logging
-from abc import abstractmethod, ABC
-from typing import Any, Dict, List, Set, Tuple, Union
+import typing
+from typing import Any, Dict, Iterator, Optional, Set, Tuple
 
-from . import Source
-from .method import Method
+from .source import Source
+
+if typing.TYPE_CHECKING:
+    from .method import Method
 
 logger = logging.getLogger("kirjava.abc.graph")
 
 
-class Block(Source, ABC):
+class Block(Source):
     """
     An (extended) basic block.
     """
 
-    __slots__ = ("graph", "label")
+    __slots__ = ("label",)
 
-    @property
-    def successors(self) -> Tuple["Block", ...]:
+    def __init__(self, label: int) -> None:
         """
-        :return: This block's successors.
-        """
-
-        # Faster to just access it directly instead of making another function call.
-        return tuple(edge.to for edge in self.graph._forward_edges.get(self, ()))
-
-    @property
-    def predecessors(self) -> Tuple["Block", ...]:
-        """
-        :return: This block's predecessors.
+        :param label: The label of this block.
         """
 
-        return tuple(edge.from_ for edge in self.graph._backward_edges.get(self, ()))
-
-    @property
-    def out_edges(self) -> Tuple["Edge", ...]:
-        """
-        :return: This block's out edges.
-        """
-
-        return tuple(self.graph._forward_edges.get(self, ()))
-
-    @property
-    def in_edges(self) -> Tuple["Edge", ...]:
-        """
-        :return: This block's in edges.
-        """
-
-        return tuple(self.graph._backward_edges.get(self, ()))
-
-    def __init__(self, graph: "Graph", label: Union[int, None] = None, add: bool = True) -> None:
-        """
-        :param graph: The graph that this block belongs to.
-        :param label: The label of this block, if None, it is determined automatically by the graph.
-        :param add: Adds this block to the graph.
-        """
-
-        self.graph = graph
-        self.label = label  # Define this before adding to the graph
-
-        if add:
-            self.label = graph.add(self)
+        self.label = label
 
     def __repr__(self) -> str:
         return "<Block(label=%s) at %x>" % (self.label, id(self))
 
     def __str__(self) -> str:
-        if self.label is None:
-            return "block (unidentified)"
         return "block %i" % self.label
 
     def __eq__(self, other: Any) -> bool:
-        # Actually going to be slower with the line below, __eq__ for blocks is mainly used in dicts, and Python already
-        # does the is check in native code, so we don't want to repeat it.
-        # if other is self:
-        #     return True
-        return other.__class__ is self.__class__ and other.label == self.label and other.graph == self.graph
+        if other is self:
+            return True
+        return isinstance(other, Block) and other.label == self.label
 
     def __hash__(self) -> int:
-        return hash(self.label)
+        return id(self)
 
-    @abstractmethod
-    def copy(self, deep: bool = False) -> "Block":
+    def copy(self, label: Optional[int] = None, deep: bool = False) -> "Block":
         """
         Creates a copy of this block.
 
+        :param label: The new label to use, if None, uses the current label.
         :param deep: Create a deep copy?
         :return: The copy of this block.
         """
 
-        ...
+        return Block(self.label if label is None else label)
 
 
-class ReturnBlock(Block, ABC):
+class ReturnBlock(Block):
     """
-    The return block for a graph. All blocks returning from the method should have an edge to this one.
+    The return block for a graph.
+    All blocks returning from the method should have an edge to this one.
     """
 
     LABEL = -1
 
-    def __init__(self, graph: "Graph") -> None:
-        super().__init__(graph, self.__class__.LABEL, add=False)
+    def __init__(self) -> None:
+        super().__init__(self.LABEL)
 
     def __repr__(self) -> str:
         return "<ReturnBlock() at %x>" % id(self)
@@ -118,16 +78,16 @@ class ReturnBlock(Block, ABC):
         return "return block"
 
 
-class RethrowBlock(Block, ABC):
+class RethrowBlock(Block):
     """
-    The rethrow block for a graph. If an exception is uncaught, the block that threw the exception (or one of its
-    handlers) should have an edge to this block.
+    The rethrow block for a graph.
+    All blocks with explicit throws or uncaught exceptions should have an edge to this one.
     """
 
     LABEL = -2
 
-    def __init__(self, graph: "Graph") -> None:
-        super().__init__(graph, self.__class__.LABEL, add=False)
+    def __init__(self) -> None:
+        super().__init__(self.LABEL)
 
     def __repr__(self) -> str:
         return "<RethrowBlock() at %x>" % (id(self))
@@ -136,12 +96,15 @@ class RethrowBlock(Block, ABC):
         return "rethrow block"
 
 
-class Edge(Source, ABC):
+class Edge(Source):
     """
     An edge connects to vertices (blocks) in a control flow graph.
     """
 
-    __slots__ = ("from_", "to")
+    __slots__ = ("from_", "to", "_hash")
+
+    # Limits how many of this certain type of edge can occur at a block. If None, there is no limit.
+    limit: Optional[int] = None
 
     def __init__(self, from_: Block, to: Block) -> None:
         """
@@ -152,8 +115,10 @@ class Edge(Source, ABC):
         self.from_ = from_
         self.to = to
 
+        self._hash = hash((self.from_, self.to))
+
     def __repr__(self) -> str:
-        return "<%s(from=%r, to=%r) at %x>" % (self.__class__.__name__, self.from_, self.to, id(self))
+        return "<%s(from=%s, to=%s) at %x>" % (self.__class__.__name__, self.from_, self.to, id(self))
 
     def __str__(self) -> str:
         return "%s -> %s" % (self.from_, self.to)
@@ -161,38 +126,41 @@ class Edge(Source, ABC):
     def __eq__(self, other: Any) -> bool:
         if other is self:
             return True
-        return other.__class__ is self.__class__ and other.from_ == self.from_ and other.to == self.to
+        return isinstance(other, Edge) and other.from_ == self.from_ and other.to == self.to
 
     def __hash__(self) -> int:
-        return hash((self.from_, self.to))
+        return self._hash
+
+    def copy(self, from_: Optional[Block] = None, to: Optional[Block] = None, deep: bool = True) -> "Edge":
+        """
+        Creates a copy of this edge with the new to/from blocks.
+
+        :param from_: The new from block, if None, uses the original.
+        :param to: The new to block, if None, uses the original.
+        :param deep: Should we copy any data inside the edge?
+        :return: The copied edge.
+        """
+
+        return Edge(self.from_ if from_ is None else from_, self.to if to is None else to)
 
 
-class Graph(ABC):
+class Graph:
     """
     A control flow graph representing a method.
     """
 
     __slots__ = (
         "method",
-        "_entry_block", "_return_block", "_rethrow_block",
-        "_blocks",
-        "_forward_edges", "_backward_edges", "_opaque_edges",
+        "entry_block", "return_block", "rethrow_block",
+        "_blocks", "_forward_edges", "_backward_edges", "_opaque_edges",
     )
 
     @property
     def blocks(self) -> Tuple[Block, ...]:
-        """
-        :return: All the blocks in this graph.
-        """
-
-        return tuple(self._blocks)
+        return tuple(self._blocks.values())
 
     @property
     def edges(self) -> Tuple[Edge, ...]:
-        """
-        :return: All the edges in this graph.
-        """
-
         edges = []
         for edges_ in self._forward_edges.values():
             edges.extend(edges_)
@@ -200,42 +168,10 @@ class Graph(ABC):
 
     @property
     def opaque_edges(self) -> Tuple[Edge, ...]:
-        """
-        :return: All the opaque edges (edges whose to blocks we don't yet know).
-        """
-
         return tuple(self._opaque_edges)
 
-    # @property
-    # def leaves(self) -> Tuple[Block, ...]:
-    #     """
-    #     :return: All the leaves in this graph (blocks with no out edges).
-    #     """
-
-    #     leaves = []
-    #     for block in self._blocks:
-    #         if not self._forward_edges.get(block, False):
-    #             leaves.append(block)
-    #     return tuple(leaves)
-
-    @property
-    def return_block(self) -> ReturnBlock:
-        """
-        :return: This graph's return block.
-        """
-
-        return self._return_block
-
-    @property
-    def rethrow_block(self) -> RethrowBlock:
-        """
-        :return: This graph's rethrow block.
-        """
-
-        return self._rethrow_block
-
     def __init__(
-            self, method: Method, entry_block: Block, return_block: ReturnBlock, rethrow_block: RethrowBlock,
+            self, method: "Method", entry_block: Block, return_block: ReturnBlock, rethrow_block: RethrowBlock,
     ) -> None:
         """
         :param method: The method that this graph represents.
@@ -248,109 +184,35 @@ class Graph(ABC):
 
         # Special kinds of blocks
         self.entry_block = entry_block
-        self._return_block = return_block
-        self._rethrow_block = rethrow_block
+        self.return_block = return_block
+        self.rethrow_block = rethrow_block
 
-        self._blocks: List[Block] = [return_block, rethrow_block, entry_block]
+        self._blocks: Dict[int, Block] = {}
         self._forward_edges: Dict[Block, Set[Edge]] = {}  # Blocks to their out edges (faster lookup)
         self._backward_edges: Dict[Block, Set[Edge]] = {}  # Blocks to their in edges
         self._opaque_edges: Set[Edge] = set()  # Edges whose jump targets we don't know yet
 
+        self.add(entry_block, check=False)
+        self.add(return_block, check=False)
+        self.add(rethrow_block, check=False)
+
     def __len__(self) -> int:
         return len(self._blocks)
 
-    def __getitem__(self, label: int) -> Block:
-        return self.get(label)
+    def __contains__(self, item: Any) -> bool:
+        if isinstance(item, Block):
+            return item.label in self._blocks and self._blocks[item.label] == item
+        return False
 
-    def fix_labels(self, zero_entry_block: bool = True) -> None:
-        """
-        Fixes any gaps in label ordering and fixes duplicate labels too.
+    def __iter__(self) -> Iterator[Block]:
+        return iter(self._blocks.values())
 
-        :param zero_entry_block: Zeroes the entry block's label if necessary.
-        """
+    def __getitem__(self, item: Any) -> Block:
+        if type(item) is int:
+            return self._blocks[item]
+        raise TypeError("Expected int, got %r." % type(item))
 
-        labels: Dict[int, Block] = {}
-        # We need to keep track of any changed blocks with their old edges, as the hashes depend on the labels.
-        forward_edges: List[Tuple[Block, List[Edge]]] = []
-        backward_edges: List[Tuple[Block, List[Edge]]] = []
-
-        max_label = 0
-
-        if zero_entry_block and self.entry_block.label:
-            if self.entry_block in self._forward_edges:
-                forward_edges.append((self.entry_block, list(self._forward_edges[self.entry_block])))
-                del self._forward_edges[self.entry_block]
-            if self.entry_block in self._backward_edges:
-                backward_edges.append((self.entry_block, list(self._backward_edges[self.entry_block])))
-                del self._backward_edges[self.entry_block]
-
-            self.entry_block.label = 0
-
-        if self._return_block.label != ReturnBlock.LABEL:
-            if self._return_block in self._forward_edges:
-                forward_edges.append((self._return_block, list(self._forward_edges[self._return_block])))
-                del self._forward_edges[self._return_block]
-            if self._return_block in self._backward_edges:
-                backward_edges.append((self._return_block, list(self._backward_edges[self._return_block])))
-                del self._backward_edges[self._return_block]
-            self._return_block.label = ReturnBlock.LABEL
-
-        if self._rethrow_block.label != RethrowBlock.LABEL:
-            if self._rethrow_block in self._forward_edges:
-                forward_edges.append((self._rethrow_block, list(self._forward_edges[self._rethrow_block])))
-                del self._forward_edges[self._rethrow_block]
-            if self._rethrow_block in self._backward_edges:
-                backward_edges.append((self._rethrow_block, list(self._backward_edges[self._rethrow_block])))
-                del self._backward_edges[self._rethrow_block]
-            self._rethrow_block.label = RethrowBlock.LABEL
-
-        for block in self._blocks:
-            if block.label > max_label:
-                max_label = block.label
-
-            if not block.label in labels:
-                labels[block.label] = block
-                continue
-
-            if block in self._forward_edges:
-                forward_edges.append((block, list(self._forward_edges[block])))
-                del self._forward_edges[block]
-            if block in self._backward_edges:
-                backward_edges.append((block, list(self._backward_edges[block])))
-                del self._backward_edges[block]
-
-            label = max_label + 1  # Find the next best label for this block, this will be adjusted later
-            while label in labels:
-                label += 1
-            block.label = label
-            labels[label] = block
-
-        for index in range(len(self._blocks) - 2):  # Ignore return and rethrow blocks
-            if index in labels:  # This index is fine, so skip over it
-                del labels[index]
-                continue
-
-            # We need to find the next greatest label from the index and set it to the index, this will be the minimum
-            # label in the labels dict as we're deleting old ones.
-            min_label = min(labels)
-            block = labels[min_label]
-
-            if block in self._forward_edges:
-                forward_edges.append((block, list(self._forward_edges[block])))
-                del self._forward_edges[block]
-            if block in self._backward_edges:
-                backward_edges.append((block, list(self._backward_edges[block])))
-                del self._backward_edges[block]
-
-            block.label = index
-            del labels[min_label]
-
-        # Finally, add back all the edges that we removed
-
-        for block, edges in forward_edges:
-            self._forward_edges[block] = set(edges)
-        for block, edges in backward_edges:
-            self._backward_edges[block] = set(edges)
+    # ------------------------------ Public API ------------------------------ #
 
     def get(self, label: int) -> Block:
         """
@@ -360,97 +222,102 @@ class Graph(ABC):
         :return: The block, if it was found.
         """
 
-        for block in self._blocks:
-            if block.label == label:
-                return block
+        try:
+            return self._blocks[label]
+        except KeyError:
+            raise LookupError("Couldn't find block with label %i." % label)
 
-        raise LookupError("Couldn't find block with label %i." % label)
-
-    def add(self, block: Block, fix_labels: bool = True) -> int:
+    def add(self, block: Block, *, check: bool = True) -> None:
         """
         Adds a block to this graph.
 
         :param block: The block to add.
-        :param fix_labels: Should label conflicts be fixed?
-        :return: The block's label.
         """
 
-        if block in self._blocks:  # Already added
-            return block.label
+        if check:
+            if block.label in self._blocks:
+                if self._blocks[block.label] != block:
+                    raise ValueError("Block with label %i already exists in this graph." % block.label)
+                return  # Already exists
+            elif isinstance(block, ReturnBlock):
+                raise ValueError("Cannot add return block %r to this graph." % block)
+            elif isinstance(block, RethrowBlock):
+                raise ValueError("Cannot add rethrow block %r to this graph." % block)
 
-        if fix_labels or block.label is None:
-            conflict = False
-            max_label = 0
+        self._blocks[block.label] = block
+        self._forward_edges[block] = set()
+        self._backward_edges[block] = set()
 
-            for block_ in self._blocks:
-                label = block_.label
-                if label > max_label:
-                    max_label = label
-                if label == block.label:
-                    conflict = True
-
-            if conflict or block.label is None:
-                max_label += 1
-                logger.debug("Adjusted label for %s to %i." % (block, max_label))
-                block.label = max_label
-
-        self._blocks.append(block)
-
-        # VV this probably just wastes performance
-        # if isinstance(block, ReturnBlock):
-        #     self._return_block = block
-        # elif isinstance(block, RethrowBlock):
-        #     self._rethrow_block = block
-
-        return block.label
-
-    def remove(self, block: Block) -> bool:
+    def remove(self, block: Block, *, check: bool = True) -> None:
         """
         Removes a block from this graph. Any edges that connect this block to other blocks will be removed too.
 
         :param block: The block to remove.
-        :return: Was the block removed successfully?
         """
 
-        if block in (self._return_block, self._rethrow_block):  # These blocks cannot be removed, for obvious reasons
-            return False
+        # These blocks cannot be removed, for obvious reasons.
+        if check and (block == self.return_block or block == self.rethrow_block):
+            raise ValueError("Cannot remove block %r." % block)
 
         try:
-            self._blocks.remove(block)
-        except ValueError:  # Not in the graph
-            return False
+            del self._blocks[block.label]
+        except KeyError:  # Not in the graph
+            raise ValueError("Block %r is not in the graph." % block)
 
         if block == self.entry_block:
             self.entry_block = None
 
-        if block in self._forward_edges:
-            edges = self._forward_edges[block]
-            del self._forward_edges[block]
+        edges = self._forward_edges.pop(block)
+        for edge in edges:
+            self.disconnect(edge)
 
-            for edge in edges:
-                self.disconnect(edge)
-
-        return True
-
-    def connect(self, edge: Edge) -> None:
+    def connect(self, edge: Edge, overwrite: bool = False, *, check: bool = True) -> None:
         """
         Adds an edge to this graph (connecting two blocks).
         It's called connect cos I wanna keep this class clean lol, and not have "add_block" or "add_edge".
 
         :param edge: The edge to add to this graph.
+        :param overwrite: Overwrites existing edges, if the given edge is limited.
         """
 
-        if edge.to == self.entry_block:
-            raise ValueError("Cannot create an edge to the entry block.")
-        elif edge.from_ == self._return_block:
-            raise ValueError("Cannot create an edge from the return block.")
-        elif edge.from_ == self._rethrow_block:
-            raise ValueError("Cannot create an edge from the rethrow block.")
+        if check:
+            if edge.to == self.entry_block:
+                raise ValueError("Cannot create an edge to the entry block.")
+            elif edge.from_ == self.return_block:
+                raise ValueError("Cannot create an edge from the return block.")
+            elif edge.from_ == self.rethrow_block:
+                raise ValueError("Cannot create an edge from the rethrow block.")
 
-        forward = self._forward_edges.setdefault(edge.from_, set()).add(edge)
+            if not edge.from_.label in self._blocks:
+                self.add(edge.from_)
+            if not edge.to.label in self._blocks:
+                self.add(edge.to)
+
+        forward = self._forward_edges[edge.from_]
+
+        if check:
+            conflicts = set()
+
+            if edge.limit is None:
+                forward.add(edge)
+            else:
+                for edge_ in forward:
+                    if type(edge_) is type(edge):
+                        conflicts.add(edge_)
+
+                if len(conflicts) >= edge.limit:
+                    if overwrite:
+                        for edge_ in conflicts:
+                            self.disconnect(edge_)
+                    else:
+                        raise ValueError("Cannot add edge %r, limit of %i reached. Use overwrite=True." % (edge, edge.limit))
+                forward.add(edge)
+        else:
+            forward.add(edge)
 
         if edge.to is not None:
-            self._backward_edges.setdefault(edge.to, set()).add(edge)
+            backward = self._backward_edges[edge.to]
+            backward.add(edge)
         else:
             self._opaque_edges.add(edge)
 
@@ -461,12 +328,16 @@ class Graph(ABC):
         :param edge: The edge to remove.
         """
 
-        forward = self._forward_edges.get(edge.from_, None)
+        self._blocks.setdefault(edge.from_.label, edge.from_)
+        self._blocks.setdefault(edge.to.label, edge.to)
+
+        forward = self._forward_edges.get(edge.from_)
+
         if forward is not None and edge in forward:
             forward.remove(edge)
 
         if edge.to is not None:
-            backward = self._backward_edges.get(edge.to, None)
+            backward = self._backward_edges.get(edge.to)
             if backward is not None and edge in backward:
                 backward.remove(edge)
         else:
@@ -492,6 +363,16 @@ class Graph(ABC):
 
         return tuple(edge.to for edge in self._forward_edges.get(block, ()))
 
+    def successors_iter(self, block: Block) -> Iterator[Block]:
+        """
+        Gest the successors for a given block, as an iterator.
+
+        :param block: The block in question.
+        """
+
+        for edge in self._forward_edges[block]:
+            yield edge.to
+
     def predecessors(self, block: Block) -> Tuple[Block, ...]:
         """
         Gets the predecessors for a given block.
@@ -501,6 +382,16 @@ class Graph(ABC):
         """
 
         return tuple(edge.from_ for edge in self._backward_edges.get(block, ()))
+
+    def predecessors_iter(self, block: Block) -> Iterator[Block]:
+        """
+        Gets the predecessors for a given block, as an iterator.
+
+        :param block: The block in question.
+        """
+
+        for edge in self._backward_edges[block]:
+            yield edge.from_
 
     def out_edges(self, block: Block) -> Tuple[Edge, ...]:
         """
@@ -512,6 +403,16 @@ class Graph(ABC):
 
         return tuple(self._forward_edges.get(block, ()))
 
+    def out_edges_iter(self, block: Block) -> Iterator[Edge]:
+        """
+        Gets the out edges for a given block, as an iterator.
+
+        :param block: The block in question.
+        """
+
+        for edge in self._forward_edges[block]:
+            yield edge
+
     def in_edges(self, block: Block) -> Tuple[Edge, ...]:
         """
         Gets the in edges for a given block.
@@ -522,40 +423,12 @@ class Graph(ABC):
 
         return tuple(self._backward_edges.get(block, ()))
 
-    # def walk(self, top_down: bool = True) -> Tuple[Block, Union[Edge, None], Tuple[Edge, ...]]:
-    #     """
-    #     Walks this control flow graph.
+    def in_edges_iter(self, block: Block) -> Iterator[Edge]:
+        """
+        Gets the in edges for a given block, as an iterator.
 
-    #     :param top_down: Walk the graph from the entry block down?
-    #     :return: The current block, the current edge, and the out/in edges from the current block (depending on top_down).
-    #     """
+        :param block: The block in question.
+        """
 
-    #     if self.entry_block is None and top_down:
-    #         raise ValueError("No entry block, cannot walk graph top down.")
-
-    #     edges = self._forward_edges if top_down else self._backward_edges
-    #     block = self.entry_block if top_down else self._return_block
-    #     edge = None
-
-    #     # Edges we've visited already, (note that we're not recording blocks here). 
-    #     visited: Set[Edge] = set()
-    #     next_: List[Edge] = []
-
-    #     while True:
-    #         edges_ = edges.get(block, ())
-    #         yield block, edge, tuple(edges_)
-
-    #         if edge is None or not edge in visited:  # Might have duplicates
-    #             visited.add(edge)
-
-    #             for edge in edges_:
-    #                 if not edge in visited:
-    #                     next_.append(edge)
-
-    #         while next_:
-    #             edge = next_.pop(0)
-    #             block = edge.to
-    #             if block is not None:  # Some edges are opaque, we don't know their target until we work it out
-    #                 break
-    #         else:
-    #             break
+        for edge in self._backward_edges[block]:
+            yield edge

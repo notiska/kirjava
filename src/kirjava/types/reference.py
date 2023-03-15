@@ -4,7 +4,7 @@
 Java reference types.
 """
 
-from typing import Any, List, Union
+from typing import Any, Iterable, Optional, Union
 
 from . import BaseType, ReferenceType, TypeArgument, TypeArgumentList, TypeBound, VerificationType
 
@@ -19,9 +19,9 @@ class ClassOrInterfaceType(ReferenceType, VerificationType):
     def __init__(
             self,
             name: str,
-            type_arguments: Union[List[TypeArgument], None] = None,
-            inner_name: Union[str, None] = None,
-            inner_type_arguments: Union[List[TypeArgument], None] = None,
+            type_arguments: Optional[Iterable[TypeArgument]] = None,
+            inner_name: Optional[str] = None,
+            inner_type_arguments: Optional[Iterable[TypeArgument]] = None,
     ) -> None:
         """
         :param name: The name of the class.
@@ -29,16 +29,16 @@ class ClassOrInterfaceType(ReferenceType, VerificationType):
         :param inner_name: The name of the inner classes, if this is one.
         :param inner_type_arguments: The type arguments of the inner class, if this is one.
         """
-        
-        self.name = name
-        self.type_arguments = TypeArgumentList()
-        self.inner_name = inner_name
-        self.inner_type_arguments = TypeArgumentList()
 
-        if type_arguments is not None:
-            self.type_arguments.extend(type_arguments)
-        if inner_type_arguments is not None:
-            self.inner_type_arguments.extend(inner_type_arguments)
+        if type_arguments is None:
+            type_arguments = ()
+        if inner_type_arguments is None:
+            inner_type_arguments = ()
+
+        self.name = name
+        self.type_arguments = TypeArgumentList(type_arguments)
+        self.inner_name = inner_name
+        self.inner_type_arguments = TypeArgumentList(inner_type_arguments)
 
     def __repr__(self) -> str:
         if not self.type_arguments and self.inner_name is None:
@@ -67,7 +67,7 @@ class ClassOrInterfaceType(ReferenceType, VerificationType):
     def __eq__(self, other: Any) -> bool:
         if other is self:
             return True
-        elif other.__class__ is ClassOrInterfaceType:
+        elif type(other) is ClassOrInterfaceType:
             return (
                 other.name == self.name and 
                 # Do we both have type arguments, and are they the same?
@@ -78,7 +78,7 @@ class ClassOrInterfaceType(ReferenceType, VerificationType):
                 ((not other.inner_type_arguments or not self.inner_type_arguments) or
                  other.inner_type_arguments == self.inner_type_arguments)
             )
-        elif isinstance(other, str):
+        elif type(other) is str:
             return other == self.name
 
         return False
@@ -91,6 +91,17 @@ class ClassOrInterfaceType(ReferenceType, VerificationType):
 
     def can_merge(self, other: VerificationType) -> bool:
         return isinstance(other, ClassOrInterfaceType) or other.can_merge(self)
+
+    def rename(self, name: str) -> "ClassOrInterfaceType":
+        if name == self.name:
+            return self
+
+        return ClassOrInterfaceType(
+            name,
+            self.type_arguments.arguments,
+            self.inner_name,
+            self.inner_type_arguments.arguments,
+        )
 
 
 class ArrayType(ReferenceType, VerificationType):
@@ -118,18 +129,47 @@ class ArrayType(ReferenceType, VerificationType):
     def __eq__(self, other: Any) -> bool:
         if other is self:
             return True
-        return other.__class__ is ArrayType and other.dimension == self.dimension and other.element_type == self.element_type
+        return type(other) is ArrayType and other.dimension == self.dimension and other.element_type == self.element_type
 
     def __hash__(self) -> int:
         return hash((self.element_type, self.dimension))
 
     def to_verification_type(self) -> VerificationType:
-        if isinstance(self.element_type, ClassOrInterfaceType):  # Strip any signature info, if necessary
+        if type(self.element_type) is ClassOrInterfaceType:  # Strip any signature info, if necessary
             return ArrayType(self.element_type.to_verification_type(), self.dimension)
         return self
 
     def can_merge(self, other: VerificationType) -> bool:
         return isinstance(other, ArrayType) or isinstance(other, ClassOrInterfaceType) or other.can_merge(self)
+
+    def set_dimension(self, dimension: int) -> "ArrayType":
+        """
+        Sets the dimension in this array type to the given value. If the dimension <= 0, it will return the element type.
+
+        :param dimension: The new dimension of the array type.
+        :return: The copied array type with the new dimension, or other.
+        """
+
+        if dimension <= 0:
+            return self.element_type
+        elif dimension == self.dimension:
+            return self
+        return ArrayType(self.element_type, dimension)
+
+    def set_dim(self, dimension: int) -> "ArrayType":
+        """
+        Sets the dimension in this array type to the given value. If the dimension <= 0, it will return the element type.
+
+        :param dimension: The new dimension of the array type.
+        :return: The coped array type with the new dimension, or other.
+        """
+
+        return self.set_dimension(dimension)
+
+    def rename(self, name: str) -> "ArrayType":
+        if not isinstance(self.element_type, ReferenceType):
+            return self
+        return ArrayType(self.element_type.rename(name), self.dimension)
 
 
 class TypeVariable(ReferenceType, TypeBound):
@@ -149,9 +189,9 @@ class TypeVariable(ReferenceType, TypeBound):
         return self.identifier
 
     def __eq__(self, other: Any) -> bool:
-        if other.__class__ is TypeVariable:
+        if type(other) is TypeVariable:
             return other.identifier == self.identifier
-        elif isinstance(other, str):
+        elif type(other) is str:
             return other == self.identifier
 
         return False
@@ -161,3 +201,6 @@ class TypeVariable(ReferenceType, TypeBound):
 
     def to_verification_type(self) -> VerificationType:
         raise TypeError("Cannot create verification type from %r." % self)
+
+    def rename(self, name: str) -> "TypeVariable":
+        return self

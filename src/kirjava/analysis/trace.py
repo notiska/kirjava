@@ -1,499 +1,884 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "Trace", "Entry", "State",
+    "Entry", "Frame", "FrameDelta", "Trace",
 )
 
-"""
-Stack and local state tracing.
-"""
-
-import logging
 import typing
-from frozendict import frozendict, FrozenOrderedDict
-from typing import Any, Dict, FrozenSet, List, Set, Tuple, Union
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
-from ._edge import _DummyEdge, ExceptionEdge, JsrJumpEdge, JsrFallthroughEdge, RetEdge
+from ._edge import ExceptionEdge, InsnEdge, JsrFallthroughEdge, JsrJumpEdge, RetEdge
 from .source import InstructionInBlock
-from .verifier import BasicTypeChecker
 from .. import types
-from ..abc import Edge, Error, Source, TypeChecker
-from ..classfile.instructions import Instruction
-from ..classfile.members import MethodInfo
-from ..types import VerificationType
+from ..abc.constant import Constant
+from ..abc.method import Method
+from ..abc.source import Source
+from ..types import BaseType, ReferenceType
+from ..types.reference import ArrayType
 from ..types.verification import This, UninitializedThis
+from ..verifier import BasicTypeChecker, Error, Verifier
 
 if typing.TYPE_CHECKING:
     from ._block import InsnBlock
     from .graph import InsnGraph
 
-logger = logging.getLogger("kirjava.analysis.trace")
-
 
 class Entry:
     """
-    An entry on either the stack or in the locals of a state.
+    A stack/locals entry.
     """
 
-    __slots__ = ("id", "source", "type", "parents", "merges")
+    __slots__ = ("source", "type", "parent", "value", "_hash")
+
+    @property
+    def null(self) -> bool:
+        """
+        Is this entry null?
+        """
+
+        return self.type == types.null_t or self.value == types.null_t
+
+    @property 
+    def nullable(self) -> bool:
+        """
+        Is this entry null at any point?
+        """
+
+        if self.null:
+            return True
+        # Don't need to account for This, Uninitialised or UninitialisedThis types because those can't be null. (They
+        # don't inherit from ReferenceType).
+        return isinstance(self.type, ReferenceType) and (self.parent is None or self.parent.nullable)
 
     def __init__(
             self,
-            id_: int,
-            source: Union[Source, None],
-            type_: VerificationType,
-            parents: Tuple["Entry", ...] = (),
-            merges: Tuple["Entry", ...] = (),
+            source: Optional[Source],
+            type_: BaseType,
+            parent: Optional["Entry"] = None,
+            value: Optional[Constant] = None,
     ) -> None:
         """
-        :param id_: A unique ID provided by the state, for identification and hashing.
-        :param source: The source that created the entry.
-        :param type_: The type of the entry.
-        :param parents: Any parents to this entry.
-        :param merges: Like parents, but only from the direct result of merging two types.
+        :param source: The source that creates this entry.
+        :param type_: The type of this entry.
         """
 
-        self.id = id_
         self.source = source
         self.type = type_
-        self.parents = parents
-        self.merges = merges
+        self.parent = parent
+        self.value = value
+
+        self._hash = hash((self.type, self.parent, self.value))
 
     def __repr__(self) -> str:
-        return "<Entry(source=%s, type=%r) at %x>" % (
-            self.source, self.type, id(self),
-        )
+        return "<Entry(source=%r, type=%s, value=%r) at %x>" % (self.source, self.type, self.value, id(self))
 
     def __str__(self) -> str:
+        if self.value is not None:
+            return "%s (%s)" % (self.type, self.value)
         return str(self.type)
 
     def __eq__(self, other: Any) -> bool:
-        if other is self:
-            return True
-        elif other.__class__ is Entry and other.id == self.id and other.type == self.type:
-            return True
-        for merge in self.merges:
-            if merge is self:  # Avoid any recursion here
-                continue
-            if other == merge:
-                return True
-        return False
+        return other is self or (self.parent is not None and other == self.parent)
 
     def __hash__(self) -> int:
-        return hash((self.id, self.type))
+        return self._hash
+
+    def cast(self, source: Optional[Source], type_: BaseType) -> "Entry":
+        """
+        Casts this entry down to another type.
+        """
+
+        return Entry(source, type_, parent=self, value=self.value)
 
 
-class State:
+class Frame:
     """
-    A stack and locals state representation (also called stackmap frames, I think).
+    A stack frame. Contains the stack and locals.
     """
 
     __slots__ = (
-        "_id", "errors", "_top",
-        "stack", "locals",
-        "local_accesses",
+        "verifier", "_constants",
+        "_delta", "_source", "_pops", "_pushes", "_swaps", "_dups", "_overwrites",
+        "top",
+        "stack", "locals", "accesses", "consumed",
         "max_stack", "max_locals",
     )
 
     @classmethod
-    def initial(cls, method: MethodInfo, errors: Union[List[Error], None] = None) -> "State":
+    def initial(cls, method: Method, verifier: Optional[Verifier] = None, constants: bool = True) -> "Frame":
         """
-        Creates the initial stack state for a given method.
+        Creates the initial (bootstrap) frame for a method.
+        This is done by populating the locals with the parameters and a this pointer.
 
-        :param method: The method to create the initial state for.
-        :param errors: The errors to add to.
-        :return: The new state.
+        :param method: The method to create the initial frame for.
+        :param verifier: The verifier to use.
+        :param constants: Should constant values be tracked?
         """
 
-        state = cls(0, errors)
+        frame = cls(verifier, constants=constants)
 
-        offset = 0
         if not method.is_static:
             this_class = method.class_.get_type()
-            if method.name == "<init>" and method.return_type == types.void_t:  # Constructor method?
-                state.set(None, 0, UninitializedThis(class_=this_class))
+            if method.name == "<init>" and method.return_type == types.void_t:
+                frame.set(0, UninitializedThis(this_class))
             else:
-                state.set(None, 0, This(this_class))
-            offset += this_class.internal_size
+                frame.set(0, This(this_class))
 
-        for index, argument_type in enumerate(method.argument_types):
+        for argument_type in method.argument_types:
             argument_type = argument_type.to_verification_type()
-            state.set(None, offset, argument_type)
-            offset += argument_type.internal_size
+            frame.set(frame.max_locals, argument_type)
 
-        state.max_locals = offset  # Also adjust the max locals
-        # These don't actually count as local accesses, lmao, you would not believe how LONG it took me to find this
-        # fucking bug, good job Iska!!!!
-        state.local_accesses.clear()
-
-        return state
+        return frame
 
     @property
-    def id(self) -> int:
+    def source(self) -> Optional[Source]:
         """
-        Gets and increments the ID on this state.
-
-        :return: The ID, pre-increment.
+        The current source creating the delta.
         """
 
-        id_ = self._id
-        self._id += 1
-        return id_
+        return self._source
 
-    def __init__(self, id_: int, errors: Union[List[Error], None] = None) -> None:
+    def __init__(self, verifier: Verifier, constants: bool = True) -> None:
         """
-        :param id_: The starting entry ID for this state.
-        :param errors: The list of errors to add to.
+        :param verifier: The verifier to use when performing operations on the stack or locals.
+        :param constants: Should constant values be tracked?
         """
 
-        self._id = id_
-        self.errors = errors
+        self.verifier = verifier
+        self._constants = constants
 
-        if self.errors is None:
-            self.errors = []
+        self._delta = False
+        self._source = None
 
-        self._top = Entry(-65536, None, types.top_t)
+        self._pops = []
+        self._pushes = []
+        self._swaps = ()
+        self._dups = {}
+        self._overwrites = {}
 
-        self.stack: List[Entry] = []
-        self.locals: Dict[int, Entry] = {}
+        self.top = Entry(None, types.top_t)
+
+        self.stack = []
+        self.locals = {}
+        self.accesses = []
+        self.consumed = set()
 
         self.max_stack = 0
         self.max_locals = 0
 
-        # Record locals that were accessed and the type access for liveness tracing later. True means the local was read
-        # from and False means it was written to. The intention is that the order of these accesses is maintained so that
-        # we can store liveness on a per-block level rather than a per-instruction level, hopefully saving memory and
-        # processing time.
-        self.local_accesses: List[Tuple[int, Union[Entry, None], Entry, bool]] = []
-
-    def __eq__(self, other: Any) -> bool:
-        if other is self:
-            return True
-        elif other.__class__ is State.Frozen:
-            return other.__eq__(self)
-        return (
-            other.__class__ is State and
-            other.stack == self.stack and
-            other.locals == self.locals and
-            other.max_stack == self.max_stack and
-            other.max_locals == self.max_locals
+    def __repr__(self) -> str:
+        return "<Frame(stack=[%s], locals={%s}, max_stack=%i, max_locals=%i) at %x>" % (
+            ", ".join(map(str, self.stack)), ", ".join({"%i=%s" % pair for pair in self.locals.items()}),
+            self.max_stack, self.max_locals, id(self),
         )
 
-    def __hash__(self) -> int:
-        return hash((tuple(self.stack), frozendict(self.locals), self.max_stack, self.max_locals))
-
-    def freeze(self) -> "State.Frozen":
+    def _check_type(self, expect: BaseType, entry: Entry, allow_return_address: bool = False) -> bool:
         """
-        Freezes this state.
-
-        :return: The frozen state.
+        Checks that the provided entry matches the provided type expectation.
         """
 
-        return State.Frozen(self)
+        if expect == types.top_t or entry.type == types.top_t:  # AKA no type checking needed
+            return True
 
-    def copy(self, id_: Union[int, None] = None, deep: bool = True) -> "State":
+        if expect is None:
+            if allow_return_address and entry.type == types.return_address_t:
+                return True
+            elif self.verifier.checker.check_reference(entry.type):
+                return True
+            self.verifier.report_expected_reference_type(self._source, entry.type, entry.source)
+
+        # More specific type checking
+
+        elif expect is ArrayType:
+            if not self.verifier.checker.check_array(entry.type):
+                self.verifier.report(Error(  # FIXME
+                    Error.Type.INVALID_TYPE, self._source,
+                    "expected array type", "got %s (via %s)" % (entry.type, entry.source),
+                ))
+            # Always return true as otherwise we'll attempt to merge the ArrayType class with the entry type, which
+            # isn't possible.
+            return True
+
+        else:
+            if self.verifier.checker.check_merge(expect, entry.type):
+                return True
+            self.verifier.report_invalid_type(self._source, expect, entry.type, entry.source)
+
+        return False
+
+    def copy(self, deep: bool = False) -> "Frame":
         """
-        Creates a copy of this state.
+        Creates a copy of this frame as it currently is.
 
-        :param id_: The ID to give the state, if None, the ID on this one is passed through.
-        :param deep: Copies extra trace information in this state such as the local accesses.
-        :return: The copied state.
+        :param deep: Copies more information such as the local accesses and consumed entries.
         """
 
-        state = State(self._id if id_ is None else id_, self.errors)
+        frame = Frame(self.verifier, constants=self._constants)
 
-        state.stack.extend(self.stack)
-        state.locals.update(self.locals)
-
-        state.max_stack = self.max_stack
-        state.max_locals = self.max_locals
+        frame.stack.extend(self.stack)
+        frame.locals.update(self.locals)
 
         if deep:
-            state.local_accesses.extend(self.local_accesses)
+            frame.accesses.extend(self.accesses)
+            frame.consumed.update(self.consumed)
 
-        return state
+        frame.max_stack = self.max_stack
+        frame.max_locals = self.max_locals
 
-    def replace(
-            self,
-            source: Union[Source, None],
-            old: Entry,
-            type_: VerificationType,
-            parents: Tuple[Entry, ...] = (),
-            merges: Tuple[Entry, ...] = (),
-    ) -> None:
+        return frame
+
+    # ------------------------------ Delta computation ------------------------------ #
+
+    def start(self, source: Optional[Source]) -> None:
         """
-        Replaces all occurrences of an old entry with a new one.
+        Starts creating a frame delta from this frame, given the source.
+        """
 
-        :param source: The source of the call.
+        # if self._delta and self._source != source:
+        #     raise ValueError("Already creating a stack delta with source %r." % self._source)
+
+        self._delta = True
+        self._source = source
+
+        self._pops.clear()
+        self._pushes.clear()
+        self._swaps = ()
+        self._dups.clear()
+        self._overwrites.clear()
+
+    def finish(self) -> "FrameDelta":
+        """
+        Finishes creating the frame delta and returns it.
+        """
+
+        if not self._delta:
+            raise ValueError("Not creating a stack delta.")
+        self._delta = False
+
+        # cdef set consumed
+        # for entry in self._consumed:
+        #     if entry in self.consumed:
+        #         consumed.add(entry)
+
+        return FrameDelta(
+            self._source,
+            tuple(self._pops), tuple(self._pushes),
+            self._swaps, self._dups.copy(),
+            self._overwrites.copy(),
+        )
+
+    # ------------------------------ Misc operations ------------------------------ #
+
+    def replace(self, old: Entry, new: BaseType) -> None:
+        """
+        Replaces all occurrences of an entry with the given type. Does not modify the underlying entry however.
+
         :param old: The old entry to replace.
-        :param type_: Type type of the new entry.
-        :param parents: Any extra parent entries to give the new entry.
-        :param merges: If direct type merging resulted in this entry, the entries that were merged.
+        :param new: The type of the new entry.
         """
 
-        new = Entry(self._id, source, type_, parents, merges)
-        self._id += 1
+        entry = Entry(old.source if self._source is None else self._source, new, parent=old)
 
-        for index, entry in enumerate(self.stack):
-            if entry == old:
-                self.stack[index] = new
+        for index, entry_ in enumerate(self.stack):
+            if entry_ is old:
+                self.stack[index] = entry
 
-        for index, entry in self.locals.items():
-            if entry == old:
-                self.locals[index] = new
+        for index, entry_ in self.locals.items():
+            if entry_ is old:
+                self.locals[index] = entry
 
-    def pop(self, source: Union[Source, None], amount: int = 1, tuple_: bool = False) -> Union[Tuple[Entry, ...], Entry]:
+    # ------------------------------ Stack operations ------------------------------ #
+
+    def push(self, entry_or_type: Union[Entry, BaseType], value: Optional[Constant] = None) -> None:
         """
-        Pops one or multiple entries off the stack.
-
-        :param source: The source of the call.
-        :param amount: The number of entries to pop off the stack.
-        :param tuple_: Should the output be returned as a tuple?
-        :return: The entry (or multiple entries) that was/were popped off the stack.
+        :param entry_or_type: An entry to push or a type used to create an entry.
+        :param value: The value of the entry (if a type is being pushed).
         """
 
-        if amount == 1 and not tuple_:
-            try:
-                return self.stack.pop()
-            except IndexError:
-                self.errors.append(Error(source, "stack underflow", "-1 entries"))
-                return Entry(self.id, source, types.top_t)
-
-        entries = []
-        try:
-            for index in range(amount):
-                entries.append(self.stack.pop())
-        except IndexError:
-            self.errors.append(Error(source, "stack underflow", "%i entries" % (len(entries) - amount)))
-            for index in range(amount - len(entries)):
-                entries.append(Entry(self.id, source, types.top_t))
-
-        return tuple(entries)
-
-    def push(
-            self,
-            source: Union[Source, None],
-            entry_or_type: Union[Entry, VerificationType],
-            parents: Tuple[Entry, ...] = (),
-            merges: Tuple[Entry, ...] = (),
-    ) -> None:
-        """
-        Pushes the provided entry onto the stack.
-
-        :param source: The source of the call.
-        :param entry_or_type: The entry to push or the type of the entry.
-        :param parents: Any parents to the type, if an entry was not given.
-        :param merges: If a type is given due to a merge, the merge entries should be provided through this.
-        """
-
-        if isinstance(entry_or_type, Entry):
-            entry = entry_or_type
+        if type(entry_or_type) is not Entry:
+            entry = Entry(self._source, entry_or_type, value=value if self._constants else None)
         else:
-            entry = Entry(self._id, source, entry_or_type, parents, merges)
-            self._id += 1
+            entry = entry_or_type
 
-        if entry.type.internal_size > 1:
-            self.stack.append(self._top)
+        if self._delta:
+            self._pushes.append(entry)
         self.stack.append(entry)
 
-        stack_size = len(self.stack) + 1  # FIXME: Doesn't this actually overshoot by 1?
+        if entry.type.internal_size > 1:
+            self.stack.append(self.top)
+
+        stack_size = len(self.stack)
         if stack_size > self.max_stack:
             self.max_stack = stack_size
 
-    def get(self, source: Union[Source, None], index: int) -> Entry:
+    def pop(self, count: int = 1, *, tuple_: bool = False, expect: Optional[BaseType] = types.top_t) -> Union[Tuple[Entry, ...], Entry]:
         """
-        Gets the value of the local at a given index.
-
-        :param source: The source of the call.
-        :param index: The index of the local variable to get.
-        :return: The local variable entry.
+        :param count: The number of entries to pop off the stack.
+        :param tuple_: Should we return the entries as a tuple, even if there is only one?
+        :param expect: The type expectation for the entry. If a Top type is provided, no type checking is performed.
         """
 
-        entry = self.locals.get(index, None)
-        if entry is None:
-            self.errors.append(Error(source, "local variable at index %i not found" % index))
-            entry = Entry(self.id, source, types.top_t)
-        self.local_accesses.append((index, None, entry, True))
-        return entry
+        if count == 1 and not tuple_:  # Very common, so we'll just process it quickly here
+            try:
+                entry = self.stack.pop()
+
+                if not self._check_type(expect, entry):
+                    entry = entry.cast(self._source, self.verifier.checker.merge(expect, entry.type))
+                if not self.verifier.checker.check_category(entry.type, 1):
+                    self.verifier.report_invalid_type_category(self._source, 1, entry.type, entry.source)
+
+                if self._delta:
+                    self._pops.append(entry)
+                if not entry in self.stack and not entry in self.locals.values():
+                    self.consumed.add(entry)
+
+                return entry
+
+            except IndexError:
+                self.verifier.report_stack_underflow(self._source, -1)
+                return self.top
+
+        entries = []
+        underflow = 0
+
+        for index in range(count):
+            try:
+                entry = self.stack.pop()
+
+                if not self._check_type(expect, entry):
+                    entry = entry.cast(self._source, self.verifier.checker.merge(expect, entry.type))
+
+                if self._delta:
+                    self._pops.append(entry)
+                if not entry in self.stack and not entry in self.locals.values():
+                    self.consumed.add(entry)
+
+            except IndexError:
+                underflow += 1
+                entry = self.top
+            entries.append(entry)
+
+        # TODO: Check that we haven't popped half a wide type too
+        if not self.verifier.checker.check_category(entries[0].type, 1):
+            self.verifier.report_invalid_type_category(self._source, 1, entries[0].type, entries[0].source)
+        if underflow:
+            self.verifier.report_stack_underflow(self._source, -underflow)
+
+        return tuple(entries)
+
+    def dup(self, displace: int = 0) -> None:
+        """
+        Duplicates the top value on the stack.
+
+        :param displace: How many entries to displace the duplicated value backwards by.
+        """
+
+        if not displace:
+            if self._delta:
+                self._swaps = (0, ..., 0)
+            try:
+                entry = self.stack[-1]
+                if not self.verifier.checker.check_category(entry.type, 1):  # [ ..., double ]
+                    self.verifier.report_invalid_type_category(self._source, 1, entry.type, entry.source)
+                try:
+                    if not self.verifier.checker.check_category(self.stack[-2].type, 1):  # [ double, top ]
+                        self.verifier.report_invalid_type_category(
+                            self._source, 1, self.stack[-2].type, self.stack[-2].source,
+                        )
+                except IndexError:
+                    ...
+                self.stack.append(entry)
+            except IndexError:
+                self.verifier.report_stack_underflow(self._source, -1)
+                self.stack.append(self.top)
+
+        else:
+            if self._delta:
+                self._swaps = (0, *(index for index in range(1 + displace, 0, -1)), 0, ...)
+            try:
+                entry = self.stack[-1]
+            except IndexError:
+                self.verifier.report_stack_underflow(self._source, -1)
+                entry = self.top
+
+            # Check we're not trying to dup a category two type. Sidenote: we don't actually need to check that it isn't a
+            # top substitute for the wide types ([ *top*, double ]) as this can't occur without an invalid stack state.
+            try:
+                if not self.verifier.checker.check_category(self.stack[-2].type, 1):  # [ double, top ]
+                    self.verifier.report_invalid_type_category(
+                        self._source, 1, self.stack[-2].type, self.stack[-2].source,
+                    )
+            except IndexError:
+                ...
+
+            # Now also check that we're not trying to dup part of / around a category 2 type.
+            try:
+                # dup_x1 [ ..., double, top ] -> [ ..., top, double, top ]
+                if not self.verifier.checker.check_category(self.stack[-(1 + displace)].type, 1):
+                    self.verifier.report_invalid_type_category(  # FIXME: Error could be more informative as to the situation
+                        self._source, 1, self.stack[-(1 + displace)].type, self.stack[-(1 + displace)].source,
+                    )
+                # dup_x1 [ double, top, int ] -> [ double, int, top, int ]
+                if not self.verifier.checker.check_category(self.stack[-(2 + displace)].type, 1):
+                    self.verifier.report_invalid_type_category(
+                        self._source, 1, self.stack[-(2 + displace)].type, self.stack[-(2 + displace)].source,
+                    )
+            except IndexError:
+                ...  # Will already have been dealt with above, no need to report anything
+
+            self.stack.insert(-(1 + displace), entry)
+
+        stack_size = len(self.stack)
+        if stack_size > self.max_stack:
+            self.max_stack = stack_size
+
+    def dup2(self, displace: int = 0) -> None:
+        """
+        Duplicates the top two values on the stack.
+
+        :param displace: How many entries to displace the duplicated values back by.
+        """
+
+        underflow = 0
+
+        if not displace:
+            if self._delta:
+                self._swaps = (1, 0, ..., 1, 0)
+
+            try:
+                entry = self.stack[-2]
+                if self._delta:
+                    self._dups[entry] = self._dups.get(entry, 0) + 1
+                # Check we're not duping half of a category two type
+                try:
+                    if not self.verifier.checker.check_category(self.stack[-3].type, 1):  # [ double, top, int ]
+                        self.verifier.report_invalid_type_category(
+                            self._source, 1, self.stack[-3].type, self.stack[-3].source,
+                        )
+                except IndexError:
+                    ...
+                self.stack.append(entry)
+            except IndexError:
+                underflow += 1
+                self.stack.append(self.top)
+            try:
+                entry = self.stack[-2]
+                if self._delta:
+                    self._dups[entry] = self._dups.get(entry, 0) + 1
+                self.stack.append(entry)  # Equivalent to self.stack[-1] before the first push
+            except IndexError:
+                underflow += 1
+                self.stack.append(self.top)
+
+            if underflow:
+                self.verifier.report_stack_underflow(self._source, -underflow)
+
+        else:
+            if self._delta:
+                self._swaps = (1, 0, *(index for index in range(1 + displace * 2, 1, -1)), 1, 0, ...)
+
+            try:
+                entry_a, entry_b = self.stack[-2:]
+                if self._delta:
+                    self._dups[entry_a] = self._dups.get(entry_a, 0) + 1
+                    self._dups[entry_b] = self._dups.get(entry_b, 0) + 1
+            except (IndexError, ValueError):
+                entry_a = self.top
+                try:
+                    entry_b = self.stack[-1]
+                    if self._delta:
+                        self._dups[entry_b] = self._dups.get(entry_b, 0) + 1
+                    self.verifier.report_stack_underflow(self._source, -1)
+                except IndexError:
+                    entry_b = self.top
+                    self.verifier.report_stack_underflow(self._source, -2)
+
+            try:
+                if not self.verifier.checker.check_category(self.stack[-3].type, 1):  # [ ..., double, top, int ]
+                    self.verifier.report_invalid_type_category(
+                        self._source, 1, self.stack[-3].type, self.stack[-3].source,
+                    )
+                # dup2_x1 [ double, top, float, int, int ] -> [ double, int, int, top, float, int, int ]
+                if not self.verifier.checker.check_category(self.stack[-(2 + displace * 2)].type, 1):
+                    # This mostly won't happen, so idrc about performance here
+                    self.verifier.report_invalid_type_category(
+                        self._source, 1, self.stack[-(2 + displace * 2)].type, self.stack[-(2 + displace * 2)].source,
+                    )
+            except IndexError:
+                ...
+
+            self.stack.insert(-(1 + displace * 2), entry_a)
+            self.stack.insert(-(1 + displace * 2), entry_b)
+
+        stack_size = len(self.stack)
+        if stack_size > self.max_stack:
+            self.max_stack = stack_size
+
+    def swap(self) -> None:
+        """
+        Swaps the top two values on the stack.
+        """
+
+        if self._delta:
+            self._swaps = (0, 1, ...)
+
+        try:
+            entry_a, entry_b = self.stack[-2:]
+        except (IndexError, ValueError):
+            try:
+                entry_b = self.stack[-1]
+                self.verifier.report_stack_underflow(self._source, -1)
+            except IndexError:
+                self.stack.append(self.top)
+                entry_b = self.top
+                self.verifier.report_stack_underflow(self._source, -2)
+                return  # Nothing to swap as we have two tops on the stack
+
+            self.stack.append(self.top)
+            entry_a = self.top
+
+        if not self.verifier.checker.check_category(entry_a.type, 1):  # [ double, top, int ]
+            self.verifier.report_invalid_type_category(self._source, 1, entry_a.type, entry_a.source)
+        if not self.verifier.checker.check_category(entry_b.type, 1):  # [ double, top ]
+            self.verifier.report_invalid_type_category(self._source, 1, entry_b.type, entry_b.source)
+
+        self.stack[-2] = entry_b
+        self.stack[-1] = entry_a
+
+    # ------------------------------ Locals operations ------------------------------ #
+
+    def get(self, index: int, *, expect: Optional[BaseType] = types.top_t) -> Entry:
+        """
+        :param index: The local variable index to get the entry at.
+        :param expect: The expected type of the local to check against. If a Top type is provided, no type checking is performed.
+        :return: The entry at that index.
+        """
+
+        entry = self.locals.get(index)
+
+        if entry is not None:
+            if not self._check_type(expect, entry):
+                entry = entry.cast(self._source, self.verifier.checker.merge(expect, entry.type))
+            self.accesses.append((True, index, entry))
+            return entry
+
+        self.verifier.report_unknown_local(self._source, index)
+        return self.top
 
     def set(
             self,
-            source: Union[Source, None],
             index: int,
-            entry_or_type: Union[Entry, VerificationType],
-            parents: Tuple[Entry, ...] = (),
-            merges: Tuple[Entry, ...] = (),
+            entry_or_type: Union[Entry, BaseType],
+            value: Optional[Constant] = None,
+            *,
+            expect: Optional[BaseType] = types.top_t,
     ) -> None:
         """
-        Sets the value of the local at a given index to the provided entry.
-
-        :param source: The source of the call.
-        :param index: The index of the local to set.
+        :param index: The local variable index to set.
         :param entry_or_type: The entry or type to set the local to.
-        :param parents: Any parents of the type, if a direct entry was not specified.
-        :param merges: If a type was given due to a type merge, the merge entries should be specified here.
+        :param value: The value of the entry to create, if an entry was not provided.
+        :param expect: The type expectation of the entry. If a Top type is provided, no type checking is performed.
         """
 
-        previous = self.locals.get(index, None)
-        # if previous is not None and previous.type == types.null_t and isinstance(entry.type, ReferenceType):
-        #     # If the previous was null, note down that this reference type may be null by adding the previous to the
-        #     # parents of the entry.
-        #     entry = Entry(self._id, instruction, entry.type, entry.parents, (entry, previous))
-        #     self._id += 1
-
-        if isinstance(entry_or_type, Entry):
-            entry = entry_or_type
+        if type(entry_or_type) is not Entry:
+            entry = Entry(self._source, entry_or_type, value=value if self._constants else None)
         else:
-            entry = Entry(self.id, source, entry_or_type, parents, merges)
+            entry = entry_or_type
 
-        self.local_accesses.append((index, previous, entry, False))
+        local = self.locals.get(index)
+        if local == entry:
+            return  # Nothing to do as the value is already set to this one
+
+        if not self._check_type(expect, entry, allow_return_address=True):
+            entry = entry.cast(self._source, self.verifier.checker.merge(expect, entry.type))
+
+        if self._delta:
+            self._overwrites[index] = (local, entry)
         self.locals[index] = entry
-        if entry.type.internal_size > 1:
-            index += 1
-            self.locals[index] = self._top
+        self.accesses.append((False, index, entry))
 
         index += 1
+        if entry.type.internal_size > 1:
+            self.locals[index] = self.top
+            index += 1
+
         if index > self.max_locals:
             self.max_locals = index
 
-    # ------------------------------ Classes ------------------------------ #
 
-    class Frozen:
+class FrameDelta:
+    """
+    The difference between two frames.
+    """
+
+    __slots__ = ("source", "pops", "pushes", "swaps", "dups", "overwrites", "_hash")
+
+    def __init__(
+            self,
+            source: Optional[Source],
+            pops: Tuple[Entry, ...],
+            pushes: Tuple[Entry, ...],
+            swaps: Tuple[int, ...],
+            dups: Dict[Entry, int],
+            overwrites: Dict[int, Tuple[Entry, Entry]],
+    ) -> None:
         """
-        A frozen state object.
+        :param source: The source of this delta.
+        :param pops: The number of entries that were popped off the stack.
+        :param pushes: Entries that were pushed to the stack.
+        :param swaps: Information about swaps.
+        :param dups: Any entries that were duplicated, and how many times they were.
+        :param overwrites: Locals overwrites.
         """
 
-        __slots__ = ("_top", "stack", "locals", "max_stack", "max_locals", "local_accesses")
+        self.source = source
+        self.pops = pops
+        self.pushes = pushes
+        self.swaps = swaps
+        self.dups = dups
+        self.overwrites = overwrites
 
-        def __init__(self, state: "State") -> None:
-            """
-            :param state: The state to freeze.
-            """
+        self._hash = hash((pops, pushes, swaps, tuple(dups.items()), tuple(overwrites.items())))
 
-            self._top = state._top
-
-            self.stack: Tuple[Entry, ...] = tuple(state.stack)
-            self.locals: FrozenOrderedDict[int, Entry] = frozendict(state.locals)
-
-            self.max_stack = state.max_stack
-            self.max_locals = state.max_locals
-
-            self.local_accesses: Tuple[Tuple[int, Union[Instruction, None], Entry, bool], ...] = tuple(state.local_accesses)
-
-        def __eq__(self, other: Any) -> bool:
-            if other is self:
-                return True
-            elif other.__class__ is State:
-                return (
-                    tuple(other.stack) == self.stack and
-                    other.locals == self.locals and
-                    other.max_stack == self.max_stack and
-                    other.max_locals == self.max_locals
-                )
-            return (
-                other.__class__ is State.Frozen and
-                other.stack == self.stack and
-                other.locals == self.locals and
-                other.max_stack == self.max_stack and
-                other.max_locals == self.max_locals
+    def __repr__(self) -> str:
+        # Conditions are mutually exclusive if used correctly, so shouldn't run into any issues here.
+        if self.pops and self.pushes:
+            return "<FrameDelta(source=%r, pops=[%s], pushes=[%s]) at %x>" % (
+                str(self.source), ", ".join(map(str, self.pops)), ", ".join(map(str, self.pushes)), id(self),
             )
+        elif self.pops and self.overwrites:
+            return "<FrameDelta(source=%r, pops=[%s], overwrites={%s}) at %x>" % (
+                str(self.source), ", ".join(map(str, self.pops)),
+                ", ".join({"%i=%s->%s" % (index, *pair) for index, pair in self.overwrites.items()}), id(self),
+            )
+        elif self.pops:
+            return "<FrameDelta(source=%r, pops=[%s]) at %x>" % (
+                str(self.source), ", ".join(map(str, self.pops)), id(self),
+            )
+        elif self.pushes:
+            return "<FrameDelta(source=%r, pushes=[%s]) at %x>" % (
+                str(self.source), ", ".join(map(str, self.pushes)), id(self),
+            )
+        elif self.overwrites:
+            return "<FrameDelta(source=%r, overwrites={%s}) at %x>" % (
+                str(self.source), ", ".join({"%i=%s->%s" % (index, *pair) for index, pair in self.overwrites.items()}), id(self),
+            )
+        elif self.swaps and self.dups:
+            return "<FrameDelta(source=%r, swaps=%r, dups={%s}) at %x>" % (
+                str(self.source), self.swaps, ", ".join({"%i=%s" % pair for pair in self.dups}), id(self),
+            )
+        elif self.swaps:
+            return "<FrameDelta(source=%r, swaps=%r) at %x>" % (str(self.source), self.swaps, id(self))
+        return "<FrameDelta(source=%r) at %x>" % (str(self.source), id(self))
 
-        def __hash__(self) -> int:
-            return hash((self.stack, self.locals, self.max_stack, self.max_locals))
+    def __eq__(self, other: Any) -> bool:
+        return (
+            isinstance(other, FrameDelta) and
+            other.pops == self.pops and
+            other.pushes == self.pushes and
+            other.swaps == self.swaps and
+            other.dups == self.dups and
+            other.overwrites == self.overwrites
+        )
 
-        def unfreeze(self, id_: int = 0) -> "State":
-            """
-            Unfreezes this state.
+    def __hash__(self) -> int:
+        return self._hash
 
-            :param id_: The ID to give the unfrozen state.
-            :return: The unfrozen state.
-            """
 
-            state = State(id_)
+# ------------------------------ Trace computation ------------------------------ #
 
-            state.stack.extend(self.stack)
-            state.locals.update(self.locals)
+def _resolve_opaque_edge(
+        graph: "InsnGraph", verifier: Verifier, subroutines: Dict[JsrJumpEdge, Set[RetEdge]], edge: InsnEdge, frame: Frame,
+) -> RetEdge:
+    """
+    Resolves an opaque edge (which are just ret edges).
+    """
 
-            state.max_stack = self.max_stack
-            state.max_locals = self.max_locals
+    if not isinstance(edge, RetEdge):
+        verifier.report(Error(Error.Type.INVALID_EDGE, edge, "unknown opaque edge type"))
+        return None
 
-            state.local_accesses.extend(self.local_accesses)
+    return_address = frame.locals.get(edge.instruction.index)
+    if return_address is None:
+        verifier.report(Error(Error.Type.INVALID_EDGE, edge, "no return address at local index %i" % edge.instruction.index))
+        return None
+    # Even if we have no type checker, there really is nothing we can do if we have not been given a return address.
+    elif return_address.type != types.return_address_t:
+        verifier.report_invalid_type(edge, types.return_address_t, return_address.type, return_address.source)
+        return None
 
-            return state
+    multiple_edges = False
+
+    jsr_jump_edge: Optional[JsrJumpEdge] = None
+    jsr_fallthrough_edge: Optional[JsrFallthroughEdge] = None
+
+    for edge_ in graph._forward_edges[return_address.source.from_]:
+        if isinstance(edge_, JsrJumpEdge):
+            if not multiple_edges and jsr_jump_edge is not None:
+                multiple_edges = True
+            jsr_jump_edge = edge_
+        elif isinstance(edge_, JsrFallthroughEdge):
+            if not multiple_edges and jsr_fallthrough_edge is not None:
+                multiple_edges = True
+            jsr_fallthrough_edge = edge_
+
+    if multiple_edges:  # TODO: Handling?
+        verifier.report(Error(Error.Type.INVALID_BLOCK, return_address.source.from_, "multiple jsr edges on block"))
+
+    if jsr_jump_edge is None:  # We can still continue to resolve the subroutine if we can't find the jump edge
+        verifier.report(Error(Error.Type.INVALID_BLOCK, return_address.source.from_, "no jsr jump edge on block"))
+    if jsr_fallthrough_edge is None:
+        verifier.report(Error(Error.Type.INVALID_BLOCK, return_address.source.from_, "no jsr fallthrough edge on block"))
+        return None  # Cannot resolve as we don't know where to jump back to
+
+    # A sidenote on subroutines: we can also handle multi-exit subroutines with this, even though they are not allowed
+    # in Java. I'm planning to keep this functionality because it allows us to do analysis on unverifiable code (and
+    # therefore create it).
+
+    edge = RetEdge(edge.from_, jsr_fallthrough_edge.to, edge.instruction)
+    subroutines.setdefault(jsr_jump_edge, set()).add(edge)
+    return edge
+
+
+def _setup_edge_trace(verifier: Verifier, edge: InsnEdge, frame: Frame, constraints: List[Tuple[Frame, Frame]]) -> bool:
+    """
+    Sets up the frame for the given edge (mainly for exception edges) and also verifies that we have not visited it with
+    the same constraints beforehand.
+    """
+
+    if type(edge) is JsrFallthroughEdge:
+        return False  # Skip this edge as we only "visit" it when returning from a subroutine
+
+    # The JVM spec mandates that when jumping to an exception handler, the locals must be the same as they were and the
+    # stack must contain only one item on it, that being the exception that was thrown.
+    if type(edge) is ExceptionEdge:
+        frame.stack.clear()
+        if not verifier.checker.check_merge(types.throwable_t, edge.throwable):
+            verifier.report_invalid_type(edge, types.throwable_t, edge.throwable, None)
+
+        # "Push" the exception to the stack (before checking if we can merge it with java/lang/Throwable).
+        merged = verifier.checker.merge(types.throwable_t, edge.throwable, fallback=types.throwable_t)
+        frame.stack.append(Entry(edge, merged))
+
+    # Now attempt to find any existing constraint that the current frame conforms to. If we can find one, this means
+    # that we already know what happens and skip computing the states for this block.
+
+    skip = False
+
+    live: Set[int] = set()  # Locals that are live in the final state
+    overwritten: Set[int] = set()  # Locals that were overwritten
+
+    for entry_constraint, exit_constraint in constraints:
+        if len(entry_constraint.stack) != len(frame.stack):  # Definitely can't merge, so skip
+            continue
+
+        skip = False
+        for entry_a, entry_b in zip(entry_constraint.stack, frame.stack):
+            if entry_a.type != entry_b.type or entry_a.value != entry_b.value:
+                skip = True
+                break
+            # Return addresses are also inherently tied to their origins and merging them solely based on type would
+            # lead to incorrect behaviour, so check if they also have the same origins.
+            elif (
+                entry_a.type == types.return_address_t and
+                entry_b.type == types.return_address_t and
+                entry_a.source != entry_b.source
+            ):
+                skip = True
+                break
+
+        if skip:
+            continue
+
+        live.clear()
+        overwritten.clear()
+
+        for read, index, _ in exit_constraint.accesses:
+            if read and not index in overwritten:
+                live.add(index)
+            else:
+                overwritten.add(index)
+
+        for index, entry_a in entry_constraint.locals.items():
+            if index in overwritten:  # The index is overwritten in this frame, so it doesn't matter what it is going in
+                continue
+            entry_b = frame.locals.get(index)
+            # It really is just too slow to check the constant values if the local isn't live specifically in this
+            # block, and yes, it does result in some unvisited paths, I would assume. Idk, I might come back to this
+            # issue in the future.
+            # FIXME: ^^^
+            if entry_b is None or entry_a.type != entry_b.type or (index in live and entry_a.value != entry_b.value):
+                skip = True
+                break
+            elif (  # Same deal as above
+                entry_a.type == types.return_address_t and
+                entry_b.type == types.return_address_t and
+                entry_a.source != entry_b.source
+            ):
+                skip = True
+                break
+
+        if not skip:
+            return False  # The frame conforms to this constraint, so we don't need to compute the states again
+
+    return True  # If the loop completes, we can't find any valid constraints, so we haven't computed the states for this frame yet
 
 
 class Trace:
     """
-    Trace information that has been computed.
+    A computed trace.
     """
 
-    __slots__ = (
-        "graph", "states", "errors",
-        "leaf_edges", "back_edges", "subroutines",
-        "max_stack", "max_locals",
-    )
-
-    # @classmethod
-    # def from_block(cls, state: "State", block: "InsnBlock", checker: TypeChecker) -> "Trace":
-    #     """
-    #     Creates a trace from a block.
-
-    #     :param state: The entry state to use.
-    #     :param block: The block to trace.
-    #     :param checker: The type checker implementation to use.
-    #     :return: The trace information.
-    #     """
-
-    #     dummy_edge = _DummyEdge(block, block)
-
-    #     errors = []
-    #     path = Path()
-
-    #     path._start = dummy_edge
-    #     path._end = dummy_edge
-    #     path.edges = frozendict({dummy_edge: dummy_edge})
-
-    #     path.entries = frozendict({block: state.copy()})
-    #     for instruction in block.instructions:
-    #         instruction.trace(state, errors, checker)
-    #     path.exits = frozendict({block: state})
-
-    #     return cls((path,), errors)
+    # TODO: From path and initial frame
 
     @classmethod
-    def from_graph(cls, graph: "InsnGraph", checker: TypeChecker = BasicTypeChecker()) -> "Trace":
+    def from_graph(
+            cls,
+            graph: "InsnGraph",
+            verifier: Optional[Verifier] = None,
+            *,
+            compute_constants: bool = True,
+            compute_deltas: bool = True,
+            compute_sources: bool = True,
+    ) -> "Trace":
         """
-        Creates a trace from the provided graph.
+        Computes a trace from the provided graph.
 
-        :param graph: The graph to trace.
-        :param checker: The type checker implementation to use.
-        :return: The trace.
+        :param graph: The instruction graph to use.
+        :param verifier: The verifier to use.
+        :param compute_constants: Should we compute constant values?
+        :param compute_deltas: Should we compute frame deltas? It's faster not to, but you don't get as much information.
+        :param compute_sources: Should we compute the sources of entries? It's also faster not to.
+        :return: The computed trace.
         """
 
-        errors: List[Error] = []
+        if verifier is None:
+            verifier = Verifier(BasicTypeChecker())  # We only really need a basic type checker for this
 
-        start = _DummyEdge(graph.entry_block, graph.entry_block)
-        state = State.initial(graph.method, errors)
+        states = {}
+        deltas = {}
 
-        traversed: List[InsnBlock] = []  # Iterative DFS stack so we can detect loops
-        to_visit: List[Tuple[Edge, State, List[Edge]]] = [(None, state, [start])]
-        visited: Dict[Edge, Set[Edge]] = {}
+        # It's also useful to record leaf edges and back edges.
+        leaf_edges = set()
+        back_edges = set()
+        subroutines = {}  # (And we'll also compute the entry and exit points of subroutines in the graph.)
 
-        leaf_edges: Set[Edge] = set()
-        back_edges: Set[Edge] = set()
-        subroutines: Dict[JsrJumpEdge, Set[RetEdge]] = {}
+        max_stack = 0
+        max_locals = 0
 
-        max_stack = state.max_stack
-        max_locals = state.max_locals
+        # We'll use a (somewhat modified) iterative DFS to compute states, but we'll also keep track of the edges and
+        # repeat state computation if we find a path with different constraints.
+        traversed = []
+        to_visit = [
+            (False, None, Frame.initial(graph.method, verifier, compute_constants), [InsnEdge(None, graph.entry_block)]),
+        ]
 
-        states: Dict[InsnBlock, Dict[State.Frozen, Tuple[State.Frozen, ...]]] = {}
-
-        while to_visit:
-            root, state, edges = to_visit[-1]
+        while True:
+            back_edge, root, frame, edges = to_visit[-1]
             if not edges:
-                if not visited.get(root, False) and not graph.out_edges(root.to):
+                if root is not None and not graph._forward_edges.get(root.to):
                     leaf_edges.add(root)
-                if not traversed:
+                if not traversed:  # Nothing more to do
                     break
 
                 traversed.pop()
@@ -501,229 +886,97 @@ class Trace:
                 continue
 
             edge = edges.pop()
-            if edge.__class__ is JsrFallthroughEdge:  # Don't handle these here, they are really only placeholders
-                continue
             block = edge.to
 
             if block is None:
-                if not graph.is_opaque(edge):
-                    errors.append(Error(edge, "unknown opaque edge"))
+                if not edge in graph._opaque_edges:
+                    verifier.report(Error(Error.Type.INVALID_EDGE, edge, "unknown opaque edge"))
                     continue
 
-                if edge.__class__ is RetEdge:
-                    return_address = state.locals.get(edge.jump.index, None)
-                    if return_address is None or return_address.type != types.return_address_t:
-                        errors.append(Error(edge, "cannot resolve subroutine origin due to invalid local"))
-                        continue  # Really nothing else we can do here
+                edge = _resolve_opaque_edge(graph, verifier, subroutines, edge, frame)
+                if edge is None:  # Could not resolve, error will have been reported by `_resolve_opaque` so just skip.
+                    continue
+                block = edge.to
 
-                    # Find the corresponding jsr jump and fallthrough edges
-                    jsr_jump_edge: Union[JsrJumpEdge, None] = None
-                    jsr_fallthrough_edge: Union[JsrFallthroughEdge, None] = None
+            # FIXME: I don't think this is a 100% accurate solution, might be better to find SCCs?
+            if not back_edge and block in traversed:
+                back_edges.add(edge)
+                back_edge = True
 
-                    for edge_ in graph.out_edges(return_address.source.block):
-                        if edge_.__class__ is JsrJumpEdge:
-                            if jsr_jump_edge is not None:
-                                # Even if handling multi-entry subroutines, we can't allow multiple jsr edges on a block.
-                                errors.append(Error(
-                                    return_address.source.block, "multiple jsr jump edges found on block",
-                                ))
-                            jsr_jump_edge = edge_
+            constraints = states.setdefault(block, [])
+            frame = frame.copy()
+            if not _setup_edge_trace(verifier, edge, frame, constraints):
+                continue
 
-                        elif edge_.__class__ is JsrFallthroughEdge:
-                            if jsr_fallthrough_edge is not None:
-                                errors.append(Error(
-                                    return_address.source.block, "multiple jsr fallthrough edges found on block",
-                                ))
-                            jsr_fallthrough_edge = edge_
+            entry = frame.copy()
 
-                    if jsr_jump_edge is None:
-                        errors.append(Error(block, "ret edge to block with no jsr jump edge"))
-                        # We can still handle this technically, we'll just count it as an absolute jump though, the error
-                        # should also be sufficient.
-                        subroutine_edges = set()
-                    else:
-                        subroutine_edges = subroutines.setdefault(jsr_jump_edge, set())
+            if compute_deltas:
+                deltas_ = []
 
-                    if jsr_fallthrough_edge is None:
-                        errors.append(Error(block, "ret edge to block with no jsr fallthrough edge"))
-                        # If this is the case, there's nothing we can do about this subroutine as we don't know where
-                        # to fall through to. We can mark it as a subroutine though, it'll just be a partial one.
-                        subroutine_edges.add(edge)
+                for index, instruction in enumerate(block._instructions):
+                    frame.start(None if not compute_sources else InstructionInBlock(block, instruction, index))
+                    instruction.trace(frame)
+                    deltas_.append(frame.finish())
+
+                for edge_ in graph._forward_edges[block]:
+                    if edge_.instruction is None:  # Nothing to trace
                         continue
+                    frame.start(None if not compute_sources else edge_)
+                    edge_.instruction.trace(frame)
+                    deltas_.append(frame.finish())
+                    break  # Anymore instructions in edges is undefined behaviour, as it isn't possible
+                    # TODO: ^^ report error
 
-                    # Overwrite the old edge with out new resolved edge
-                    edge = RetEdge(edge.from_, jsr_fallthrough_edge.to, edge.jump)
-                    block = edge.to
-                    subroutine_edges.add(edge)
-
-                    # A sidenote on subroutines: we can also handle multi-exit subroutines with this, even though they
-                    # are not allowed in Java. I'm planning to keep this functionality because it allows us to do
-                    # analysis on unverifiable code, which is nice.
-
-                else:
-                    # This is an internal error, so raise
-                    raise ValueError("Don't know how to handle opaque edge %r." % edge)
-
-            # print(root, edge, ", ".join(map(str, traversed + [block])))
-
-            state = state.copy(deep=False)
-
-            constraints = states.setdefault(block, {})
-            adjacent = visited.setdefault(root, set())
-
-            is_back_edge = block in traversed
-            is_adjacent_visited = edge in adjacent
-
-            # Special handling for exception edges. A valid stack state is one in which there is only one item on the
-            # stack, that being the exception that was thrown.
-            if edge.__class__ is ExceptionEdge:
-                state.stack.clear()
-                if not checker.check_merge(types.throwable_t, edge.throwable):
-                    errors.append(Error(
-                        edge, "expected type java/lang/Throwable for exception edge", "got %s" % edge.throwable,
-                    ))
-                    state.push(None, checker.merge(types.throwable_t, edge.throwable))
-                else:
-                    state.push(None, edge.throwable)
-
-            # If we have already visited the edge, and it has the same entry constraints as it did before, then we
-            # already know the exit constraints, and therefore further computation is unnecessary, so we can check for
-            # that here.
-            if is_back_edge or is_adjacent_visited:
-                found = False
-
-                # Check the locals more specifically, taking into account if any of the locals actually used in
-                # the block are different.
-                for entry, (*_, exit) in constraints.items():
-                    live: Set[int] = set()
-                    overwritten: Set[int] = set()
-                    for index, _, _, read in exit.local_accesses:
-                        if not read:
-                            overwritten.add(index)
-                            continue
-                        elif index in live or index in overwritten:  # Already checked this, no need to again
-                            continue
-
-                        live.add(index)
-
-                        entry_a = state.locals[index]
-                        entry_b = entry.locals[index]
-
-                        if entry_a.type != entry_b.type:
-                            break  # Breaks out of the inner, which continues the outer loop
-                        # More specific checks for returnAddress origins
-                        elif (
-                            entry_a.type == types.return_address_t and
-                            entry_b.type == types.return_address_t and
-                            entry_a.source != entry_b.source
-                        ):
-                            break
-                    else:
-                        # The locals that aren't overwritten can still be used later in the method, so double check
-                        # that they're all valid too.
-                        for index, entry_a in state.locals.items():
-                            if index in live or index in overwritten or not index in entry.locals:
-                                continue
-
-                            entry_b = entry.locals[index]
-
-                            if entry_a.type != entry_b.type:
-                                break
-                            elif (
-                                entry_a.type == types.return_address_t and
-                                entry_b.type == types.return_address_t and
-                                entry_a.source != entry_b.source
-                            ):
-                                break
-
-                        else:
-                            # Now we also need to check if the stacks are equal, because they may not be
-                            if len(state.stack) == len(entry.stack):
-                                for entry_a, entry_b in zip(state.stack, entry.stack):
-                                    if entry_a.type != entry_b.type:
-                                        break
-                                    elif (
-                                        entry_a.type == types.return_address_t and
-                                        entry_b.type == types.return_address_t and
-                                        entry_a.source != entry_b.source
-                                    ):
-                                        break
-                                else:
-                                    found = True
-                                    break
-                    continue
-
-                if found:
-                    if is_back_edge:
-                        back_edges.add(edge)
-                    continue
+                deltas.setdefault(block, []).append(deltas_)
 
             else:
-                adjacent.add(edge)
+                for index, instruction in enumerate(block._instructions):
+                    frame.start(None if not compute_sources else InstructionInBlock(block, instruction, index))
+                    instruction.trace(frame)
 
-            # print(root, edge)
-            entry = state.freeze()
+                for edge_ in graph._forward_edges[block]:
+                    if edge_.instruction is None:  # Nothing to trace
+                        continue
+                    frame.start(None if not compute_sources else edge_)
+                    edge_.instruction.trace(frame)
+                    break
 
-            if exact:
-                instruction_states = []
-                for index, instruction in enumerate(block.instructions):
-                    instruction.trace(InstructionInBlock(block, instruction, index), state, errors, checker)
-                    instruction_states.append(state.freeze())
-                constraints[entry] = tuple(instruction_states)
-            else:
-                for index, instruction in enumerate(block.instructions):
-                    instruction.trace(InstructionInBlock(block, instruction, index), state, errors, checker)
-                constraints[entry] = (state.freeze(),)
+            constraints.append((entry, frame))
 
-            # Adjust stack and local maxes too
-            if state.max_stack > max_stack:
-                max_stack = state.max_stack
-            if state.max_locals > max_locals:
-                max_locals = state.max_locals
+            if frame.max_stack > max_stack:
+                max_stack = frame.max_stack
+            if frame.max_locals > max_locals:
+                max_locals = frame.max_locals
 
+            # Update the DFS stack and to visit with the new information
             traversed.append(block)
-            to_visit.append((edge, state, list(graph.out_edges(block))))
+            to_visit.append((back_edge, edge, frame.copy(), list(graph._forward_edges[block])))
 
-        for block, constraints in states.items():
-            states[block] = frozendict(constraints)
-        for edge, edges in subroutines.items():
-            subroutines[edge] = frozenset(edges)
-
-        return cls(  # Ughhh the formatting, not sure how to make this look pretty lol
-            graph,
-            frozendict(states),
-            tuple(errors),
-            frozenset(leaf_edges),
-            frozenset(back_edges),
-            frozendict(subroutines),
-            max_stack,
-            max_locals,
-        )
-
-    # @property
-    # def loops(self) -> Tuple["Path", ...]:
-    #     """
-    #     :return: All the paths in this trace that are loops.
-    #     """
-
-    #     return tuple(filter(lambda path: path.loop, self.paths))
+        return cls(graph, states, deltas, leaf_edges, back_edges, subroutines, max_stack, max_locals)
 
     def __init__(
             self,
             graph: "InsnGraph",
-            states: FrozenOrderedDict["InsnBlock", FrozenOrderedDict[State.Frozen, Tuple[State.Frozen, ...]]],
-            errors: Tuple[Error, ...],
-            leaf_edges: FrozenSet[Edge],
-            back_edges: FrozenSet[Edge],
-            subroutines: FrozenOrderedDict[Edge, FrozenSet[Edge]],
+            frames: Dict["InsnBlock", List[Tuple[Frame, Frame]]],
+            deltas: Dict["InsnBlock", List[List[FrameDelta]]],
+            leaf_edges: Set[InsnEdge],
+            back_edges: set[InsnEdge],
+            subroutines: Dict[JsrJumpEdge, Set[RetEdge]],
             max_stack: int,
             max_locals: int,
     ) -> None:
+        """
+        :param frames: The computed entry and exit constraints (as frames) for blocks.
+        :param deltas: The individual stack deltas for each instruction.
+        :param leaf_edges: All the edges in the graph that lead to leaves (that were visited).
+        :param back_edges: All the back edges in the graph that were visited.
+        :param subroutines: All the resolved subroutines in the graph.
+        """
+
         self.graph = graph
 
-        # self.paths: Tuple[Path, ...] = ()
-        self.states = states
-        self.errors = errors
+        self.frames = frames
+        self.deltas = deltas
 
         self.leaf_edges = leaf_edges
         self.back_edges = back_edges
@@ -732,8 +985,7 @@ class Trace:
         self.max_stack = max_stack
         self.max_locals = max_locals
 
-    def __eq__(self, other: Any) -> bool:
-        return other is self or (other.__class__ is Trace and other.states == self.states)
-
-    def __hash__(self) -> int:
-        return hash(self.states)
+    def __repr__(self) -> str:
+        return "<Trace(frames=%i, max_stack=%i, max_locals=%i) at %x>" % (
+            len(self.frames), self.max_stack, self.max_locals, id(self),
+        )

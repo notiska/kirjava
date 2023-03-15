@@ -9,13 +9,13 @@ Attributes that appear in multiple elements inside a class file.
 """
 
 import logging
-import struct
-from typing import IO, Iterable, List, Tuple, Union
+from typing import IO, Iterable, List, Optional, Tuple, Union
 
 from . import AttributeInfo
 from .class_ import Record
 from .. import ClassFile
-from ..constants import Constant, UTF8
+from .._struct import *
+from ..constants import ConstantInfo, UTF8
 from ..members import FieldInfo, MethodInfo
 from ...version import Version
 
@@ -58,7 +58,7 @@ class Signature(AttributeInfo):
     def __init__(
             self,
             parent: Union[ClassFile, FieldInfo, MethodInfo, Record.ComponentInfo],
-            signature: Union[UTF8, None] = None,
+            signature: Optional[UTF8] = None,
     ) -> None:
         super().__init__(parent, Signature.name_)
 
@@ -68,7 +68,7 @@ class Signature(AttributeInfo):
         return "<Signature(%s) at %x>" % (self.signature, id(self))
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
-        signature_index, = struct.unpack(">H", buffer.read(2))
+        signature_index, = unpack_H(buffer.read(2))
 
         # if isinstance(self.parent, MethodInfo):
         #     parse = signature.parse_method_signature
@@ -96,7 +96,7 @@ class Signature(AttributeInfo):
         # logger.debug("%r signature: %s" % (self.parent, self.signature))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", class_file.constant_pool.add(self.signature)))
+        buffer.write(pack_H(class_file.constant_pool.add(self.signature)))
 
 
 class Annotations(AttributeInfo):
@@ -113,7 +113,7 @@ class Annotations(AttributeInfo):
             self,
             parent: Union[ClassFile, FieldInfo, MethodInfo],
             name: str,
-            annotations: Union[Iterable["Annotations.Annotation"], None] = None,
+            annotations: Optional[Iterable["Annotations.Annotation"]] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.
@@ -130,12 +130,12 @@ class Annotations(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.annotations.clear()
-        annotations_count, = struct.unpack(">H", buffer.read(2))
+        annotations_count, = unpack_H(buffer.read(2))
         for index in range(annotations_count):
             self.annotations.append(Annotations.Annotation.read(class_file, buffer, fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.annotations)))
+        buffer.write(pack_H(len(self.annotations)))
         for annotation in self.annotations:
             annotation.write(class_file, buffer)
 
@@ -162,14 +162,14 @@ class Annotations(AttributeInfo):
             element.tag = buffer.read(1)
 
             if element.tag in b"BCDFIJSZsc":
-                value_index, = struct.unpack(">H", buffer.read(2))
-                element.value = class_file.constant_pool.get(value_index, fail_fast)
+                value_index, = unpack_H(buffer.read(2))
+                element.value = class_file.constant_pool.get(value_index, do_raise=fail_fast)
 
             elif element.tag == b"e":
-                type_name_index, const_name_index = struct.unpack(">HH", buffer.read(4))
+                type_name_index, const_name_index = unpack_HH(buffer.read(4))
                 element.value = (
-                    class_file.constant_pool.get(type_name_index, fail_fast),
-                    class_file.constant_pool.get(const_name_index, fail_fast),
+                    class_file.constant_pool.get(type_name_index, do_raise=fail_fast),
+                    class_file.constant_pool.get(const_name_index, do_raise=fail_fast),
                 )
 
             elif element.tag == b"@":
@@ -178,7 +178,7 @@ class Annotations(AttributeInfo):
             elif element.tag == b"[":
                 element.value = []
 
-                values_count, = struct.unpack(">H", buffer.read(2))
+                values_count, = unpack_H(buffer.read(2))
                 for index in range(values_count):
                     element.value.append(Annotations.Element.read(class_file, buffer, fail_fast))
 
@@ -190,7 +190,7 @@ class Annotations(AttributeInfo):
         def __init__(
                 self,
                 tag: bytes,
-                value: Union[Constant, Tuple[UTF8, UTF8], "Annotations.Annotation", List["Annotations.Element"]],
+                value: Union[ConstantInfo, Tuple[UTF8, UTF8], "Annotations.Annotation", List["Annotations.Element"]],
         ) -> None:
             """
             :param tag: The tag that represents the type of value this element holds.
@@ -213,18 +213,18 @@ class Annotations(AttributeInfo):
 
             buffer.write(self.tag)
             if self.tag in b"BCDFIJSZsc":
-                buffer.write(struct.pack(">H", class_file.constant_pool.add(self.value)))
+                buffer.write(pack_H(class_file.constant_pool.add(self.value)))
 
             elif self.tag == b"e":
-                buffer.write(struct.pack(
-                    ">HH", class_file.constant_pool.add(self.value[0]), class_file.constant_pool.add(self.value[1]),
+                buffer.write(pack_HH(
+                    class_file.constant_pool.add(self.value[0]), class_file.constant_pool.add(self.value[1]),
                 ))
 
             elif self.tag == b"@":
                 self.value.write(class_file, buffer)
 
             elif self.tag == b"[":
-                buffer.write(struct.pack(">H", len(self.value)))
+                buffer.write(pack_H(len(self.value)))
                 for value in self.value:
                     value.write(class_file, buffer)
 
@@ -248,20 +248,20 @@ class Annotations(AttributeInfo):
 
             annotation = cls.__new__(cls)
 
-            descriptor_index, elements_count = struct.unpack(">HH", buffer.read(4))
-            annotation.descriptor = class_file.constant_pool.get(descriptor_index, fail_fast)
+            descriptor_index, elements_count = unpack_HH(buffer.read(4))
+            annotation.descriptor = class_file.constant_pool.get(descriptor_index, do_raise=fail_fast)
 
             annotation.elements = []
             for index in range(elements_count):
-                name_index, = struct.unpack(">H", buffer.read(2))
-                name = class_file.constant_pool.get(name_index, fail_fast)
+                name_index, = unpack_H(buffer.read(2))
+                name = class_file.constant_pool.get(name_index, do_raise=fail_fast)
 
                 annotation.elements.append((name, Annotations.Element.read(class_file, buffer, fail_fast)))
 
             return annotation
 
         def __init__(
-                self, descriptor: UTF8, elements: Union[Iterable[Tuple[UTF8, "Annotations.Element"]], None] = None,
+                self, descriptor: UTF8, elements: Optional[Iterable[Tuple[UTF8, "Annotations.Element"]]] = None,
         ) -> None:
             """
             :param descriptor: The type descriptor for this element.
@@ -285,9 +285,9 @@ class Annotations(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(">HH", class_file.constant_pool.add(self.descriptor), len(self.elements)))
+            buffer.write(pack_HH(class_file.constant_pool.add(self.descriptor), len(self.elements)))
             for name, element in self.elements:
-                buffer.write(struct.pack(">H", class_file.constant_pool.add(name)))
+                buffer.write(pack_H(class_file.constant_pool.add(name)))
                 element.write(class_file, buffer)
 
 
@@ -301,7 +301,7 @@ class RuntimeVisibleAnnotations(Annotations):
     def __init__(
             self,
             parent: Union[ClassFile, FieldInfo, MethodInfo],
-            annotations: Union[Iterable["RuntimeVisibleAnnotations.Annotation"], None] = None,
+            annotations: Optional[Iterable["RuntimeVisibleAnnotations.Annotation"]] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.
@@ -320,7 +320,7 @@ class RuntimeInvisibleAnnotations(Annotations):
     def __init__(
             self,
             parent: Union[ClassFile, FieldInfo, MethodInfo],
-            annotations: Union[Iterable["RuntimeInvisibleAnnotations.Annotation"], None] = None,
+            annotations: Optional[Iterable["RuntimeInvisibleAnnotations.Annotation"]] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.

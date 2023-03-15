@@ -9,16 +9,21 @@ Attributes that are only found in method info structures.
 """
 
 import logging
-import struct
+import typing
 from io import BytesIO
-from typing import Dict, IO, Iterable, List, Tuple, Union
+from typing import Dict, IO, Iterable, List, Optional, Tuple
 
 from . import AttributeInfo
 from .code import StackMapTable
 from .. import attributes, ClassFile
+from .._instructions import *
+from .._struct import *
 from ..constants import Class
-from ..members import MethodInfo
 from ...version import Version
+
+if typing.TYPE_CHECKING:
+    from ..members import MethodInfo
+    from ...instructions.jvm import Instruction
 
 logger = logging.getLogger("kirjava.classfile.attributes.method")
 
@@ -32,12 +37,12 @@ class Code(AttributeInfo):
 
     name_ = "Code"
     since = Version(45, 0)
-    locations = (MethodInfo,)
+    locations = ("MethodInfo",)
 
     _LEGACY_VERSION = Version(45, 3)
 
     @property
-    def stackmap_table(self) -> Union["StackMapTable", None]:
+    def stackmap_table(self) -> Optional["StackMapTable"]:
         """
         :return: The stackmap table in this code, or None if there isn't one.
         """
@@ -46,17 +51,17 @@ class Code(AttributeInfo):
         return stackmap_table
 
     @stackmap_table.setter
-    def stackmap_table(self, value: Union["StackMapTable", None]) -> None:
+    def stackmap_table(self, value: Optional["StackMapTable"]) -> None:
         """
         Sets the stackmap table attribute in this code.
         """
 
         if value is None:
-            del self.attributes[StackMapTable.name_]
+            self.attributes.pop(StackMapTable.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
-    def __init__(self, parent: MethodInfo, max_stack: int = 0, max_locals: int = 0) -> None:
+    def __init__(self, parent: "MethodInfo", max_stack: int = 0, max_locals: int = 0) -> None:
         """
         :param max_stack: The maximum stack depth the code will reach.
         :param max_locals: The maximum number of locals.
@@ -67,7 +72,7 @@ class Code(AttributeInfo):
         self.max_stack = max_stack
         self.max_locals = max_locals
 
-        self.instructions: Dict[int, Instruction] = {}
+        self.instructions: Dict[int, "Instruction"] = {}
         self.exception_table: List[Code.ExceptionHandler] = []
         self.attributes: Dict[str, Tuple[AttributeInfo, ...]] = {}
 
@@ -80,44 +85,44 @@ class Code(AttributeInfo):
         # Legacy code attribute for versions <= 45.2.
         # https://github.com/Storyyeller/Krakatau/blob/master/tests/decompiler/source/OldVersionTest.j
         if class_file.version < self._LEGACY_VERSION:
-            self.max_stack, self.max_locals, code_length = struct.unpack(">BBH", buffer.read(4))
+            self.max_stack, self.max_locals, code_length = unpack_BBH(buffer.read(4))
         else:
-            self.max_stack, self.max_locals, code_length = struct.unpack(">HHI", buffer.read(8))
+            self.max_stack, self.max_locals, code_length = unpack_HHI(buffer.read(8))
 
         self.instructions.clear()
         # Copy to a new BytesIO object as some instructions are byte-aligned to the start of the code
-        self.instructions.update(instructions.read_instructions(
+        self.instructions.update(read_instructions(
             class_file, BytesIO(buffer.read(code_length)), code_length,
         ))
 
         self.exception_table.clear()
-        exception_table_length, = struct.unpack(">H", buffer.read(2))
+        exception_table_length, = unpack_H(buffer.read(2))
         for index in range(exception_table_length):
             self.exception_table.append(Code.ExceptionHandler.read(class_file, buffer))
 
         self.attributes.clear()
-        attributes_count, = struct.unpack(">H", buffer.read(2))
+        attributes_count, = unpack_H(buffer.read(2))
         for index in range(attributes_count):
             attribute_info = attributes.read_attribute(self, class_file, buffer, fail_fast)
             self.attributes[attribute_info.name] = self.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         code = BytesIO()
-        instructions.write_instructions(self.instructions, class_file, code)
+        write_instructions(self.instructions, class_file, code)
         code = code.getvalue()
 
         if class_file.version < self._LEGACY_VERSION:
-            buffer.write(struct.pack(">BBH", self.max_stack, self.max_locals, len(code)))
+            buffer.write(pack_BBH(self.max_stack, self.max_locals, len(code)))
         else:
-            buffer.write(struct.pack(">HHI", self.max_stack, self.max_locals, len(code)))
+            buffer.write(pack_HHI(self.max_stack, self.max_locals, len(code)))
 
         buffer.write(code)
 
-        buffer.write(struct.pack(">H", len(self.exception_table)))
+        buffer.write(pack_H(len(self.exception_table)))
         for exception in self.exception_table:
             exception.write(class_file, buffer)
 
-        buffer.write(struct.pack(">H", len(self.attributes)))
+        buffer.write(pack_H(len(self.attributes)))
         for attributes_ in self.attributes.values():
             for attribute in attributes_:
                 attributes.write_attribute(attribute, class_file, buffer)
@@ -146,7 +151,7 @@ class Code(AttributeInfo):
                 handler.end_pc,
                 handler.handler_pc,
                 catch_type_index,
-            ) = struct.unpack(">HHHH", buffer.read(8))
+            ) = unpack_HHHH(buffer.read(8))
 
             handler.catch_type = class_file.constant_pool[catch_type_index] if catch_type_index else None
 
@@ -178,8 +183,7 @@ class Code(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(struct.pack(
-                ">HHHH",
+            buffer.write(pack_HHHH(
                 self.start_pc,
                 self.end_pc,
                 self.handler_pc,
@@ -196,9 +200,9 @@ class Exceptions(AttributeInfo):
 
     name_ = "Exceptions"
     since = Version(45, 0)
-    locations = (MethodInfo,)
+    locations = ("MethodInfo",)
 
-    def __init__(self, parent: MethodInfo, exceptions: Union[Iterable[Class], None] = None) -> None:
+    def __init__(self, parent: "MethodInfo", exceptions: Optional[Iterable[Class]] = None) -> None:
         super().__init__(parent, Exceptions.name_)
 
         self.exceptions: List[Class] = []
@@ -210,16 +214,12 @@ class Exceptions(AttributeInfo):
 
     def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.exceptions.clear()
-        exceptions_count, = struct.unpack(">H", buffer.read(2))
+        exceptions_count, = unpack_H(buffer.read(2))
         for index in range(exceptions_count):
-            class_index, = struct.unpack(">H", buffer.read(2))
-            self.exceptions.append(class_file.constant_pool.get(class_index, fail_fast))
+            class_index, = unpack_H(buffer.read(2))
+            self.exceptions.append(class_file.constant_pool.get(class_index, do_raise=fail_fast))
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
-        buffer.write(struct.pack(">H", len(self.exceptions)))
+        buffer.write(pack_H(len(self.exceptions)))
         for exception in self.exceptions:
-            buffer.write(struct.pack(">H", class_file.constant_pool.add(exception)))
-
-
-from .. import instructions
-from ..instructions import Instruction
+            buffer.write(pack_H(class_file.constant_pool.add(exception)))

@@ -12,11 +12,11 @@ import typing
 from typing import Any
 
 from ..abc import Source
-from ..classfile.attributes.method import Code
-from ..classfile.instructions import Instruction
 
 if typing.TYPE_CHECKING:
     from ._block import InsnBlock
+    from ..classfile.attributes.method import Code
+    from ..instructions.jvm import Instruction
 
 
 class InstructionAtOffset(Source):
@@ -26,7 +26,7 @@ class InstructionAtOffset(Source):
 
     __slots__ = ("code", "instruction", "offset")
 
-    def __init__(self, code: Code, instruction: Instruction, offset: int) -> None:
+    def __init__(self, code: "Code", instruction: "Instruction", offset: int) -> None:
         self.code = code
         self.instruction = instruction
         self.offset = offset
@@ -40,7 +40,10 @@ class InstructionAtOffset(Source):
         return "%s @ %i:%s" % (self.instruction, self.offset, self.code.parent)
 
     def __eq__(self, other: Any) -> bool:
-        return other.__class__ is InstructionAtOffset and other.code == self.code and other.offset == self.offset
+        return type(other) is InstructionAtOffset and other.code == self.code and other.offset == self.offset
+
+    def __hash__(self) -> int:
+        return hash((self.instruction.opcode, self.offset))
 
 
 class InstructionInBlock(Source):
@@ -50,7 +53,7 @@ class InstructionInBlock(Source):
 
     __slots__ = ("block", "instruction", "index")
 
-    def __init__(self, block: "InsnBlock", instruction: Instruction, index: int) -> None:
+    def __init__(self, block: "InsnBlock", instruction: "Instruction", index: int) -> None:
         self.block = block
         self.instruction = instruction
         self.index = index
@@ -64,4 +67,7 @@ class InstructionInBlock(Source):
         return "%s @ %i:%s" % (self.instruction, self.index, self.block)
 
     def __eq__(self, other: Any) -> bool:
-        return other.__class__ is InstructionInBlock and other.block == self.block and other.index == self.index
+        return type(other) is InstructionInBlock and other.block == self.block and other.index == self.index
+
+    def __hash__(self) -> int:
+        return hash((self.block.label, self.instruction.opcode, self.index))

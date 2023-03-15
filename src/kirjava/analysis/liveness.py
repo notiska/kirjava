@@ -10,13 +10,11 @@ Local variable liveness analysis.
 
 import itertools
 import typing
-from frozendict import frozendict, FrozenOrderedDict
 from typing import Dict, FrozenSet, Iterator, List, Set
 
-from ._edge import ExceptionEdge
-from .trace import Trace
-from .verifier import BasicTypeChecker
-from ..abc import Edge
+from ._edge import ExceptionEdge, InsnEdge
+from .trace import Frame, Trace
+from ..verifier import BasicTypeChecker
 
 if typing.TYPE_CHECKING:
     from ._block import InsnBlock
@@ -27,8 +25,6 @@ class Liveness:
     """
     Liveness analysis information.
     """
-
-    __slots__ = ("graph", "trace", "entries", "exits")
 
     @classmethod
     def from_graph(cls, graph: "InsnGraph") -> "Liveness":
@@ -51,15 +47,19 @@ class Liveness:
         :return: The computed liveness information.
         """
 
-        entries: Dict[InsnBlock, Set[int]] = {}
-        exits: Dict[InsnBlock, Set[int]] = {}
+        graph = trace.graph
+
+        entries: Dict["InsnBlock", Set[int]] = {}
+        exits:   Dict["InsnBlock", Set[int]] = {}
+
+        overwritten: Set[int] = set()
 
         for start in itertools.chain(trace.leaf_edges, trace.back_edges):
             live = entries.setdefault(start.to, set())
-            overwritten: Set[int] = set()
-            for *_, exit in trace.states[start.to].values():
-                for index, _, _, read in exit.local_accesses:
-                    if index in overwritten:
+            overwritten.clear()
+            for _, exit_constraint in trace.frames[start.to]:
+                for read, index, _ in reversed(exit_constraint.accesses):
+                    if index in live or index in overwritten:
                         continue
                     elif read:
                         live.add(index)
@@ -67,61 +67,59 @@ class Liveness:
                         overwritten.add(index)
                 break
 
-            to_visit: List[Iterator[Edge]] = [iter(trace.graph.in_edges(start.to))]
+            to_visit = [iter(graph._backward_edges[start.to])]
 
             while to_visit:
                 try:
-                    edge = next(to_visit[0])
+                    edge = next(to_visit[-1])
                     block = edge.from_
                     previous = edge.to
 
                 except StopIteration:
-                    to_visit.pop(0)
+                    # Optimisations: was pop(0) (BFS), this is much slower, so is now pop() (DFS), no difference to
+                    # functionality AFAIK.
+                    to_visit.pop()
                     continue
 
                 live = exits.setdefault(block, set())
                 live.update(entries.get(previous, ()))
 
-                before = entries.get(block, None)
+                before = entries.get(block)
                 if before is None:
                     entries[block] = set()
                 live = live.copy()
 
                 # Check if the block was visited, if not, we don't need to worry about the liveness for it
-                if block in trace.states:
-                    for *_, exit in trace.states[block].values():
-                        for index, _, _, read in reversed(exit.local_accesses):
+                if block in trace.frames:
+                    for _, exit_constraint in trace.frames[block]:
+                        for read, index, _ in reversed(exit_constraint.accesses):
                             if read:
                                 live.add(index)
                             elif index in live:
                                 live.remove(index)
                         break  # Local accesses do not vary in different states, so this only needs to be done once
+                        # FIXME: ^ not true, will not record non-overwritten entries
 
                 # Exception edges assume that the exception might have been thrown anywhere in the block, and
                 # therefore we also need to copy the liveness state from the handler's entry to the current block's
                 # entry.
 
-                if edge.__class__ is ExceptionEdge:
+                if isinstance(edge, ExceptionEdge):
                     live.update(entries.get(previous, ()))
 
                 live.update(entries[block])
                 if live != before and (before is None or len(live) > len(before)):
                     entries[block] = live
-                    to_visit.append(iter(trace.graph.in_edges(block)))
+                    to_visit.append(iter(graph._backward_edges[block]))
 
-        for block, live in entries.items():
-            entries[block] = frozenset(live)
-        for block, live in exits.items():
-            exits[block] = frozenset(live)
-
-        return cls(trace.graph, trace, frozendict(entries), frozendict(exits))
+        return cls(graph, trace, entries, exits)
 
     def __init__(
             self,
             graph: "InsnGraph",
             trace: Trace,
-            entries: FrozenOrderedDict["InsnBlock", FrozenSet[int]],
-            exits: FrozenOrderedDict["InsnBlock", FrozenSet[int]],
+            entries: Dict["InsnBlock", Set[int]],
+            exits: Dict["InsnBlock", Set[int]],
     ) -> None:
         self.graph = graph
         self.trace = trace

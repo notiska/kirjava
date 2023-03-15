@@ -41,21 +41,21 @@ class Version:
         :return: The version.
         """
 
-        if isinstance(version, tuple):
+        if type(version) is tuple:
             if len(version) != 2:
                 raise ValueError("Expected a 2-tuple for specifying major and minor version numbers.")
             return cls(*version)
 
-        elif isinstance(version, str):
+        elif type(version) is str:
             for major, name in cls.NAMES.items():
                 if version == name:
                     return cls(major, 0)
             raise ValueError("Unknown Java version %r." % version)
 
-        elif isinstance(version, float):
+        elif type(version) is float:
             return cls._normalise(version)
 
-        raise TypeError("Don't know how to convert %r into a version." % version.__class__)
+        raise TypeError("Don't know how to convert %r into a version." % type(version))
 
     @staticmethod
     def _normalise(version: float) -> "Version":
@@ -89,7 +89,7 @@ class Version:
     def __eq__(self, other: Any) -> bool:
         if other is self:
             return True
-        elif other.__class__ is Version:
+        elif type(other) is Version:
             return other.major == self.major and (self.major > 45 or other.minor == self.minor)
         elif isinstance(other, int):
             return other == self.major
@@ -102,7 +102,7 @@ class Version:
         return hash((self.major, self.minor))
 
     def __gt__(self, other: Any) -> bool:
-        if other.__class__ is Version:
+        if type(other) is Version:
             return self.major > other.major or (self.major == other.major and self.minor > other.minor)
         elif isinstance(other, int):
             return self.major > other
@@ -115,7 +115,7 @@ class Version:
         return self == other or self > other
 
     def __lt__(self, other: Any) -> bool:
-        if other.__class__ is Version:
+        if type(other) is Version:
             return self.major < other.major or (self.major == other.major and self.minor < other.minor)
         elif isinstance(other, int):
             return self.major < other

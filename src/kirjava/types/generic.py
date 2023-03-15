@@ -4,7 +4,7 @@
 Generic types.
 """
 
-from typing import Any, List, Union
+from typing import Any, List, Optional
 
 from . import TypeArgument, TypeBound, ReferenceType
 from .reference import ClassOrInterfaceType
@@ -21,7 +21,7 @@ class TypeParameter(TypeArgument):
             self,
             identifier: str,
             upper_bound: TypeBound = ClassOrInterfaceType("java/lang/Object"),
-            additional_bounds: Union[List[ClassOrInterfaceType], None] = None,
+            additional_bounds: Optional[List[ClassOrInterfaceType]] = None,
     ) -> None:
         """
         :param identifier: The name of the type variable.
@@ -47,7 +47,7 @@ class TypeParameter(TypeArgument):
         )
         
     def __eq__(self, other: Any) -> bool:
-        if other.__class__ is TypeParameter:
+        if type(other) is TypeParameter:
             return (
                 other.identifier == self.identifier and 
                 other.upper_bound == self.upper_bound and 
@@ -71,7 +71,7 @@ class Wildcard(TypeArgument):
     def __init__(
             self,
             upper_bound: ReferenceType = ClassOrInterfaceType("java/lang/Object"),
-            lower_bound: Union[ReferenceType, None] = None,
+            lower_bound: Optional[ReferenceType] = None,
     ) -> None:
         """
         :param upper_bound: The upper bound (? extends <bound>).
@@ -90,7 +90,7 @@ class Wildcard(TypeArgument):
         return "? extends %s" % self.upper_bound
 
     def __eq__(self, other: Any) -> bool:
-        return other.__class__ is Wildcard and other.upper_bound == self.upper_bound and other.lower_bound == self.lower_bound
+        return type(other) is Wildcard and other.upper_bound == self.upper_bound and other.lower_bound == self.lower_bound
 
     def __hash__(self) -> int:
         return hash((self.upper_bound, self.lower_bound))
