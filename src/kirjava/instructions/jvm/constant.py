@@ -14,7 +14,7 @@ from ...analysis.ir.variable import Scope
 from ...analysis.trace import Entry, Frame, FrameDelta
 from ...classfile import ClassFile
 from ...classfile.constants import ConstantInfo, Integer
-from ...verifier import Error, ErrorType
+from ...verifier import Error
 
 
 class ConstantInstruction(Instruction):
@@ -50,11 +50,11 @@ class ConstantInstruction(Instruction):
             frame.push(self.constant.get_type(), self.constant)
         except TypeError:
             frame.verifier.report(Error(
-                ErrorType.INVALID_CONSTANT, frame.source, "can't convert constant %s to Java type" % self.constant,
+                Error.Type.INVALID_CONSTANT, frame.source, "can't convert constant %s to Java type" % self.constant,
             ))
             frame.push(types.top_t)  # Placeholder, doesn't account for wide types tho :(
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         associations[delta.pushes[0]] = ConstantValue(self.constant)
 
 
@@ -63,10 +63,12 @@ class FixedConstantInstruction(ConstantInstruction):
     Pushes the same constant to the stack every time.
     """
 
+    __slots__ = ()
+
     constant: ConstantInfo = ...
 
     def __init__(self) -> None:
-        super().__init__(self.__class__.constant)
+        ...  # super().__init__(self.__class__.constant)
 
     def __str__(self) -> str:
         return self.mnemonic
@@ -89,6 +91,8 @@ class IntegerConstantInstruction(ConstantInstruction):
     Pushes one of the operands (as an integer) to the stack.
     """
 
+    __slots__ = ("_value",)
+
     def __init__(self, constant: Integer) -> None:
         super().__init__(constant)
 
@@ -105,6 +109,8 @@ class LoadConstantInstruction(ConstantInstruction):
     """
     Loads a constant from the constant pool.
     """
+
+    __slots__ = ("_index",)
 
     category: int = ...
 
@@ -124,7 +130,7 @@ class LoadConstantInstruction(ConstantInstruction):
             frame.push(type_, self.constant)
         except TypeError:
             frame.verifier.report(Error(
-                ErrorType.INVALID_CONSTANT, frame.source, "can't convert constant %s to Java type" % self.constant,
+                Error.Type.INVALID_CONSTANT, frame.source, "can't convert constant %s to Java type" % self.constant,
             ))
             frame.push(types.top_t)  # Placeholder, doesn't account for wide types tho :(
 

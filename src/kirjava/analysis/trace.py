@@ -1,54 +1,61 @@
-# cython: language=c
-# cython: language_level=3
+#!/usr/bin/env python3
 
 __all__ = (
     "Entry", "Frame", "FrameDelta", "Trace",
 )
 
-from typing import Any, Dict, FrozenSet, List, Set, Tuple, Union
+import typing
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
+from ._edge import ExceptionEdge, InsnEdge, JsrFallthroughEdge, JsrJumpEdge, RetEdge
+from .source import InstructionInBlock
 from .. import types
+from ..abc.constant import Constant
 from ..abc.method import Method
-from ..analysis.graph cimport ExceptionEdge, InsnBlock, InsnEdge, JsrFallthroughEdge, JsrJumpEdge, RetEdge
-from ..analysis.source import InstructionInBlock
+from ..abc.source import Source
 from ..types import BaseType, ReferenceType
 from ..types.reference import ArrayType
 from ..types.verification import This, UninitializedThis
-from ..verifier import BasicTypeChecker, ErrorType
-from ..verifier._verifier cimport Error, Verifier
+from ..verifier import BasicTypeChecker, Error, Verifier
+
+if typing.TYPE_CHECKING:
+    from ._block import InsnBlock
+    from .graph import InsnGraph
 
 
-cdef class Entry:
+class Entry:
     """
     A stack/locals entry.
     """
 
-    property null:
+    __slots__ = ("source", "type", "parent", "value", "_hash")
+
+    @property
+    def null(self) -> bool:
         """
         Is this entry null?
         """
 
-        def __get__(self) -> bool:
-            return self.type == types.null_t or self.value == types.null_t
+        return self.type == types.null_t or self.value == types.null_t
 
-    property nullable:
+    @property 
+    def nullable(self) -> bool:
         """
         Is this entry null at any point?
         """
 
-        def __get__(self) -> bool:
-            if self.null:
-                return True
-            # Don't need to account for This, Uninitialised or UninitialisedThis types because those can't be null. (They
-            # don't inherit from ReferenceType).
-            return isinstance(self.type, ReferenceType) and (self.parent is None or self.parent.nullable)
+        if self.null:
+            return True
+        # Don't need to account for This, Uninitialised or UninitialisedThis types because those can't be null. (They
+        # don't inherit from ReferenceType).
+        return isinstance(self.type, ReferenceType) and (self.parent is None or self.parent.nullable)
 
     def __init__(
             self,
-            source: Union[Source, None],
+            source: Optional[Source],
             type_: BaseType,
-            parent: Union[Entry, None] = None,
-            value: Union[Constant, None] = None,
+            parent: Optional["Entry"] = None,
+            value: Optional[Constant] = None,
     ) -> None:
         """
         :param source: The source that creates this entry.
@@ -59,6 +66,8 @@ cdef class Entry:
         self.type = type_
         self.parent = parent
         self.value = value
+
+        self._hash = hash((self.type, self.parent, self.value))
 
     def __repr__(self) -> str:
         return "<Entry(source=%r, type=%s, value=%r) at %x>" % (self.source, self.type, self.value, id(self))
@@ -72,9 +81,9 @@ cdef class Entry:
         return other is self or (self.parent is not None and other == self.parent)
 
     def __hash__(self) -> int:
-        return hash((self.type, self.parent, self.value))
+        return self._hash
 
-    def cast(self, source: Union[Source, None], type_: BaseType) -> Entry:
+    def cast(self, source: Optional[Source], type_: BaseType) -> "Entry":
         """
         Casts this entry down to another type.
         """
@@ -82,22 +91,31 @@ cdef class Entry:
         return Entry(source, type_, parent=self, value=self.value)
 
 
-cdef class Frame:
+class Frame:
     """
     A stack frame. Contains the stack and locals.
     """
 
+    __slots__ = (
+        "verifier", "_constants",
+        "_delta", "_source", "_pops", "_pushes", "_swaps", "_dups", "_overwrites",
+        "top",
+        "stack", "locals", "accesses", "consumed",
+        "max_stack", "max_locals",
+    )
+
     @classmethod
-    def initial(cls, method: Method, verifier: Union[Verifier, None] = None) -> Frame:
+    def initial(cls, method: Method, verifier: Optional[Verifier] = None, constants: bool = True) -> "Frame":
         """
         Creates the initial (bootstrap) frame for a method.
         This is done by populating the locals with the parameters and a this pointer.
 
         :param method: The method to create the initial frame for.
         :param verifier: The verifier to use.
+        :param constants: Should constant values be tracked?
         """
 
-        frame = cls(verifier)
+        frame = cls(verifier, constants=constants)
 
         if not method.is_static:
             this_class = method.class_.get_type()
@@ -112,20 +130,22 @@ cdef class Frame:
 
         return frame
 
-    property source:
+    @property
+    def source(self) -> Optional[Source]:
         """
         The current source creating the delta.
         """
 
-        def __get__(self) -> Union[Source, None]:
-            return self._source
+        return self._source
 
-    def __init__(self, verifier: Verifier) -> None:
+    def __init__(self, verifier: Verifier, constants: bool = True) -> None:
         """
         :param verifier: The verifier to use when performing operations on the stack or locals.
+        :param constants: Should constant values be tracked?
         """
 
         self.verifier = verifier
+        self._constants = constants
 
         self._delta = False
         self._source = None
@@ -152,7 +172,7 @@ cdef class Frame:
             self.max_stack, self.max_locals, id(self),
         )
 
-    cdef bint _check_type(self, object expect, Entry entry, bint allow_return_address = False):
+    def _check_type(self, expect: BaseType, entry: Entry, allow_return_address: bool = False) -> bool:
         """
         Checks that the provided entry matches the provided type expectation.
         """
@@ -172,7 +192,7 @@ cdef class Frame:
         elif expect is ArrayType:
             if not self.verifier.checker.check_array(entry.type):
                 self.verifier.report(Error(  # FIXME
-                    ErrorType.INVALID_TYPE, self._source,
+                    Error.Type.INVALID_TYPE, self._source,
                     "expected array type", "got %s (via %s)" % (entry.type, entry.source),
                 ))
             # Always return true as otherwise we'll attempt to merge the ArrayType class with the entry type, which
@@ -186,14 +206,14 @@ cdef class Frame:
 
         return False
 
-    def copy(self, deep: bool = False) -> Frame:
+    def copy(self, deep: bool = False) -> "Frame":
         """
         Creates a copy of this frame as it currently is.
 
         :param deep: Copies more information such as the local accesses and consumed entries.
         """
 
-        cdef Frame frame = Frame(self.verifier)
+        frame = Frame(self.verifier, constants=self._constants)
 
         frame.stack.extend(self.stack)
         frame.locals.update(self.locals)
@@ -209,7 +229,7 @@ cdef class Frame:
 
     # ------------------------------ Delta computation ------------------------------ #
 
-    def start(self, source: Union[Source, None]) -> None:
+    def start(self, source: Optional[Source]) -> None:
         """
         Starts creating a frame delta from this frame, given the source.
         """
@@ -226,7 +246,7 @@ cdef class Frame:
         self._dups.clear()
         self._overwrites.clear()
 
-    def finish(self) -> FrameDelta:
+    def finish(self) -> "FrameDelta":
         """
         Finishes creating the frame delta and returns it.
         """
@@ -257,7 +277,7 @@ cdef class Frame:
         :param new: The type of the new entry.
         """
 
-        cdef Entry entry = Entry(old.source if self._source is None else self._source, new, parent=old)
+        entry = Entry(old.source if self._source is None else self._source, new, parent=old)
 
         for index, entry_ in enumerate(self.stack):
             if entry_ is old:
@@ -269,17 +289,16 @@ cdef class Frame:
 
     # ------------------------------ Stack operations ------------------------------ #
 
-    def push(self, entry_or_type: Union[Entry, BaseType], value: Union[Constant, None] = None) -> None:
+    def push(self, entry_or_type: Union[Entry, BaseType], value: Optional[Constant] = None) -> None:
         """
         :param entry_or_type: An entry to push or a type used to create an entry.
         :param value: The value of the entry (if a type is being pushed).
         """
 
-        cdef Entry entry
-        try:
-            entry = <Entry?>entry_or_type
-        except TypeError:
-            entry = Entry(self._source, entry_or_type, value=value)
+        if type(entry_or_type) is not Entry:
+            entry = Entry(self._source, entry_or_type, value=value if self._constants else None)
+        else:
+            entry = entry_or_type
 
         if self._delta:
             self._pushes.append(entry)
@@ -288,11 +307,11 @@ cdef class Frame:
         if entry.type.internal_size > 1:
             self.stack.append(self.top)
 
-        cdef int stack_size = len(self.stack)
+        stack_size = len(self.stack)
         if stack_size > self.max_stack:
             self.max_stack = stack_size
 
-    def pop(self, count: int = 1, *, tuple_: bool = False, expect: Union[BaseType, None] = types.top_t) -> Union[Tuple[Entry, ...], Entry]:
+    def pop(self, count: int = 1, *, tuple_: bool = False, expect: Optional[BaseType] = types.top_t) -> Union[Tuple[Entry, ...], Entry]:
         """
         :param count: The number of entries to pop off the stack.
         :param tuple_: Should we return the entries as a tuple, even if there is only one?
@@ -319,9 +338,8 @@ cdef class Frame:
                 self.verifier.report_stack_underflow(self._source, -1)
                 return self.top
 
-        cdef list entries = []
-        cdef int underflow = 0
-        cdef int index
+        entries = []
+        underflow = 0
 
         for index in range(count):
             try:
@@ -354,8 +372,6 @@ cdef class Frame:
 
         :param displace: How many entries to displace the duplicated value backwards by.
         """
-
-        cdef Entry entry
 
         if not displace:
             if self._delta:
@@ -412,7 +428,7 @@ cdef class Frame:
 
             self.stack.insert(-(1 + displace), entry)
 
-        cdef int stack_size = len(self.stack)
+        stack_size = len(self.stack)
         if stack_size > self.max_stack:
             self.max_stack = stack_size
 
@@ -423,10 +439,7 @@ cdef class Frame:
         :param displace: How many entries to displace the duplicated values back by.
         """
 
-        cdef int underflow = 0
-        cdef Entry entry
-        cdef Entry entry_a
-        cdef Entry entry_b
+        underflow = 0
 
         if not displace:
             if self._delta:
@@ -497,7 +510,7 @@ cdef class Frame:
             self.stack.insert(-(1 + displace * 2), entry_a)
             self.stack.insert(-(1 + displace * 2), entry_b)
 
-        cdef int stack_size = len(self.stack)
+        stack_size = len(self.stack)
         if stack_size > self.max_stack:
             self.max_stack = stack_size
 
@@ -534,14 +547,14 @@ cdef class Frame:
 
     # ------------------------------ Locals operations ------------------------------ #
 
-    def get(self, index: int, *, expect: Union[BaseType, None] = types.top_t) -> Entry:
+    def get(self, index: int, *, expect: Optional[BaseType] = types.top_t) -> Entry:
         """
         :param index: The local variable index to get the entry at.
         :param expect: The expected type of the local to check against. If a Top type is provided, no type checking is performed.
         :return: The entry at that index.
         """
 
-        cdef Entry entry = self.locals.get(index, None)
+        entry = self.locals.get(index, None)
 
         if entry is not None:
             if not self._check_type(expect, entry):
@@ -556,9 +569,9 @@ cdef class Frame:
             self,
             index: int,
             entry_or_type: Union[Entry, BaseType],
-            value: Union[Constant, None] = None,
+            value: Optional[Constant] = None,
             *,
-            expect: Union[BaseType, None] = types.top_t,
+            expect: Optional[BaseType] = types.top_t,
     ) -> None:
         """
         :param index: The local variable index to set.
@@ -567,13 +580,12 @@ cdef class Frame:
         :param expect: The type expectation of the entry. If a Top type is provided, no type checking is performed.
         """
 
-        cdef Entry entry
-        try:
-            entry = <Entry?>entry_or_type
-        except TypeError:
-            entry = Entry(self._source, entry_or_type, value=value)
+        if type(entry_or_type) is not Entry:
+            entry = Entry(self._source, entry_or_type, value=value if self._constants else None)
+        else:
+            entry = entry_or_type
 
-        cdef Entry local = self.locals.get(index, None)
+        local = self.locals.get(index, None)
         if local == entry:
             return  # Nothing to do as the value is already set to this one
 
@@ -594,14 +606,16 @@ cdef class Frame:
             self.max_locals = index
 
 
-cdef class FrameDelta:
+class FrameDelta:
     """
     The difference between two frames.
     """
 
+    __slots__ = ("source", "pops", "pushes", "swaps", "dups", "overwrites", "_hash")
+
     def __init__(
             self,
-            source: Union[Source, None],
+            source: Optional[Source],
             pops: Tuple[Entry, ...],
             pushes: Tuple[Entry, ...],
             swaps: Tuple[int, ...],
@@ -660,11 +674,11 @@ cdef class FrameDelta:
     def __eq__(self, other: Any) -> bool:
         return (
             isinstance(other, FrameDelta) and
-            (<FrameDelta>other).pops == self.pops and
-            (<FrameDelta>other).pushes == self.pushes and
-            (<FrameDelta>other).swaps == self.swaps and
-            (<FrameDelta>other).dups == self.dups and
-            (<FrameDelta>other).overwrites == self.overwrites
+            other.pops == self.pops and
+            other.pushes == self.pushes and
+            other.swaps == self.swaps and
+            other.dups == self.dups and
+            other.overwrites == self.overwrites
         )
 
     def __hash__(self) -> int:
@@ -673,30 +687,32 @@ cdef class FrameDelta:
 
 # ------------------------------ Trace computation ------------------------------ #
 
-cdef inline RetEdge _resolve_opaque_edge(InsnGraph graph, Verifier verifier, dict subroutines, InsnEdge edge, Frame frame):
+def _resolve_opaque_edge(
+        graph: "InsnGraph", verifier: Verifier, subroutines: Dict[JsrJumpEdge, Set[RetEdge]], edge: InsnEdge, frame: Frame,
+) -> RetEdge:
     """
     Resolves an opaque edge (which are just ret edges).
     """
 
     if not isinstance(edge, RetEdge):
-        verifier.report(Error(ErrorType.INVALID_EDGE, edge, "unknown opaque edge type"))
+        verifier.report(Error(Error.Type.INVALID_EDGE, edge, "unknown opaque edge type"))
         return None
 
     return_address = frame.locals.get(edge.instruction.index, None)
     if return_address is None:
-        verifier.report(Error(ErrorType.INVALID_EDGE, edge, "no return address at local index %i" % edge.instruction.index))
+        verifier.report(Error(Error.Type.INVALID_EDGE, edge, "no return address at local index %i" % edge.instruction.index))
         return None
     # Even if we have no type checker, there really is nothing we can do if we have not been given a return address.
     elif return_address.type != types.return_address_t:
         verifier.report_invalid_type(edge, types.return_address_t, return_address.type, return_address.source)
         return None
 
-    cdef bint multiple_edges = False
+    multiple_edges = False
 
-    cdef JsrJumpEdge jsr_jump_edge = None
-    cdef JsrFallthroughEdge jsr_fallthrough_edge = None
+    jsr_jump_edge: Optional[JsrJumpEdge] = None
+    jsr_fallthrough_edge: Optional[JsrFallthroughEdge] = None
 
-    for edge_ in <set>graph._forward_edges[return_address.source.from_]:
+    for edge_ in graph._forward_edges[return_address.source.from_]:
         if isinstance(edge_, JsrJumpEdge):
             if not multiple_edges and jsr_jump_edge is not None:
                 multiple_edges = True
@@ -707,12 +723,12 @@ cdef inline RetEdge _resolve_opaque_edge(InsnGraph graph, Verifier verifier, dic
             jsr_fallthrough_edge = edge_
 
     if multiple_edges:  # TODO: Handling?
-        verifier.report(Error(ErrorType.INVALID_BLOCK, return_address.source.from_, "multiple jsr edges on block"))
+        verifier.report(Error(Error.Type.INVALID_BLOCK, return_address.source.from_, "multiple jsr edges on block"))
 
     if jsr_jump_edge is None:  # We can still continue to resolve the subroutine if we can't find the jump edge
-        verifier.report(Error(ErrorType.INVALID_BLOCK, return_address.source.from_, "no jsr jump edge on block"))
+        verifier.report(Error(Error.Type.INVALID_BLOCK, return_address.source.from_, "no jsr jump edge on block"))
     if jsr_fallthrough_edge is None:
-        verifier.report(Error(ErrorType.INVALID_BLOCK, return_address.source.from_, "no jsr fallthrough edge on block"))
+        verifier.report(Error(Error.Type.INVALID_BLOCK, return_address.source.from_, "no jsr fallthrough edge on block"))
         return None  # Cannot resolve as we don't know where to jump back to
 
     # A sidenote on subroutines: we can also handle multi-exit subroutines with this, even though they are not allowed
@@ -720,43 +736,37 @@ cdef inline RetEdge _resolve_opaque_edge(InsnGraph graph, Verifier verifier, dic
     # therefore create it).
 
     edge = RetEdge(edge.from_, jsr_fallthrough_edge.to, edge.instruction)
-    (<set>subroutines.setdefault(jsr_jump_edge, set())).add(edge)
+    subroutines.setdefault(jsr_jump_edge, set()).add(edge)
     return edge
 
 
-cdef inline bint _setup_edge_trace(Verifier verifier, InsnEdge edge, Frame frame, list constraints) except *:
+def _setup_edge_trace(verifier: Verifier, edge: InsnEdge, frame: Frame, constraints: List[Tuple[Frame, Frame]]) -> bool:
     """
     Sets up the frame for the given edge (mainly for exception edges) and also verifies that we have not visited it with
     the same constraints beforehand.
     """
 
-    if isinstance(edge, JsrFallthroughEdge):
+    if type(edge) is JsrFallthroughEdge:
         return False  # Skip this edge as we only "visit" it when returning from a subroutine
 
     # The JVM spec mandates that when jumping to an exception handler, the locals must be the same as they were and the
     # stack must contain only one item on it, that being the exception that was thrown.
-    if isinstance(edge, ExceptionEdge):
+    if type(edge) is ExceptionEdge:
         frame.stack.clear()
-        if not verifier.checker.check_merge(types.throwable_t, (<ExceptionEdge>edge).throwable):
-            verifier.report_invalid_type(edge, types.throwable_t, (<ExceptionEdge>edge).throwable, None)
+        if not verifier.checker.check_merge(types.throwable_t, edge.throwable):
+            verifier.report_invalid_type(edge, types.throwable_t, edge.throwable, None)
 
         # "Push" the exception to the stack (before checking if we can merge it with java/lang/Throwable).
-        merged = verifier.checker.merge(types.throwable_t, (<ExceptionEdge>edge).throwable, fallback=types.throwable_t)
+        merged = verifier.checker.merge(types.throwable_t, edge.throwable, fallback=types.throwable_t)
         frame.stack.append(Entry(edge, merged))
 
     # Now attempt to find any existing constraint that the current frame conforms to. If we can find one, this means
     # that we already know what happens and skip computing the states for this block.
 
-    cdef bint skip = False
+    skip = False
 
-    cdef Frame entry_constraint
-    cdef Frame exit_constraint
-
-    cdef Entry entry_a
-    cdef Entry entry_b
-
-    cdef set live = set()  # Locals that are live in the final state
-    cdef set overwritten = set()  # Locals that were overwritten
+    live: Set[int] = set()  # Locals that are live in the final state
+    overwritten: Set[int] = set()  # Locals that were overwritten
 
     for entry_constraint, exit_constraint in constraints:
         if len(entry_constraint.stack) != len(frame.stack):  # Definitely can't merge, so skip
@@ -814,7 +824,7 @@ cdef inline bint _setup_edge_trace(Verifier verifier, InsnEdge edge, Frame frame
     return True  # If the loop completes, we can't find any valid constraints, so we haven't computed the states for this frame yet
 
 
-cdef class Trace:
+class Trace:
     """
     A computed trace.
     """
@@ -824,17 +834,19 @@ cdef class Trace:
     @classmethod
     def from_graph(
             cls,
-            graph: InsnGraph,
-            verifier: Union[Verifier, None] = None,
+            graph: "InsnGraph",
+            verifier: Optional[Verifier] = None,
             *,
+            compute_constants: bool = True,
             compute_deltas: bool = True,
             compute_sources: bool = True,
-    ) -> Trace:
+    ) -> "Trace":
         """
         Computes a trace from the provided graph.
 
         :param graph: The instruction graph to use.
         :param verifier: The verifier to use.
+        :param compute_constants: Should we compute constant values?
         :param compute_deltas: Should we compute frame deltas? It's faster not to, but you don't get as much information.
         :param compute_sources: Should we compute the sources of entries? It's also faster not to.
         :return: The computed trace.
@@ -843,40 +855,28 @@ cdef class Trace:
         if verifier is None:
             verifier = Verifier(BasicTypeChecker())  # We only really need a basic type checker for this
 
-        cdef bint skip_source = not compute_sources
-
-        cdef dict states = {}
-        cdef dict deltas = {}
+        states = {}
+        deltas = {}
 
         # It's also useful to record leaf edges and back edges.
-        cdef set leaf_edges = set()
-        cdef set back_edges = set()
-        cdef dict subroutines = {}  # (And we'll also compute the entry and exit points of subroutines in the graph.)
+        leaf_edges = set()
+        back_edges = set()
+        subroutines = {}  # (And we'll also compute the entry and exit points of subroutines in the graph.)
 
-        cdef int max_stack = 0
-        cdef int max_locals = 0
+        max_stack = 0
+        max_locals = 0
 
         # We'll use a (somewhat modified) iterative DFS to compute states, but we'll also keep track of the edges and
         # repeat state computation if we find a path with different constraints.
-        cdef list traversed = []
-        cdef list to_visit = [(False, None, Frame.initial(graph.method, verifier), [InsnEdge(None, graph.entry_block)])]
-
-        cdef InsnEdge root
-        cdef Frame frame
-        cdef list edges  # TODO: Is an iterator faster/better?
-
-        # Variable declarations for inside the loop.
-        cdef InsnEdge edge
-        cdef InsnBlock block
-
-        cdef list constraints
-        cdef list deltas_  # Good naming, I know /s
-        cdef InsnEdge edge_
+        traversed = []
+        to_visit = [
+            (False, None, Frame.initial(graph.method, verifier, compute_constants), [InsnEdge(None, graph.entry_block)]),
+        ]
 
         while True:
             back_edge, root, frame, edges = to_visit[-1]
             if not edges:
-                if root is not None and not <set>graph._forward_edges.get(root.to, False):
+                if root is not None and not graph._forward_edges.get(root.to, False):
                     leaf_edges.add(root)
                 if not traversed:  # Nothing more to do
                     break
@@ -890,7 +890,7 @@ cdef class Trace:
 
             if block is None:
                 if not edge in graph._opaque_edges:
-                    verifier.report(Error(ErrorType.INVALID_EDGE, edge, "unknown opaque edge"))
+                    verifier.report(Error(Error.Type.INVALID_EDGE, edge, "unknown opaque edge"))
                     continue
 
                 edge = _resolve_opaque_edge(graph, verifier, subroutines, edge, frame)
@@ -914,30 +914,30 @@ cdef class Trace:
                 deltas_ = []
 
                 for index, instruction in enumerate(block._instructions):
-                    frame.start(None if skip_source else InstructionInBlock(block, instruction, index))
+                    frame.start(None if not compute_sources else InstructionInBlock(block, instruction, index))
                     instruction.trace(frame)
                     deltas_.append(frame.finish())
 
-                for edge_ in <set>graph._forward_edges[block]:
+                for edge_ in graph._forward_edges[block]:
                     if edge_.instruction is None:  # Nothing to trace
                         continue
-                    frame.start(None if skip_source else edge_)
+                    frame.start(None if not compute_sources else edge_)
                     edge_.instruction.trace(frame)
                     deltas_.append(frame.finish())
                     break  # Anymore instructions in edges is undefined behaviour, as it isn't possible
                     # TODO: ^^ report error
 
-                (<list>deltas.setdefault(block, [])).append(deltas_)
+                deltas.setdefault(block, []).append(deltas_)
 
             else:
                 for index, instruction in enumerate(block._instructions):
-                    frame.start(None if skip_source else InstructionInBlock(block, instruction, index))
+                    frame.start(None if not compute_sources else InstructionInBlock(block, instruction, index))
                     instruction.trace(frame)
 
-                for edge_ in <set>graph._forward_edges[block]:
+                for edge_ in graph._forward_edges[block]:
                     if edge_.instruction is None:  # Nothing to trace
                         continue
-                    frame.start(None if skip_source else edge_)
+                    frame.start(None if not compute_sources else edge_)
                     edge_.instruction.trace(frame)
                     break
 
@@ -956,9 +956,9 @@ cdef class Trace:
 
     def __init__(
             self,
-            graph: InsnGraph,
-            frames: Dict[InsnBlock, List[Tuple[Frame, Frame]]],
-            deltas: Dict[InsnBlock, List[List[FrameDelta]]],
+            graph: "InsnGraph",
+            frames: Dict["InsnBlock", List[Tuple[Frame, Frame]]],
+            deltas: Dict["InsnBlock", List[List[FrameDelta]]],
             leaf_edges: Set[InsnEdge],
             back_edges: set[InsnEdge],
             subroutines: Dict[JsrJumpEdge, Set[RetEdge]],

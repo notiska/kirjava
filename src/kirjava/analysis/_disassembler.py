@@ -1,27 +1,41 @@
+#!/usr/bin/env python3
+
+__all__ = (
+    "_find_targets_and_bounds",
+    "_create_blocks_and_edges",
+)
+
 """
 Functions that make up Kirjava's disassembler.
 Similarly to the assembler: kept in a separate file because graph.py was previously 1500+ lines.
 """
 
-import itertools
 import logging
+import typing
+from typing import Dict, Set, Tuple
 
+from ._block import InsnBlock
+from ._edge import *
 from ..instructions import jvm as instructions
 from ..instructions.jvm import ConditionalJumpInstruction, JsrInstruction, JumpInstruction, ReturnInstruction
 
-_disassembler_logger = logging.getLogger("kirjava.analysis._disassembler")
+if typing.TYPE_CHECKING:
+    from .graph import InsnGraph
+    from ..classfile.attributes.method import Code
+
+logger = logging.getLogger("kirjava.analysis._disassembler")
 
 
-cdef inline tuple _find_targets_and_bounds(object code):  # -> Tuple[Set[int], Set[int], Set[int]]:
+def _find_targets_and_bounds(code: "Code") -> Tuple[Set[int], Set[int], Set[int]]:
     """
     Finds jump targets, exception handler targets and exception bounds.
     """
 
-    cdef set jump_targets = set()
-    cdef set handler_targets = set()
-    cdef set exception_bounds = set()
+    jump_targets:     Set[int] = set()
+    handler_targets:  Set[int] = set()
+    exception_bounds: Set[int] = set()
 
-    for offset, instruction in (<dict>code.instructions).items():
+    for offset, instruction in code.instructions.items():
         if isinstance(instruction, JumpInstruction):  # Add jump offsets for jump instructions
             try:
                 if instruction.offset is not None:
@@ -39,7 +53,7 @@ cdef inline tuple _find_targets_and_bounds(object code):  # -> Tuple[Set[int], S
             for offset_ in instruction.offsets.values():
                 jump_targets.add(offset + offset_)
 
-    for handler in <list>code.exception_table:  # Add exception handler targets and bounds
+    for handler in code.exception_table:  # Add exception handler targets and bounds
         handler_targets.add(handler.handler_pc)
         exception_bounds.add(handler.start_pc)
         exception_bounds.add(handler.end_pc)
@@ -47,33 +61,24 @@ cdef inline tuple _find_targets_and_bounds(object code):  # -> Tuple[Set[int], S
     return jump_targets, handler_targets, exception_bounds
 
 
-cdef inline void _create_blocks_and_edges(
-        InsnGraph graph, object code, set jump_targets, set handler_targets, set exception_bounds,
-) except *:
+def _create_blocks_and_edges(
+        graph: "InsnGraph",
+        code: "Code",
+        jump_targets: Set[int],
+        handler_targets: Set[int],
+        exception_bounds: Set[int],
+) -> None:
     """
     Creates basic blocks and edges between them.
     """
 
-    cdef dict starting = {}
-    cdef dict forward_jumps = {}  # Forward reference jump targets
+    starting: Dict[int, InsnBlock] = {}
+    forward_jumps = {}  # Forward reference jump targets
 
     # Variables that'll be used later
-    cdef:
-        dict instructions_ = code.instructions
-
-        bint is_new_block = False
-        bint is_forward_offset
-        bint is_jsr
-
-        list edges
-
-        InsnEdge edge
-        InsnBlock previous
-        InsnBlock to
-
-        dict offsets  # For switch instructions
-
-        InsnBlock block = graph.entry_block
+    instructions_ = code.instructions
+    is_new_block = False
+    block = graph.entry_block
 
     for offset in sorted(instructions_):
         # Don't want to modify the original as some instructions are not immutable (due to their operands).
@@ -88,8 +93,8 @@ cdef inline void _create_blocks_and_edges(
                 previous = block
                 is_new_block = True
                 block = InsnBlock(previous.label + 1)
-                graph._add(block, check=False)
-                graph._connect(FallthroughEdge(previous, block), overwrite=False, check=False)
+                graph.add(block, check=False)
+                graph.connect(FallthroughEdge(previous, block), overwrite=False, check=False)
 
         if is_new_block:
             is_new_block = False
@@ -100,7 +105,7 @@ cdef inline void _create_blocks_and_edges(
                 edges = forward_jumps.pop(offset)
                 for edge in edges:
                     # Since this is a bound edge, remove any absolute jump offsets from it.
-                    if isinstance(edge, SwitchEdge):
+                    if type(edge) is SwitchEdge:
                         if edge.value is None:
                             edge.instruction.default = None
                         elif edge.instruction == instructions.tableswitch:
@@ -112,25 +117,21 @@ cdef inline void _create_blocks_and_edges(
                     elif isinstance(edge, JumpEdge):
                         edge.instruction.offset = None
 
-                    # Technically we aren't allowed to set the edge's to, but we can get away with it here as we
-                    # haven't yet added it to the graph, though generally, these should be immutable.
-                    edge.to = block
-                    graph._connect(edge, overwrite=False, check=False)
+                    graph.connect(edge.copy(to=block, deep=False), overwrite=False, check=False)
 
-        # Check if it's an instruction that breaks the control flow and create a new block (adding edges if
-        # necessary).
+        # Check if it's an instruction that breaks the control flow and create a new block (adding edges if necessary).
         if isinstance(instruction, JumpInstruction):
             is_jsr = isinstance(instruction, JsrInstruction)
 
             if instruction == instructions.ret:
-                graph._connect(RetEdge(block, None, instruction), overwrite=False, check=False)
+                graph.connect(RetEdge(block, None, instruction), overwrite=False, check=False)
 
             elif not is_jsr:  # jsr instructions are handled more specifically
                 to = starting.get(offset + instruction.offset, None)
                 edge = JumpEdge(block, to, instruction)
                 if to is not None:
                     instruction.offset = None
-                    graph._connect(edge, overwrite=False, check=False)
+                    graph.connect(edge, overwrite=False, check=False)
                 else:  # Mark the offset as a forward jump edge
                     edges = forward_jumps.setdefault(offset + instruction.offset, [])
                     edges.append(edge)
@@ -138,22 +139,22 @@ cdef inline void _create_blocks_and_edges(
             previous = block
             is_new_block = True
             block = InsnBlock(previous.label + 1)
-            graph._add(block, check=False)
+            graph.add(block, check=False)
 
             if isinstance(instruction, ConditionalJumpInstruction):
-                graph._connect(FallthroughEdge(previous, block), overwrite=False, check=False)
+                graph.connect(FallthroughEdge(previous, block), overwrite=False, check=False)
             elif is_jsr:
                 to = starting.get(offset + instruction.offset, None)
                 edge = JsrJumpEdge(previous, to, instruction)
                 if to is not None:
                     instruction.offset = None
-                    graph._connect(edge, overwrite=False, check=False)
+                    graph.connect(edge, overwrite=False, check=False)
                 else:
                     edges = forward_jumps.setdefault(offset + instruction.offset, [])
                     edges.append(edge)
 
-                block.inline_ = True  # We need to inline jsr fallthrough targets no matter what.
-                graph._connect(JsrFallthroughEdge(previous, block, instruction), overwrite=False, check=False)
+                block.inline = True  # We need to inline jsr fallthrough targets no matter what.
+                graph.connect(JsrFallthroughEdge(previous, block, instruction), overwrite=False, check=False)
 
         elif instruction == instructions.tableswitch:
             # Previously chained the default to the beginning of the offsets, this was slower so it's here now.
@@ -161,32 +162,32 @@ cdef inline void _create_blocks_and_edges(
             edge = SwitchEdge(block, to, instruction, None)
             if to is not None:
                 instruction.default = None
-                graph._connect(edge, overwrite=False, check=False)
+                graph.connect(edge, overwrite=False, check=False)
             else:
                 edges = forward_jumps.setdefault(offset + instruction.default, [])
                 edges.append(edge)
 
-            for index, offset_ in enumerate(<list>instruction.offsets.copy()):
+            for index, offset_ in enumerate(instruction.offsets.copy()):
                 to = starting.get(offset + offset_, None)
                 edge = SwitchEdge(block, to, instruction, index)
                 if to is not None:
                     # FIXME: Remove individual offsets, might have unbound switch edges
                     instruction.offsets.clear()
-                    graph._connect(edge, overwrite=False, check=False)
+                    graph.connect(edge, overwrite=False, check=False)
                 else:
                     edges = forward_jumps.setdefault(offset + offset_, [])
                     edges.append(edge)
 
             is_new_block = True
             block = InsnBlock(block.label + 1)
-            graph._add(block, check=False)
+            graph.add(block, check=False)
 
         elif instruction == instructions.lookupswitch:
             to = starting.get(offset + instruction.default)
             edge = SwitchEdge(block, to, instruction, None)
             if to is not None:
                 instruction.default = None
-                graph._connect(edge, overwrite=False, check=False)
+                graph.connect(edge, overwrite=False, check=False)
             else:
                 edges = forward_jumps.setdefault(offset + instruction.default, [])
                 edges.append(edge)
@@ -197,31 +198,30 @@ cdef inline void _create_blocks_and_edges(
                 edge = SwitchEdge(block, to, instruction, value)
                 if to is not None:
                     offsets.pop(value)
-                    graph._connect(edge, overwrite=False, check=False)
+                    graph.connect(edge, overwrite=False, check=False)
                 else:
                     edges = forward_jumps.setdefault(offset + offset_, [])
                     edges.append(edge)
 
             is_new_block = True
             block = InsnBlock(block.label + 1)
-            graph._add(block, check=False)
+            graph.add(block, check=False)
 
         elif isinstance(instruction, ReturnInstruction):
-            graph._connect(FallthroughEdge(block, graph.return_block, instruction), overwrite=False, check=False)
+            graph.connect(FallthroughEdge(block, graph.return_block, instruction), overwrite=False, check=False)
             is_new_block = True
             block = InsnBlock(block.label + 1)
-            graph._add(block, check=False)
+            graph.add(block, check=False)
 
         elif instruction == instructions.athrow:
-            graph._connect(FallthroughEdge(block, graph.rethrow_block, instruction), overwrite=False, check=False)
+            graph.connect(FallthroughEdge(block, graph.rethrow_block, instruction), overwrite=False, check=False)
             is_new_block = True
             block = InsnBlock(block.label + 1)
-            graph._add(block, check=False)
+            graph.add(block, check=False)
 
         else:  # Otherwise, we can add the instruction to the block
             block._instructions.append(instruction)
 
-    cdef int unbound
     if forward_jumps:
         unbound = 0
         for edges in forward_jumps.values():
@@ -241,23 +241,23 @@ cdef inline void _create_blocks_and_edges(
                 if block is not None:
                     # If the jump is conditional, this will already exist, but the _connect method should ensure that we
                     # don't get duplicates.
-                    graph._connect(FallthroughEdge(edge.from_, to), overwrite=True, check=True)
+                    graph.connect(FallthroughEdge(edge.from_, to), overwrite=True, check=True)
 
                 unbound += 1
         if unbound:
-            _disassembler_logger.debug(" - %i unbound forward jump(s)!" % unbound)
+            logger.debug(" - %i unbound forward jump(s)!" % unbound)
 
     # Remove the final block if it is empty and has no out edges. There might be cases where the final instruction in a
     # method is not one that breaks control flow, and due to that we want to check if we can remove it first.
     if not block._instructions and not graph._forward_edges[block]:  # and not graph._backward_edges[block]:
-        graph._remove(block, check=False)
+        graph.remove(block, check=False)
 
     # Add exception edges via the code's exception table.
 
     for start, block in starting.items():
-        for index, handler in enumerate(<list>code.exception_table):
+        for index, handler in enumerate(code.exception_table):
             if handler.start_pc <= start < handler.end_pc:
                 target = starting.get(handler.handler_pc, None)
                 if target is not None:
                     type_ = handler.catch_type.type if handler.catch_type is not None else None
-                    graph._connect(ExceptionEdge(block, target, index, type_), overwrite=False, check=False)
+                    graph.connect(ExceptionEdge(block, target, index, type_), overwrite=False, check=False)

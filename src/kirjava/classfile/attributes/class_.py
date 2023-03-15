@@ -9,7 +9,7 @@ __all__ = (
 Attributes found exclusively in the ClassFile structure.
 """
 
-from typing import Dict, IO, Iterable, List, Tuple, Union
+from typing import Dict, IO, Iterable, List, Optional, Tuple
 
 from . import AttributeInfo
 from .. import attributes, ClassFile
@@ -78,7 +78,7 @@ class BootstrapMethods(AttributeInfo):
 
             return bootstrap_method
 
-        def __init__(self, method_handle: MethodHandle, arguments: Union[Iterable[ConstantInfo], None] = None) -> None:
+        def __init__(self, method_handle: MethodHandle, arguments: Optional[Iterable[ConstantInfo]] = None) -> None:
             """
             :param method_handle: The method handle for this bootstrap method.
             :param arguments: The bootstrap arguments used to resolve the call site.
@@ -117,7 +117,7 @@ class NestHost(AttributeInfo):
     since = Version(55, 0)
     locations = (ClassFile,)
     
-    def __init__(self, parent: ClassFile, host_class: Union[Class, None] = None) -> None:
+    def __init__(self, parent: ClassFile, host_class: Optional[Class] = None) -> None:
         """
         :param host_class: The host class of the nest that this class/interface belongs to.
         """
@@ -148,7 +148,7 @@ class NestMembers(AttributeInfo):
     since = Version(55, 0)
     locations = (ClassFile,)
 
-    def __init__(self, parent: ClassFile, classes: Union[Iterable[Class], None] = None) -> None:
+    def __init__(self, parent: ClassFile, classes: Optional[Iterable[Class]] = None) -> None:
         """
         :param classes: The classes/interfaces that belong to the nest that this class hosts.
         """
@@ -186,7 +186,7 @@ class PermittedSubclasses(AttributeInfo):
     since = Version(61, 0)
     locations = (ClassFile,)
 
-    def __init__(self, parent: ClassFile, classes: Union[Iterable[Class], None] = None) -> None:
+    def __init__(self, parent: ClassFile, classes: Optional[Iterable[Class]] = None) -> None:
         """
         :param classes: The list of permitted subclasses.
         """
@@ -225,7 +225,7 @@ class InnerClasses(AttributeInfo):
     since = Version(45, 0)
     locations = (ClassFile,)
 
-    def __init__(self, parent: ClassFile, classes: Union[Iterable["InnerClasses.InnerClass"], None] = None) -> None:
+    def __init__(self, parent: ClassFile, classes: Optional[Iterable["InnerClasses.InnerClass"]] = None) -> None:
         """
         :param classes: Information about inner classes.
         """
@@ -474,7 +474,7 @@ class Record(AttributeInfo):
     since = Version(60, 0)
     locations = (ClassFile,)
 
-    def __init__(self, parent: ClassFile, components: Union[Iterable["Record.ComponentInfo"], None] = None) -> None:
+    def __init__(self, parent: ClassFile, components: Optional[Iterable["Record.ComponentInfo"]] = None) -> None:
         """
         :param components: The components of the record.
         """
@@ -572,7 +572,7 @@ class SourceFile(AttributeInfo):
     since = Version(45, 0)
     locations = (ClassFile,)
 
-    def __init__(self, parent: ClassFile, source_file: Union[UTF8, None] = None) -> None:
+    def __init__(self, parent: ClassFile, source_file: Optional[UTF8] = None) -> None:
         """
         :param source_file: The name of the source file that generated the class.
         """

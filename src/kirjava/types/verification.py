@@ -5,7 +5,7 @@ Verification types.
 """
 
 import typing
-from typing import Any, Union
+from typing import Any, Optional
 
 from . import BaseType, ReferenceType, VerificationType
 from ..abc import Constant
@@ -40,6 +40,9 @@ class Null(Constant, VerificationType):  # Yes, it's a constant too, cos compati
     Used to denote a null reference in Java.
     """
 
+    def __init__(self) -> None:
+        super().__init__(None)
+
     def __repr__(self) -> str:
         return "<Null() at %x>" % id(self)
 
@@ -67,7 +70,7 @@ class This(VerificationType):
 
     __slots__ = ("class_",)
 
-    def __init__(self, class_: Union["ClassOrInterfaceType", None] = None) -> None:
+    def __init__(self, class_: Optional["ClassOrInterfaceType"] = None) -> None:
         """
         :param class_: The this class reference, for easier access.
         """
@@ -99,7 +102,7 @@ class Uninitialized(VerificationType):
 
     __slots__ = ("offset", "class_")
 
-    def __init__(self, offset: int = -1, class_: Union["ClassOrInterfaceType", None] = None) -> None:
+    def __init__(self, offset: int = -1, class_: Optional["ClassOrInterfaceType"] = None) -> None:
         """
         :param offset: The bytecode offset to the new instruction that created this type.
         :param class_: The class that is uninitialised, if applicable, otherwise None.
@@ -143,7 +146,7 @@ class UninitializedThis(Uninitialized):
     Used to denote an uninitialized this verification type.
     """
 
-    def __init__(self, class_: Union["ClassOrInterfaceType", None] = None) -> None:
+    def __init__(self, class_: Optional["ClassOrInterfaceType"] = None) -> None:
         super().__init__(-1, class_)
 
     def __str__(self) -> str:

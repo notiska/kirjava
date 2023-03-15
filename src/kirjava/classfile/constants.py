@@ -1,12 +1,11 @@
-# cython: language=c
-# cython: language_level=3
+#!/usr/bin/env python3
 
 import logging
 import typing
-from typing import Any, Callable, Dict, IO, List, Tuple, Type, Union
+from typing import Any, Callable, Dict, IO, List, Optional, Tuple, Type, Union
 
 from ._struct import *
-from ..abc.constant cimport Constant
+from ..abc.constant import Constant
 from ..version import Version
 
 if typing.TYPE_CHECKING:
@@ -16,7 +15,7 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger("kirjava.classfile.constants")
 
 
-cdef class ConstantInfo(Constant):
+class ConstantInfo(Constant):
     """
     Represents a value in the constant pool.
     """
@@ -26,7 +25,7 @@ cdef class ConstantInfo(Constant):
     since = Version(45, 0)
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Union[ConstantInfo, Any]:
+    def read(cls, buffer: IO[bytes]) -> Union["ConstantInfo", Any]:
         """
         Reads this constant type from the provided buffer.
 
@@ -37,7 +36,7 @@ cdef class ConstantInfo(Constant):
         ...
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> Union[ConstantInfo, None]:
+    def dereference(cls, lookups: Dict[int, "ConstantInfo"], info: Any) -> Optional["ConstantInfo"]:
         """
         Dereferences this constant from the provided information.
 
@@ -59,19 +58,17 @@ cdef class ConstantInfo(Constant):
         ...
 
 
-cdef class Index(ConstantInfo):
+class Index(ConstantInfo):
     """
     A special type of constant that represents an invalid index in the constant pool.
     """
 
-    cdef readonly int index
-
-    property value:
-        def __get__(self) -> int:
-            return self.index
+    @property
+    def value(self) -> int:
+        return self.index
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Tuple[Callable[[Dict[int, Any], ...], Index], Tuple[Any, ...]]:
+    def read(cls, buffer: IO[bytes]) -> None:
         raise Exception("Tried to read index type.")
 
     @classmethod
@@ -83,13 +80,15 @@ cdef class Index(ConstantInfo):
         :param index: The constant pool index.
         """
 
+        super().__init__(index)
+
         self.index = index
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         ...
 
 
-cdef class UTF8(ConstantInfo):
+class UTF8(ConstantInfo):
     """
     An MUTF-8 constant.
     """
@@ -97,10 +96,8 @@ cdef class UTF8(ConstantInfo):
     tag = 1
     since = Version(45, 0)
 
-    cdef readonly str value
-
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> UTF8:
+    def read(cls, buffer: IO[bytes]) -> "UTF8":
         return cls(buffer.read(
             unpack_H(buffer.read(2))[0],
         ).replace(b"\xc0\x80", b"\x00").decode("utf-8", errors="ignore"))
@@ -114,7 +111,8 @@ cdef class UTF8(ConstantInfo):
         :param value: The decoded string value.
         """
 
-        self.value = value
+        # TODO: Would be nice to be able to use bytes instead of decoding it.
+        super().__init__(value)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         value = self.value.encode("utf-8").replace(b"\x00", b"\xc0\x80")
@@ -122,7 +120,7 @@ cdef class UTF8(ConstantInfo):
         buffer.write(value)
 
 
-cdef class Integer(ConstantInfo):
+class Integer(ConstantInfo):
     """
     A 32-bit signed integer constant.
     """
@@ -130,10 +128,8 @@ cdef class Integer(ConstantInfo):
     tag = 3
     since = Version(45, 0)
 
-    cdef readonly int value
-
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Integer:
+    def read(cls, buffer: IO[bytes]) -> "Integer":
         return cls(unpack_i(buffer.read(4))[0])
 
     @classmethod
@@ -145,60 +141,60 @@ cdef class Integer(ConstantInfo):
         :param value: The integer value of this constant.
         """
 
-        self.value = value
+        super().__init__(value)
 
-    def __add__(self, other: Any) -> Integer:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Integer, type(other)))
-        return Integer(<int>self.value + (<Integer>other).value)
+    # def __add__(self, other: Any) -> Integer:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for +: %r and %r" % (Integer, type(other)))
+    #     return Integer(<int>self.value + (<Integer>other).value)
 
-    def __sub__(self, other: Any) -> Integer:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Integer, type(other)))
-        return Integer(<int>self.value - (<Integer>other).value)
+    # def __sub__(self, other: Any) -> Integer:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for -: %r and %r" % (Integer, type(other)))
+    #     return Integer(<int>self.value - (<Integer>other).value)
 
-    def __mul__(self, other: Any) -> Integer:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Integer, type(other)))
-        return Integer(<int>self.value * (<Integer>other).value)
+    # def __mul__(self, other: Any) -> Integer:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for *: %r and %r" % (Integer, type(other)))
+    #     return Integer(<int>self.value * (<Integer>other).value)
 
-    def __truediv__(self, other: Any) -> Integer:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Integer, type(other)))
-        return Integer(<int>self.value / (<Integer>other).value)
+    # def __truediv__(self, other: Any) -> Integer:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for /: %r and %r" % (Integer, type(other)))
+    #     return Integer(<int>self.value / (<Integer>other).value)
 
-    def __mod__(self, other: Any) -> Integer:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Integer, type(other)))
-        return Integer(<int>self.value % (<Integer>other).value)
+    # def __mod__(self, other: Any) -> Integer:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Integer, type(other)))
+    #     return Integer(<int>self.value % (<Integer>other).value)
 
-    def __lshift__(self, other: Any) -> Integer:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for <<: %r and %r" % (Integer, type(other)))
-        return Integer(<int>self.value << (<Integer>other).value)
+    # def __lshift__(self, other: Any) -> Integer:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for <<: %r and %r" % (Integer, type(other)))
+    #     return Integer(<int>self.value << (<Integer>other).value)
 
-    def __rshift__(self, other: Any) -> Integer:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for >>: %r and %r" % (Integer, type(other)))
-        return Integer(<int>self.value >> (<Integer>other).value)
+    # def __rshift__(self, other: Any) -> Integer:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for >>: %r and %r" % (Integer, type(other)))
+    #     return Integer(<int>self.value >> (<Integer>other).value)
 
-    def __and__(self, other: Any) -> Integer:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Integer, type(other)))
-        return Integer(<int>self.value & (<Integer>other).value)
+    # def __and__(self, other: Any) -> Integer:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for &: %r and %r" % (Integer, type(other)))
+    #     return Integer(<int>self.value & (<Integer>other).value)
 
-    def __or__(self, other: Any) -> Integer:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for |: %r and %r" % (Integer, type(other)))
-        return Integer(<int>self.value | (<Integer>other).value)
+    # def __or__(self, other: Any) -> Integer:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for |: %r and %r" % (Integer, type(other)))
+    #     return Integer(<int>self.value | (<Integer>other).value)
 
-    def __xor__(self, other) -> Integer:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Integer, type(other)))
-        return Integer(<int>self.value ^ (<Integer>other).value)
+    # def __xor__(self, other) -> Integer:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for &: %r and %r" % (Integer, type(other)))
+    #     return Integer(<int>self.value ^ (<Integer>other).value)
 
-    def __neg__(self) -> Integer:
-        return Integer(-self.value)
+    # def __neg__(self) -> Integer:
+    #     return Integer(-self.value)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_i(self.value))
@@ -207,7 +203,7 @@ cdef class Integer(ConstantInfo):
         return types.int_t
 
 
-cdef class Float(ConstantInfo):
+class Float(ConstantInfo):
     """
     A 32-bit float constant.
     """
@@ -215,10 +211,8 @@ cdef class Float(ConstantInfo):
     tag = 4
     since = Version(45, 0)
 
-    cdef readonly float value
-
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Float:
+    def read(cls, buffer: IO[bytes]) -> "Float":
         return cls(unpack_f(buffer.read(4))[0])
 
     @classmethod
@@ -230,35 +224,35 @@ cdef class Float(ConstantInfo):
         :param value: The floating point value of this constant.
         """
 
-        self.value = value
+        super().__init__(value)
 
-    def __add__(self, other: Any) -> Float:
-        if not isinstance(other, Float):
-            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Float, type(other)))
-        return Float(<float>self.value + (<Float>other).value)
+    # def __add__(self, other: Any) -> Float:
+    #     if not isinstance(other, Float):
+    #         raise TypeError("unsupported operand type(s) for +: %r and %r" % (Float, type(other)))
+    #     return Float(<float>self.value + (<Float>other).value)
 
-    def __sub__(self, other: Any) -> Float:
-        if not isinstance(other, Float):
-            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Float, type(other)))
-        return Float(<float>self.value - (<Float>other).value)
+    # def __sub__(self, other: Any) -> Float:
+    #     if not isinstance(other, Float):
+    #         raise TypeError("unsupported operand type(s) for -: %r and %r" % (Float, type(other)))
+    #     return Float(<float>self.value - (<Float>other).value)
 
-    def __mul__(self, other: Any) -> Float:
-        if not isinstance(other, Float):
-            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Float, type(other)))
-        return Float(<float>self.value * (<Float>other).value)
+    # def __mul__(self, other: Any) -> Float:
+    #     if not isinstance(other, Float):
+    #         raise TypeError("unsupported operand type(s) for *: %r and %r" % (Float, type(other)))
+    #     return Float(<float>self.value * (<Float>other).value)
 
-    def __truediv__(self, other: Any) -> Float:
-        if not isinstance(other, Float):
-            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Float, type(other)))
-        return Float(<float>self.value / (<Float>other).value)
+    # def __truediv__(self, other: Any) -> Float:
+    #     if not isinstance(other, Float):
+    #         raise TypeError("unsupported operand type(s) for /: %r and %r" % (Float, type(other)))
+    #     return Float(<float>self.value / (<Float>other).value)
 
-    def __mod__(self, other: Any) -> Float:
-        if not isinstance(other, Float):
-            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Float, type(other)))
-        return Float(<float>self.value % (<Float>other).value)
+    # def __mod__(self, other: Any) -> Float:
+    #     if not isinstance(other, Float):
+    #         raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Float, type(other)))
+    #     return Float(<float>self.value % (<Float>other).value)
 
-    def __neg__(self) -> Float:
-        return Float(-self.value)
+    # def __neg__(self) -> Float:
+    #     return Float(-self.value)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_f(self.value))
@@ -267,7 +261,7 @@ cdef class Float(ConstantInfo):
         return types.float_t
 
 
-cdef class Long(ConstantInfo):
+class Long(ConstantInfo):
     """
     A 64-bit signed integer constant.
     """
@@ -276,10 +270,8 @@ cdef class Long(ConstantInfo):
     wide = True
     since = Version(45, 0)
 
-    cdef readonly long long value
-
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Long:
+    def read(cls, buffer: IO[bytes]) -> "Long":
         return cls(unpack_q(buffer.read(8))[0])
 
     @classmethod
@@ -291,60 +283,60 @@ cdef class Long(ConstantInfo):
         :param value: The integer value of this constant.
         """
 
-        self.value = value
+        super().__init__(value)
 
-    def __add__(self, other: Any) -> Long:
-        if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Long, type(other)))
-        return Long(<long long>self.value + (<Long>other).value)
+    # def __add__(self, other: Any) -> Long:
+    #     if not isinstance(other, Long):
+    #         raise TypeError("unsupported operand type(s) for +: %r and %r" % (Long, type(other)))
+    #     return Long(<long long>self.value + (<Long>other).value)
 
-    def __sub__(self, other: Any) -> Long:
-        if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Long, type(other)))
-        return Long(<long long>self.value - (<Long>other).value)
+    # def __sub__(self, other: Any) -> Long:
+    #     if not isinstance(other, Long):
+    #         raise TypeError("unsupported operand type(s) for -: %r and %r" % (Long, type(other)))
+    #     return Long(<long long>self.value - (<Long>other).value)
 
-    def __mul__(self, other: Any) -> Long:
-        if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Long, type(other)))
-        return Long(<long long>self.value * (<Long>other).value)
+    # def __mul__(self, other: Any) -> Long:
+    #     if not isinstance(other, Long):
+    #         raise TypeError("unsupported operand type(s) for *: %r and %r" % (Long, type(other)))
+    #     return Long(<long long>self.value * (<Long>other).value)
 
-    def __truediv__(self, other: Any) -> Long:
-        if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Long, type(other)))
-        return Long(<long long>self.value / (<Long>other).value)
+    # def __truediv__(self, other: Any) -> Long:
+    #     if not isinstance(other, Long):
+    #         raise TypeError("unsupported operand type(s) for /: %r and %r" % (Long, type(other)))
+    #     return Long(<long long>self.value / (<Long>other).value)
 
-    def __mod__(self, other: Any) -> Long:
-        if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Long, type(other)))
-        return Long(<long long>self.value % (<Long>other).value)
+    # def __mod__(self, other: Any) -> Long:
+    #     if not isinstance(other, Long):
+    #         raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Long, type(other)))
+    #     return Long(<long long>self.value % (<Long>other).value)
 
-    def __lshift__(self, other: Any) -> Long:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for <<: %r and %r" % (Long, type(other)))
-        return Long(<long long>self.value << (<Integer>other).value)
+    # def __lshift__(self, other: Any) -> Long:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for <<: %r and %r" % (Long, type(other)))
+    #     return Long(<long long>self.value << (<Integer>other).value)
 
-    def __rshift__(self, other: Any) -> Long:
-        if not isinstance(other, Integer):
-            raise TypeError("unsupported operand type(s) for >>: %r and %r" % (Long, type(other)))
-        return Long(<long long>self.value >> (<Integer>other).value)
+    # def __rshift__(self, other: Any) -> Long:
+    #     if not isinstance(other, Integer):
+    #         raise TypeError("unsupported operand type(s) for >>: %r and %r" % (Long, type(other)))
+    #     return Long(<long long>self.value >> (<Integer>other).value)
 
-    def __and__(self, other: Any) -> Long:
-        if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, type(other)))
-        return Long(<long long>self.value & (<Long>other).value)
+    # def __and__(self, other: Any) -> Long:
+    #     if not isinstance(other, Long):
+    #         raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, type(other)))
+    #     return Long(<long long>self.value & (<Long>other).value)
 
-    def __or__(self, other: Any) -> Long:
-        if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for |: %r and %r" % (Long, type(other)))
-        return Long(<long long>self.value | (<Long>other).value)
+    # def __or__(self, other: Any) -> Long:
+    #     if not isinstance(other, Long):
+    #         raise TypeError("unsupported operand type(s) for |: %r and %r" % (Long, type(other)))
+    #     return Long(<long long>self.value | (<Long>other).value)
 
-    def __xor__(self, other) -> Long:
-        if not isinstance(other, Long):
-            raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, type(other)))
-        return Long(<long long>self.value ^ (<Long>other).value)
+    # def __xor__(self, other) -> Long:
+    #     if not isinstance(other, Long):
+    #         raise TypeError("unsupported operand type(s) for &: %r and %r" % (Long, type(other)))
+    #     return Long(<long long>self.value ^ (<Long>other).value)
 
-    def __neg__(self) -> Long:
-        return Long(-self.value)
+    # def __neg__(self) -> Long:
+    #     return Long(-self.value)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_q(self.value))
@@ -353,7 +345,7 @@ cdef class Long(ConstantInfo):
         return types.long_t
 
 
-cdef class Double(ConstantInfo):
+class Double(ConstantInfo):
     """
     A 64-bit float constant.
     """
@@ -362,10 +354,8 @@ cdef class Double(ConstantInfo):
     wide = True
     since = Version(45, 0)
 
-    cdef readonly double value
-
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Double:
+    def read(cls, buffer: IO[bytes]) -> "Double":
         return cls(unpack_d(buffer.read(8))[0])
 
     @classmethod
@@ -377,35 +367,35 @@ cdef class Double(ConstantInfo):
         :param value: The floating point value of this constant.
         """
 
-        self.value = value
+        super().__init__(value)
 
-    def __add__(self, other: Any) -> Double:
-        if not isinstance(other, Double):
-            raise TypeError("unsupported operand type(s) for +: %r and %r" % (Double, type(other)))
-        return Double(<double>self.value + (<Double>other).value)
+    # def __add__(self, other: Any) -> Double:
+    #     if not isinstance(other, Double):
+    #         raise TypeError("unsupported operand type(s) for +: %r and %r" % (Double, type(other)))
+    #     return Double(<double>self.value + (<Double>other).value)
 
-    def __sub__(self, other: Any) -> Double:
-        if not isinstance(other, Double):
-            raise TypeError("unsupported operand type(s) for -: %r and %r" % (Double, type(other)))
-        return Double(<double>self.value - (<Double>other).value)
+    # def __sub__(self, other: Any) -> Double:
+    #     if not isinstance(other, Double):
+    #         raise TypeError("unsupported operand type(s) for -: %r and %r" % (Double, type(other)))
+    #     return Double(<double>self.value - (<Double>other).value)
 
-    def __mul__(self, other: Any) -> Double:
-        if not isinstance(other, Double):
-            raise TypeError("unsupported operand type(s) for *: %r and %r" % (Double, type(other)))
-        return Double(<double>self.value * (<Double>other).value)
+    # def __mul__(self, other: Any) -> Double:
+    #     if not isinstance(other, Double):
+    #         raise TypeError("unsupported operand type(s) for *: %r and %r" % (Double, type(other)))
+    #     return Double(<double>self.value * (<Double>other).value)
 
-    def __truediv__(self, other: Any) -> Double:
-        if not isinstance(other, Double):
-            raise TypeError("unsupported operand type(s) for /: %r and %r" % (Double, type(other)))
-        return Double(<double>self.value / (<Double>other).value)
+    # def __truediv__(self, other: Any) -> Double:
+    #     if not isinstance(other, Double):
+    #         raise TypeError("unsupported operand type(s) for /: %r and %r" % (Double, type(other)))
+    #     return Double(<double>self.value / (<Double>other).value)
 
-    def __mod__(self, other: Any) -> Double:
-        if not isinstance(other, Double):
-            raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Double, type(other)))
-        return Double(<double>self.value % (<Double>other).value)
+    # def __mod__(self, other: Any) -> Double:
+    #     if not isinstance(other, Double):
+    #         raise TypeError("unsupported operand type(s) for %%: %r and %r" % (Double, type(other)))
+    #     return Double(<double>self.value % (<Double>other).value)
 
-    def __neg__(self) -> Double:
-        return Double(-self.value)
+    # def __neg__(self) -> Double:
+    #     return Double(-self.value)
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_d(self.value))
@@ -414,7 +404,7 @@ cdef class Double(ConstantInfo):
         return types.double_t
 
 
-cdef class Class(ConstantInfo):
+class Class(ConstantInfo):
     """
     A class constant.
     """
@@ -422,21 +412,14 @@ cdef class Class(ConstantInfo):
     tag = 7
     since = Version(45, 0)
 
-    cdef readonly str name
-    cdef readonly object type
-
-    property value:
-        def __get__(self) -> str:
-            return self.name
-
     @classmethod
     def read(cls, buffer: IO[bytes]) -> int:
         return unpack_H(buffer.read(2))[0]
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> Class:
-        name = (<dict>lookups).get(info, None)
-        if not isinstance(name, UTF8):
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "Class":
+        name = lookups.get(info, None)
+        if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
         return cls(name.value)
 
@@ -445,7 +428,10 @@ cdef class Class(ConstantInfo):
         :param name: The name value of the class.
         """
 
+        super().__init__(name)
+
         self.name = name
+
         if name.startswith("["):  # Array type
             self.type = descriptor.parse_field_descriptor(name)
         else:
@@ -464,7 +450,7 @@ cdef class Class(ConstantInfo):
         return types.class_t
 
 
-cdef class String(ConstantInfo):
+class String(ConstantInfo):
     """
     A string constant.
     """
@@ -472,25 +458,16 @@ cdef class String(ConstantInfo):
     tag = 8
     since = Version(45, 0)
 
-    cdef readonly str value
-
     @classmethod
     def read(cls, buffer: IO[bytes]) -> int:
         return unpack_H(buffer.read(2))[0]
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> String:
-        value = (<dict>lookups).get(info, None)
-        if not isinstance(value, UTF8):
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "String":
+        value = lookups.get(info, None)
+        if type(value) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(value)))
         return cls(value.value)
-
-    def __init__(self, value: str) -> None:
-        """
-        :param value: The string value of this constant.
-        """
-
-        self.value = value
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(class_file.constant_pool.add_utf8(self.value)))
@@ -499,7 +476,7 @@ cdef class String(ConstantInfo):
         return types.string_t
 
 
-cdef class FieldRef(ConstantInfo):
+class FieldRef(ConstantInfo):
     """
     A reference to a field.
     """
@@ -507,36 +484,31 @@ cdef class FieldRef(ConstantInfo):
     tag = 9
     since = Version(45, 0)
 
-    cdef readonly Class class_
-    cdef readonly NameAndType name_and_type
-
-    property value:
-        def __get__(self) -> Tuple[Class, NameAndType]:
-            return self.class_, self.name_and_type
-
     @classmethod
     def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[FieldRef, None]:
-        class_ = (<dict>lookups).get(info[0], None)
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["FieldRef"]:
+        class_ = lookups.get(info[0], None)
         if class_ is None:
             return None
-        elif not isinstance(class_, Class):
+        elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type = (<dict>lookups).get(info[1], None)
+        name_and_type = lookups.get(info[1], None)
         if name_and_type is None:
             return None
-        elif not isinstance(name_and_type, NameAndType):
+        elif type(name_and_type) is not NameAndType:
             raise TypeError("Expected type %r, got %r." % (NameAndType, type(name_and_type)))
         return cls(class_, name_and_type)
 
-    def __init__(self, class_: Class, name_and_type: NameAndType) -> None:
+    def __init__(self, class_: Class, name_and_type: "NameAndType") -> None:
         """
         :param class_: The class that the field belongs to.
         :param name_and_type: The name and type of the field.
         """
+
+        super().__init__((class_, name_and_type))
 
         self.class_ = class_
         self.name_and_type = name_and_type
@@ -555,7 +527,7 @@ cdef class FieldRef(ConstantInfo):
         return "%s.%s" % (self.class_, self.name_and_type)
 
 
-cdef class MethodRef(ConstantInfo):
+class MethodRef(ConstantInfo):
     """
     A reference to a method.
     """
@@ -563,36 +535,31 @@ cdef class MethodRef(ConstantInfo):
     tag = 10
     since = Version(45, 0)
 
-    cdef readonly Class class_
-    cdef readonly NameAndType name_and_type
-
-    property value:
-        def __get__(self) -> Tuple[Class, NameAndType]:
-            return self.class_, self.name_and_type
-
     @classmethod
     def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[MethodRef, None]:
-        class_ = (<dict>lookups).get(info[0], None)
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["MethodRef"]:
+        class_ = lookups.get(info[0], None)
         if class_ is None:
             return None
-        elif not isinstance(class_, Class):
+        elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type = (<dict>lookups).get(info[1], None)
+        name_and_type = lookups.get(info[1], None)
         if name_and_type is None:
             return None
-        elif not isinstance(name_and_type, NameAndType):
+        elif type(name_and_type) is not NameAndType:
             raise TypeError("Expected type %r, got %r." % (NameAndType, type(name_and_type)))
         return cls(class_, name_and_type)
 
-    def __init__(self, class_: Class, name_and_type: NameAndType) -> None:
+    def __init__(self, class_: Class, name_and_type: "NameAndType") -> None:
         """
         :param class_: The class that the method belongs to.
         :param name_and_type: The name and type of the field.
         """
+
+        super().__init__((class_, name_and_type))
 
         self.class_ = class_
         self.name_and_type = name_and_type
@@ -612,7 +579,7 @@ cdef class MethodRef(ConstantInfo):
         return "%s.%s" % (self.class_, self.name_and_type)
 
 
-cdef class InterfaceMethodRef(MethodRef):
+class InterfaceMethodRef(MethodRef):
     """
     A reference to an interface method.
     """
@@ -625,21 +592,21 @@ cdef class InterfaceMethodRef(MethodRef):
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[InterfaceMethodRef, None]:
-        class_ = (<dict>lookups).get(info[0], None)
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["InterfaceMethodRef"]:
+        class_ = lookups.get(info[0], None)
         if class_ is None:
             return None
-        elif not isinstance(class_, Class):
+        elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type = (<dict>lookups).get(info[1], None)
+        name_and_type = lookups.get(info[1], None)
         if name_and_type is None:
             return None
-        elif not isinstance(name_and_type, NameAndType):
+        elif type(name_and_type) is not NameAndType:
             raise TypeError("Expected type %r, got %r." % (NameAndType, type(name_and_type)))
         return cls(class_, name_and_type)
 
 
-cdef class NameAndType(ConstantInfo):
+class NameAndType(ConstantInfo):
     """
     A name and type constant.
     """
@@ -647,24 +614,17 @@ cdef class NameAndType(ConstantInfo):
     tag = 12
     since = Version(45, 0)
 
-    cdef readonly str name
-    cdef readonly str descriptor
-
-    property value:
-        def __get__(self) -> Tuple[str, str]:
-            return self.name, self.descriptor
-
     @classmethod
     def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> NameAndType:
-        name = (<dict>lookups).get(info[0], None)
-        if not isinstance(name, UTF8):
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> "NameAndType":
+        name = lookups.get(info[0], None)
+        if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
-        descriptor = (<dict>lookups).get(info[1], None)
-        if not isinstance(descriptor, UTF8):
+        descriptor = lookups.get(info[1], None)
+        if type(descriptor) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(descriptor)))
         return cls(name.value, descriptor.value)
 
@@ -673,6 +633,8 @@ cdef class NameAndType(ConstantInfo):
         :param name: The name.
         :param descriptor_: The type descriptor.
         """
+
+        super().__init__((name, descriptor_))
 
         self.name = name
         self.descriptor = descriptor_
@@ -690,7 +652,7 @@ cdef class NameAndType(ConstantInfo):
         ))
 
 
-cdef class MethodHandle(ConstantInfo):
+class MethodHandle(ConstantInfo):
     """
     A constant used to represent a method handle.
     """
@@ -708,24 +670,17 @@ cdef class MethodHandle(ConstantInfo):
     REF_NEW_INVOKE_SPECIAL = 8
     REF_INVOKE_INTERFACE = 9
 
-    cdef readonly int reference_kind
-    cdef readonly object reference
-
-    property value:
-        def __get__(self) -> Tuple[int, Union[FieldRef, MethodRef, InterfaceMethodRef]]:
-            return self.reference_kind, self.reference
-
     @classmethod
     def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
         return unpack_BH(buffer.read(3))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[MethodHandle, None]:
-        reference = (<dict>lookups).get(info[1], None)
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["MethodHandle"]:
+        reference = lookups.get(info[1], None)
         if reference is None:
             return None
-        elif not isinstance(reference, FieldRef) and not isinstance(reference, MethodRef):
-            raise TypeError("Expected type %r or %r, got %r." (FieldRef, MethodRef, type(reference)))
+        elif type(reference) is not FieldRef and not isinstance(reference, MethodRef):
+            raise TypeError("Expected type %r or %r, got %r." % (FieldRef, MethodRef, type(reference)))
         return cls(info[0], reference)
 
     def __init__(self, reference_kind: int, reference: Union[FieldRef, MethodRef, InterfaceMethodRef]) -> None:
@@ -733,6 +688,8 @@ cdef class MethodHandle(ConstantInfo):
         :param reference_kind: The type of reference.
         :param reference: The reference itself.
         """
+
+        super().__init__((reference_kind, reference))
 
         self.reference_kind = reference_kind
         self.reference = reference
@@ -744,7 +701,7 @@ cdef class MethodHandle(ConstantInfo):
         return ClassOrInterfaceType("java/lang/invoke/MethodHandle")
 
 
-cdef class MethodType(ConstantInfo):
+class MethodType(ConstantInfo):
     """
     A constant used to represent the descriptor of a method.
     """
@@ -752,22 +709,14 @@ cdef class MethodType(ConstantInfo):
     tag = 16
     since = Version(51, 0)
 
-    cdef readonly str descriptor
-    cdef readonly tuple argument_types
-    cdef readonly object return_type
-
-    property value:
-        def __get__(self) -> str:
-            return self.descriptor
-
     @classmethod
     def read(cls, buffer: IO[bytes]) -> int:
         return unpack_H(buffer.read(2))[0]
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> MethodType:
-        descriptor = (<dict>lookups).get(info, None)
-        if not isinstance(descriptor, UTF8):
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "MethodType":
+        descriptor = lookups.get(info, None)
+        if type(descriptor) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(descriptor)))
         return cls(descriptor.value)
 
@@ -775,6 +724,8 @@ cdef class MethodType(ConstantInfo):
         """
         :param descriptor_: The method descriptor.
         """
+
+        super().__init__(descriptor_)
 
         self.descriptor = descriptor_
         self.argument_types, self.return_type = descriptor.parse_method_descriptor(descriptor_, do_raise=False)
@@ -786,7 +737,7 @@ cdef class MethodType(ConstantInfo):
         return ClassOrInterfaceType("java/lang/invoke/MethodType")
 
 
-cdef class Dynamic(ConstantInfo):
+class Dynamic(ConstantInfo):
     """
     Represents a dynamically computed constant.
     """
@@ -794,23 +745,16 @@ cdef class Dynamic(ConstantInfo):
     tag = 17
     since = Version(55, 0)
 
-    cdef readonly int bootstrap_method_attr_index
-    cdef readonly NameAndType name_and_type
-
-    property value:
-        def __get__(self) -> Tuple[int, NameAndType]:
-            return (self.bootstrap_method_attr_index, self.name_and_type)
-
     @classmethod
     def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[Dynamic, None]:
-        name_and_type = (<dict>lookups).get(info[1], None)
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["Dynamic"]:
+        name_and_type = lookups.get(info[1], None)
         if name_and_type is None:  # Can't dereference it yet
             return None
-        elif not isinstance(name_and_type, NameAndType):
+        elif type(name_and_type) is not NameAndType:
             raise TypeError("Expected type %r, got %r." % (NameAndType, type(name_and_type)))
         return cls(info[0], name_and_type)
 
@@ -819,6 +763,8 @@ cdef class Dynamic(ConstantInfo):
         :param bootstrap_method_attr_index: The corresponding index in the bootstrap methods attribute.
         :param name_and_type: Not sure, need to revisit the spec to improve this documentation :p.
         """
+
+        super().__init__((bootstrap_method_attr_index, name_and_type))
 
         self.bootstrap_method_attr_index = bootstrap_method_attr_index
         self.name_and_type = name_and_type
@@ -836,7 +782,7 @@ cdef class Dynamic(ConstantInfo):
         buffer.write(pack_HH(self.bootstrap_method_attr_index, class_file.constant_pool.add(self.name_and_type)))
 
 
-cdef class InvokeDynamic(Dynamic):
+class InvokeDynamic(Dynamic):
     """
     A constant used to reference an entity (field, method, interface method) dynamically.
     """
@@ -849,16 +795,16 @@ cdef class InvokeDynamic(Dynamic):
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Union[InvokeDynamic, None]:
-        name_and_type = (<dict>lookups).get(info[1], None)
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["InvokeDynamic"]:
+        name_and_type = lookups.get(info[1], None)
         if name_and_type is None:  # Can't dereference it yet
             return None
-        elif not isinstance(name_and_type, NameAndType):
+        elif type(name_and_type) is not NameAndType:
             raise TypeError("Expected type %r, got %r." % (NameAndType, type(name_and_type)))
         return cls(info[0], name_and_type)
 
 
-cdef class Module(ConstantInfo):
+class Module(ConstantInfo):
     """
     A constant that is used to represent a module.
     """
@@ -866,20 +812,14 @@ cdef class Module(ConstantInfo):
     tag = 19
     since = Version(53, 0)
 
-    cdef readonly str name
-
-    property value:
-        def __get__(self) -> str:
-            return self.name
-
     @classmethod
     def read(cls, buffer: IO[bytes]) -> int:
         return unpack_H(buffer.read(2))[0]
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> Module:
-        name = (<dict>lookups).get(info, None)
-        if not isinstance(name, UTF8):
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "Module":
+        name = lookups.get(info, None)
+        if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
         return cls(name.value)
 
@@ -888,13 +828,15 @@ cdef class Module(ConstantInfo):
         :param name: The name of the module.
         """
 
+        super().__init__(name)
+
         self.name = name
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(class_file.constant_pool.add_utf8(self.name)))
 
 
-cdef class Package(ConstantInfo):
+class Package(ConstantInfo):
     """
     A constant that is used to represent a package exported or opened by a module.
     """
@@ -902,20 +844,14 @@ cdef class Package(ConstantInfo):
     tag = 20
     since = Version(53, 0)
 
-    cdef readonly str name
-
-    property value:
-        def __get__(self) -> str:
-            return self.name
-
     @classmethod
     def read(cls, buffer: IO[bytes]) -> int:
         return unpack_H(buffer.read(2))[0]
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> Package:
-        name = (<dict>lookups).get(info, None)
-        if not isinstance(name, UTF8):
+    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "Package":
+        name = lookups.get(info, None)
+        if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
         return cls(name.value)
 
@@ -924,20 +860,18 @@ cdef class Package(ConstantInfo):
         :param name: The name of the package.
         """
 
+        super().__init__(name)
+
         self.name = name
 
     def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(class_file.constant_pool.add_utf8(self.name)))
 
 
-cdef class ConstantPool:
+class ConstantPool:
     """
     The constant pool structure.
     """
-
-    cdef int _index
-    cdef dict _forward_entries
-    cdef dict _backward_entries
 
     @classmethod
     def read(cls, version: Version, buffer: IO[bytes]) -> "ConstantPool":
@@ -949,14 +883,13 @@ cdef class ConstantPool:
         :return: The constant pool that was read.
         """
 
-        cdef ConstantPool constant_pool = cls()
+        constant_pool = cls()
 
-        cdef int constants_count
         constants_count, = unpack_H(buffer.read(2))
         # logger.debug("Reading %i constant pool entries..." % (constants_count - 1))
 
-        cdef list uncomputed = []  # Constants we haven't computed yet
-        cdef int offset = 1  # The constant pool starts at offset 1
+        uncomputed = []  # Constants we haven't computed yet
+        offset = 1  # The constant pool starts at offset 1
 
         while offset < constants_count:
             tag, = buffer.read(1)
@@ -995,11 +928,12 @@ cdef class ConstantPool:
 
     def __init__(self) -> None:
         self._index = 1
+
         self._forward_entries: Dict[int, ConstantInfo] = {}
         self._backward_entries: Dict[ConstantInfo, int] = {}
 
     def __repr__(self) -> str:
-        return "<ConstantPool() at %x>" % id(self)
+        return "<ConstantPool(size=%i) at %x>" % (len(self), id(self))
 
     def __len__(self) -> int:
         return len(self._forward_entries)
@@ -1050,7 +984,7 @@ cdef class ConstantPool:
         start = buffer.tell()
         buffer.write(b"\x00\x00")  # Placeholder bytes so we can seek back to them
 
-        cdef int offset = 1
+        offset = 1
         while offset < self._index:
             constant = self._forward_entries[offset]
             buffer.write(bytes((constant.tag,)))
@@ -1067,9 +1001,9 @@ cdef class ConstantPool:
         buffer.write(pack_H(offset))
         buffer.seek(current)
 
-    # ------------------------------ Accessing ------------------------------ #
+    # ------------------------------ Public API ------------------------------ #
 
-    def get(self, index: int, default: Union[ConstantInfo, None] = None, do_raise: bool = False) -> ConstantInfo:
+    def get(self, index: int, default: Optional[ConstantInfo] = None, do_raise: bool = False) -> ConstantInfo:
         """
         Gets the constant at a given index.
 
@@ -1090,7 +1024,7 @@ cdef class ConstantPool:
 
         return Index(index)
 
-    def get_utf8(self, index: int, default: Union[str, None] = None) -> str:
+    def get_utf8(self, index: int, default: Optional[str] = None) -> str:
         """
         Gets a UTF-8 value at the given index.
 
@@ -1198,7 +1132,7 @@ CONSTANTS = (
     Package,
 )
 
-cdef dict _constant_map = {constant.tag: constant for constant in CONSTANTS}
+_constant_map = {constant.tag: constant for constant in CONSTANTS}
 
 
 from . import descriptor

@@ -1,5 +1,4 @@
-# cython: language=c
-# cython: language_level=3
+#!/usr/bin/env python3
 
 __all__ = (
     "TypeChecker",
@@ -10,19 +9,19 @@ Classfile verifier abstract classes.
 """
 
 import typing
-from typing import Union
+from typing import Optional
 
 if typing.TYPE_CHECKING:
     from ..types import VerificationType
 
 
-cdef class TypeChecker:
+class TypeChecker:
     """
     The abstract base class for a type checker implementation. Type checkers are responsible for checking if
     verification types can be merged or if they match certain requirements. It is also responsible for merging them.
     """
 
-    def check_merge(self, expected: Union["VerificationType", None], actual: "VerificationType") -> bool:
+    def check_merge(self, expected: Optional["VerificationType"], actual: "VerificationType") -> bool:
         """
         Checks if the two provided types can be merged (AKA are assignable).
 
@@ -76,10 +75,10 @@ cdef class TypeChecker:
 
     def merge(
             self,
-            expected: Union["VerificationType", None],
+            expected: Optional["VerificationType"],
             actual: "VerificationType",
             *,
-            fallback: Union["VerificationType", None] = None,
+            fallback: Optional["VerificationType"] = None,
     ) -> "VerificationType":
         """
         Merges the two provided types.

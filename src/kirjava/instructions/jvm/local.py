@@ -4,8 +4,7 @@
 Local-related instructions.
 """
 
-from typing import Any, Dict, IO, Union
-
+from typing import Any, Dict, IO, Optional
 
 from . import Instruction
 from ..ir.arithmetic import AdditionExpression
@@ -30,7 +29,7 @@ class LoadLocalInstruction(Instruction):
     operands = {"index": ">B"}
     operands_wide = {"index": ">H"}
 
-    type_: Union[BaseType, None] = ...  # None means don't check the type
+    type_: Optional[BaseType] = ...  # None means don't check the type
 
     def __init__(self, index: int) -> None:
         self.index = index
@@ -63,13 +62,15 @@ class LoadLocalFixedInstruction(LoadLocalInstruction):
     Loads the value from a fixed local variable and pushes it to the stack.
     """
 
+    __slots__ = ()
+
     operands = {}
     operands_wide = {}
 
     index: int = ...
 
     def __init__(self) -> None:
-        super().__init__(self.__class__.index)
+        ...  # super().__init__(self.__class__.index)
 
     def __repr__(self) -> str:
         return "<LoadLocalFixedInstruction(opcode=0x%x, mnemonic=%s) at %x>" % (
@@ -102,7 +103,7 @@ class StoreLocalInstruction(Instruction):
     operands = {"index": ">B"}
     operands_wide = {"index": ">H"}
 
-    type_: Union[BaseType, None] = ...
+    type_: Optional[BaseType] = ...
 
     def __init__(self, index: int) -> None:
         self.index = index
@@ -128,7 +129,7 @@ class StoreLocalInstruction(Instruction):
             entry = frame.pop()
         frame.set(self.index, entry, expect=self.type_)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> Union[AssignStatement, None]:
+    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> Optional[AssignStatement]:
         if not self.index in delta.overwrites:
             return None
 
@@ -150,13 +151,15 @@ class StoreLocalFixedInstruction(StoreLocalInstruction):
     Stores the top value of the stack in a fixed local index.
     """
 
+    __slots__ = ()
+
     operands = {}
     operands_wide = {}
 
     index: int = ...
 
     def __init__(self) -> None:
-        super().__init__(self.__class__.index)
+        ...  # super().__init__(self.__class__.index)
 
     def __repr__(self) -> str:
         return "<StoreLocalFixedInstruction(opcode=0x%x, mnemonic=%s) at %x>" % (

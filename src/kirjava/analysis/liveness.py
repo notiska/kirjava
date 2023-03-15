@@ -1,5 +1,4 @@
-# cython: language=c
-# cython: language_level=3
+#!/usr/bin/env python3
 
 __all__ = (
     "Liveness",
@@ -10,14 +9,19 @@ Local variable liveness analysis.
 """
 
 import itertools
+import typing
 from typing import Dict, FrozenSet, Iterator, List, Set
 
-from .graph cimport ExceptionEdge, InsnBlock, InsnEdge, InsnGraph
-from .trace cimport Frame, Trace
+from ._edge import ExceptionEdge, InsnEdge
+from .trace import Frame, Trace
 from ..verifier import BasicTypeChecker
 
+if typing.TYPE_CHECKING:
+    from ._block import InsnBlock
+    from .graph import InsnGraph
 
-cdef class Liveness:
+
+class Liveness:
     """
     Liveness analysis information.
     """
@@ -43,20 +47,12 @@ cdef class Liveness:
         :return: The computed liveness information.
         """
 
-        cdef InsnGraph graph = trace.graph
+        graph = trace.graph
 
-        cdef dict entries = {}
-        cdef dict exits = {}
+        entries: Dict["InsnBlock", Set[int]] = {}
+        exits:   Dict["InsnBlock", Set[int]] = {}
 
-        cdef InsnEdge start
-        cdef InsnEdge edge
-
-        cdef list to_visit
-        cdef set live
-        cdef set overwritten = set()
-        cdef set before
-
-        cdef Frame exit_constraint
+        overwritten: Set[int] = set()
 
         for start in itertools.chain(trace.leaf_edges, trace.back_edges):
             live = entries.setdefault(start.to, set())
@@ -120,10 +116,10 @@ cdef class Liveness:
 
     def __init__(
             self,
-            graph: InsnGraph,
+            graph: "InsnGraph",
             trace: Trace,
-            entries: Dict[InsnBlock, Set[int]],
-            exits: Dict[InsnBlock, Set[int]],
+            entries: Dict["InsnBlock", Set[int]],
+            exits: Dict["InsnBlock", Set[int]],
     ) -> None:
         self.graph = graph
         self.trace = trace

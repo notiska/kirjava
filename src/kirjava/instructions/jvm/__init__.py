@@ -5,22 +5,24 @@ JVM instructions.
 """
 
 import typing
-from typing import Any, Dict, IO, Tuple, Type, Union
+from typing import Any, Dict, IO, Optional, Tuple, Type
 
 from ...abc import Source, Statement, Value
-from ...classfile import ClassFile
 from ...classfile.constants import Double, Float, Integer, Long
 from ...types.reference import ClassOrInterfaceType
 
 if typing.TYPE_CHECKING:
     from ...analysis.ir.variable import Scope
     from ...analysis.trace import Entry, FrameDelta
+    from ...classfile import ClassFile
 
 
 class Instruction(Source):
     """
     A (somewhat abstracted) JVM instruction.
     """
+
+    __slots__ = ()
 
     opcode: int = ...
     mnemonic: str = ...
@@ -57,7 +59,7 @@ class Instruction(Source):
 
         return self  # Assume immutable if not overriden
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         """
         Reads the data from the buffer into this instruction's operands.
 
@@ -74,7 +76,7 @@ class Instruction(Source):
             if operand != "_":
                 setattr(self, operand, value)
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         """
         Writes the operands from this instruction into the buffer.
 
@@ -115,7 +117,7 @@ class Instruction(Source):
         ...
 
     # @abstractmethod
-    def lift(self, delta: "FrameDelta", scope: "Scope", associations: Dict["Entry", Value]) -> Union[Statement, None]:
+    def lift(self, delta: "FrameDelta", scope: "Scope", associations: Dict["Entry", Value]) -> Optional[Statement]:
         """
         Generates IR code from this instruction.
 
@@ -131,10 +133,10 @@ class Instruction(Source):
 def new_instruction(
         opcode: int,
         mnemonic: str,
-        base: Union[Type[Instruction], None] = None,
-        operands: Union[Dict[str, str], None] = None,
-        operands_wide: Union[Dict[str, str], None] = None,
-        throws: Union[Tuple[ClassOrInterfaceType, ...], None] = None,
+        base: Optional[Type[Instruction]] = None,
+        operands: Optional[Dict[str, str]] = None,
+        operands_wide: Optional[Dict[str, str]] = None,
+        throws: Optional[Tuple[ClassOrInterfaceType, ...]] = None,
         **namespace: object,
 ) -> Type[Instruction]:
     """
@@ -563,3 +565,5 @@ INSTRUCTIONS = (
 
     breakpoint_, impdep1, impdep2,
 )
+
+_opcode_map = {instruction.opcode: instruction for instruction in INSTRUCTIONS}  # FIXME: ?

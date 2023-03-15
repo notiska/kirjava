@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "read_instructions", "write_instructions",
+)
+
 """
 Reads instructions from binary data.
 """
 
 import operator
+import typing
 from typing import Dict, IO
 
 from . import ClassFile
 from ..instructions import jvm as instructions
-from ..instructions.jvm import INSTRUCTIONS, Instruction
+
+if typing.TYPE_CHECKING:
+    from ..instructions.jvm import Instruction
 
 
-_opcode_map = {instruction.opcode: instruction for instruction in INSTRUCTIONS}
-
-
-def read_instructions(class_file: ClassFile, buffer: IO[bytes], length: int) -> Dict[int, Instruction]:
+def read_instructions(class_file: ClassFile, buffer: IO[bytes], length: int) -> Dict[int, "Instruction"]:
     """
     Reads a list of instructions from the provided buffer.
 
@@ -32,7 +36,7 @@ def read_instructions(class_file: ClassFile, buffer: IO[bytes], length: int) -> 
 
     while offset < length:
         opcode, = buffer.read(1)
-        instruction = _opcode_map.get(opcode, None)
+        instruction = instructions._opcode_map.get(opcode, None)
         if instruction is None:
             raise ValueError("Unknown opcode: 0x%x." % opcode)
         instruction = instruction.__new__(instruction)
@@ -47,7 +51,7 @@ def read_instructions(class_file: ClassFile, buffer: IO[bytes], length: int) -> 
     return instructions_
 
 
-def write_instructions(instructions_: Dict[int, Instruction], class_file: ClassFile, buffer: IO[bytes]) -> None:
+def write_instructions(instructions_: Dict[int, "Instruction"], class_file: ClassFile, buffer: IO[bytes]) -> None:
     """
     Writes a list of instructions to the buffer.
 

@@ -2,7 +2,7 @@
 
 import logging
 import typing
-from typing import Dict, IO, Tuple, Union
+from typing import Dict, IO, Optional, Tuple
 
 from . import descriptor
 from ._struct import *
@@ -237,7 +237,7 @@ class MethodInfo(Method):
         self._return_type = value
 
     @property
-    def code(self) -> Union["Code", None]:
+    def code(self) -> Optional["Code"]:
         """
         :return: The code attribute for this method, None if it doesn't have one.
         """
@@ -248,7 +248,7 @@ class MethodInfo(Method):
         return None
 
     @code.setter
-    def code(self, value: Union["Code", None]) -> None:
+    def code(self, value: Optional["Code"]) -> None:
         """
         Sets this method's code attribute.
         """
@@ -510,7 +510,7 @@ class FieldInfo(Field):
         self._type = value
 
     @property
-    def value(self) -> Union[ConstantInfo, None]:
+    def value(self) -> Optional[ConstantInfo]:
         """
         :return: The value in the ConstantValue attribute of this field, if it has one.
         """
@@ -521,7 +521,7 @@ class FieldInfo(Field):
         return None
 
     @value.setter
-    def value(self, value: Union[ConstantInfo, None]) -> None:
+    def value(self, value: Optional[ConstantInfo]) -> None:
         """
         Sets the constant in the ConstantValue attribute of this field.
 

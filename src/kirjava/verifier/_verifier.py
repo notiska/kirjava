@@ -1,15 +1,15 @@
-# cython: language=c
-# cython: language_level=3
+#!/usr/bin/env python3
 
 __all__ = (
-    "VerifyError",
-    "ErrorType", "Error",
-    "Verifier",
+    "VerifyError", "Error", "Verifier",
 )
 
 import typing
 from enum import Enum
-from typing import Any, Iterable, Tuple, Union
+from typing import Any, Iterable, Optional, Tuple
+
+from ..abc.source import Source
+from ..abc.verifier import TypeChecker
 
 if typing.TYPE_CHECKING:
     from ..types import VerificationType
@@ -20,7 +20,7 @@ class VerifyError(Exception):
     An exception to throw when verification fails.
     """
 
-    def __init__(self, errors: Iterable[Error]) -> None:
+    def __init__(self, errors: Iterable["Error"]) -> None:
         self.errors = []
 
         for error in errors:
@@ -38,32 +38,12 @@ class VerifyError(Exception):
         )
 
 
-class ErrorType(Enum):
-    """
-    The type of error, for more specific error handling.
-    """
-
-    INVALID_TYPE = "invalid type"
-    INVALID_CONSTANT = "invalid constant"
-    INVALID_INSTRUCTION = "invalid instruction"
-
-    INVALID_BLOCK = "invalid block"
-    INVALID_EDGE = "invalid edge"
-
-    STACK_UNDERFLOW = "stack underflow"
-    STACK_OVERFLOW = "stack overflow"
-    UNKNOWN_LOCAL = "unknown local"
-
-    INVALID_STACK_MERGE = "invalid stack merge"
-    INVALID_LOCALS_MERGE = "invalid locals merge"
-
-
-cdef class Error:
+class Error:
     """
     An error that has occurred during verification.
     """
 
-    def __init__(self, type_: ErrorType, source: Union[Source, None], *messages: object) -> None:
+    def __init__(self, type_: "Error.Type", source: Optional[Source], *messages: object) -> None:
         """
         :param type_: The type of error.
         :param source: The source of the error (typically an instruction).
@@ -87,27 +67,48 @@ cdef class Error:
             return True
         return type(other) is Error and other.source == self.source and other.messages == self.messages
 
+    # ------------------------------ Classes ------------------------------ #
 
-cdef class Verifier:
+    class Type(Enum):
+        """
+        The type of error, for more specific error handling.
+        """
+
+        INVALID_TYPE = "invalid type"
+        INVALID_CONSTANT = "invalid constant"
+        INVALID_INSTRUCTION = "invalid instruction"
+
+        INVALID_BLOCK = "invalid block"
+        INVALID_EDGE = "invalid edge"
+
+        STACK_UNDERFLOW = "stack underflow"
+        STACK_OVERFLOW = "stack overflow"
+        UNKNOWN_LOCAL = "unknown local"
+
+        INVALID_STACK_MERGE = "invalid stack merge"
+        INVALID_LOCALS_MERGE = "invalid locals merge"
+
+
+class Verifier:
     """
     A verifier, performs certain checks to make sure the classfile is valid and reports any errors.
     """
 
-    property errors:
+    @property
+    def errors(self) -> Tuple[Error, ...]:
         """
-        A copy of the errors reported by this verifier. Not mutable.`
+        A copy of the errors reported by this verifier. Not mutable.
         """
 
-        def __get__(self) -> Tuple[Error, ...]:
-            return tuple(self._errors)
+        return tuple(self._errors)
 
-    property has_errors:
+    @property
+    def has_errors(self) -> bool:
         """
         Does this verifier have errors?
         """
 
-        def __get__(self) -> bool:
-            return bool(self._errors)
+        return bool(self._errors)
 
     def __init__(self, checker: TypeChecker) -> None:
         """
@@ -139,10 +140,10 @@ cdef class Verifier:
 
     def report_invalid_type(
             self,
-            source: Union[Source, None],
+            source: Optional[Source],
             expected: "VerificationType",
             actual: "VerificationType",
-            origin: Union[Source, None],
+            origin: Optional[Source] = None,
     ) -> None:
         """
         Reports an "invalid type" error.
@@ -155,16 +156,16 @@ cdef class Verifier:
 
         if origin is not None:
             error = Error(
-                ErrorType.INVALID_TYPE, source, "expected type %s" % expected, "got %s (via %s)" % (actual, origin),
+                Error.Type.INVALID_TYPE, source, "expected type %s" % expected, "got %s (via %s)" % (actual, origin),
             )
         else:
-            error = Error(ErrorType.INVALID_TYPE, source, "expected type %s" % expected, "got %s" % actual)
+            error = Error(Error.Type.INVALID_TYPE, source, "expected type %s" % expected, "got %s" % actual)
 
         if not error in self._errors:
             self._errors.append(error)
 
     def report_expected_reference_type(
-            self, source: Union[Source, None], actual: "VerificationType", origin: Union[Source, None],
+            self, source: Optional[Source], actual: "VerificationType", origin: Optional[Source],
     ) -> None:
         """
         Reports that a reference type was expected, but not provided.
@@ -176,16 +177,16 @@ cdef class Verifier:
 
         if origin is not None:
             error = Error(
-                ErrorType.INVALID_TYPE, source, "expected reference type", "got %s (via %s)" % (actual, origin),
+                Error.Type.INVALID_TYPE, source, "expected reference type", "got %s (via %s)" % (actual, origin),
             )
         else:
-            error = Error(ErrorType.INVALID_TYPE, source, "expected reference type", "got %s" % actual)
+            error = Error(Error.Type.INVALID_TYPE, source, "expected reference type", "got %s" % actual)
 
         if not error in self._errors:
             self._errors.append(error)
 
     def report_invalid_type_category(
-            self, source: Union[Source, None], category: int, actual: "VerificationType", origin: Union[Source, None],
+            self, source: Optional[Source], category: int, actual: "VerificationType", origin: Optional[Source],
     ) -> None:
         """
         Reports that a type does not meet the given category requirements.
@@ -198,15 +199,15 @@ cdef class Verifier:
 
         if origin is not None:
             error = Error(
-                ErrorType.INVALID_TYPE, source, "expected category %i type" % category, "got %s (via %s)" % (actual, origin),
+                Error.Type.INVALID_TYPE, source, "expected category %i type" % category, "got %s (via %s)" % (actual, origin),
             )
         else:
-            error = Error(ErrorType.INVALID_TYPE, source, "expected category %i type" % category, "got %s" % actual)
+            error = Error(Error.Type.INVALID_TYPE, source, "expected category %i type" % category, "got %s" % actual)
 
         if not error in self._errors:
             self._errors.append(error)
 
-    def report_unknown_local(self, source: Union[Source, None], index: int) -> None:
+    def report_unknown_local(self, source: Optional[Source], index: int) -> None:
         """
         Reports that a local access was invalid.
 
@@ -214,11 +215,11 @@ cdef class Verifier:
         :param index: The index of the local that could not be accessed.
         """
 
-        error = Error(ErrorType.UNKNOWN_LOCAL, source, "unknown local at index %i" % index)
+        error = Error(Error.Type.UNKNOWN_LOCAL, source, "unknown local at index %i" % index)
         if not error in self._errors:
             self._errors.append(error)
 
-    def report_stack_underflow(self, source: Union[Source, None], entries: int) -> None:
+    def report_stack_underflow(self, source: Optional[Source], entries: int) -> None:
         """
         Reports a "stack underflow" error.
 
@@ -228,6 +229,6 @@ cdef class Verifier:
 
         # FIXME: ^^ grammar check lol
 
-        error = Error(ErrorType.STACK_UNDERFLOW, source, "%i entries" % entries)
+        error = Error(Error.Type.STACK_UNDERFLOW, source, "%i entries" % entries)
         if not error in self._errors:
             self._errors.append(error)

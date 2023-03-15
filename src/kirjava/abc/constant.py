@@ -1,5 +1,4 @@
-# cython: language=c
-# cython: language_level=3
+#!/usr/bin/env python3
 
 __all__ = (
     "Constant",
@@ -12,18 +11,14 @@ if typing.TYPE_CHECKING:
     from ..types import BaseType
 
 
-cdef class Constant:
+class Constant:
     """
     A Java constant (some piece of information that is constant).
     """
 
-    property value:
-        """
-        The actual value of this constant.
-        """
-
-        def __get__(self) -> object:
-            ...
+    def __init__(self, value: Any) -> None:
+        self.value = value
+        self._hash = hash(self.value)
 
     def __repr__(self) -> str:
         return "<%s(%r) at %x>" % (self.__class__.__name__, self.value, id(self))
@@ -32,10 +27,10 @@ cdef class Constant:
         return repr(self.value)
 
     def __eq__(self, other: Any) -> bool:
-        return type(other) is self.__class__ and other.value == self.value  # or other == self.value
+        return type(other) is type(self) and other.value == self.value  # or other == self.value
 
     def __hash__(self) -> int:
-        return hash(self.value)
+        return self._hash
 
     def get_type(self) -> "BaseType":
         """

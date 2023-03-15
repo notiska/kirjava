@@ -1,16 +1,32 @@
-from typing import Any, Iterable, Iterator, List, Tuple, Type, Union
+#!/usr/bin/env python3
 
-from ..abc.graph cimport Block, RethrowBlock, ReturnBlock
+__all__ = (
+    "InsnBlock", "InsnReturnBlock", "InsnRethrowBlock",
+)
+
+from typing import Any, Iterable, Iterator, List, Optional, Tuple, Type, Union
+
+from ..abc.graph import Block, RethrowBlock, ReturnBlock
 from ..instructions import jvm as instructions
 from ..instructions.jvm import Instruction, JumpInstruction, ReturnInstruction
 
 
-cdef class InsnBlock(Block):
+class InsnBlock(Block):
     """
     A block containing Java instructions.
     """
 
-    def __init__(self, label: int, instructions_: Union[Iterable[Instruction], None] = None) -> None:
+    __slots__ = ("_instructions", "inline")
+
+    @property
+    def instructions(self) -> Tuple[Instruction, ...]:
+        """
+        :return: A tuple of the instructions in this block, cos I keep forgetting this is iterable.
+        """
+
+        return tuple(self._instructions)
+
+    def __init__(self, label: int, instructions_: Optional[Iterable[Instruction]] = None) -> None:
         """
         :param label: The label of this block.
         :param instructions_: JVM instructions to initialise this block with.
@@ -19,7 +35,7 @@ cdef class InsnBlock(Block):
         super().__init__(label)
 
         self._instructions: List[Instruction] = []
-        self.inline_ = False  # Can this block be inlined?
+        self.inline = False  # Can this block be inlined?
 
         if instructions_ is not None:
             self._instructions.extend(instructions_)
@@ -35,8 +51,8 @@ cdef class InsnBlock(Block):
             return True
         return (
             isinstance(other, InsnBlock) and
-            (<InsnBlock>other).label == self.label and
-            (<InsnBlock>other)._instructions == self._instructions
+            other.label == self.label and
+            other._instructions == self._instructions
         )
 
     def __hash__(self) -> int:
@@ -75,7 +91,7 @@ cdef class InsnBlock(Block):
         if type(item) is int or type(item) is slice:
             del self._instructions[item]
 
-    def copy(self, label: Union[int, None] = None, deep: bool = True) -> "InsnBlock":
+    def copy(self, label: Optional[int] = None, deep: bool = True) -> "InsnBlock":
         new_block = self.__class__.__new__(self.__class__)
         new_block.label = self.label if label is None else label
         new_block._instructions = []

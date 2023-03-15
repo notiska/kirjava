@@ -17,7 +17,7 @@ from ...classfile.constants import Class
 from ...types import PrimitiveType, ReferenceType
 from ...types.reference import ArrayType, ClassOrInterfaceType
 from ...types.verification import Uninitialized
-from ...verifier import Error, ErrorType
+from ...verifier import Error
 
 
 class NewInstruction(Instruction):
@@ -25,7 +25,7 @@ class NewInstruction(Instruction):
     Creates a new class.
     """
 
-    __slots__ = ("type",)
+    __slots__ = ("type", "_index")
 
     operands = {"_index": ">H"}
 
@@ -64,7 +64,7 @@ class NewInstruction(Instruction):
     def trace(self, frame: Frame) -> None:
         if not frame.verifier.checker.check_class(self.type):
             frame.verifier.report(Error(
-                ErrorType.INVALID_TYPE, frame.source, "expected class or interface type", "got %s" % self.type,
+                Error.Type.INVALID_TYPE, frame.source, "expected class or interface type", "got %s" % self.type,
             ))
         frame.push(Uninitialized(class_=self.type))
 
@@ -78,7 +78,7 @@ class NewArrayInstruction(Instruction):
     Creates a new primitive array.
     """
 
-    __slots__ = ("type",)
+    __slots__ = ("type", "_atype")
 
     operands = {"_atype": ">B"}
 
@@ -148,7 +148,7 @@ class ANewArrayInstruction(Instruction):
     Creates a new array with a given reference type.
     """
 
-    __slots__ = ("type",)
+    __slots__ = ("type", "_index")
 
     operands = {"_index": ">H"}
     throws = (types.negativearraysizeexception_t,)
@@ -207,6 +207,8 @@ class MultiANewArrayInstruction(Instruction):
     Creates a new multidimensional array with the given reference type.
     """
 
+    __slots__ = ("_index", "dimension")
+
     operands = {"_index": ">H", "dimension": ">B"}
 
     def __init__(self, type_: Union[ArrayType, ReferenceType], dimension: int) -> None:
@@ -250,7 +252,7 @@ class MultiANewArrayInstruction(Instruction):
     def trace(self, frame: Frame) -> None:
         if self.dimension > self.type.dimension:
             frame.verifier.report(Error(
-                ErrorType.INVALID_INSTRUCTION, frame.source,
+                Error.Type.INVALID_INSTRUCTION, frame.source,
                 "instruction dimension exceeds array dimension", "%i > %i" % (self.dimension, self.type.dimension),
             ))
 

@@ -1,5 +1,4 @@
-# cython: language=c
-# cython: language_level=3
+#!/usr/bin/env python3
 
 __all__ = (
     "InsnBlock", "InsnReturnBlock", "InsnRethrowBlock",
@@ -15,30 +14,36 @@ __all__ = (
 A control flow graph containing the Java instructions (with offsets removed, so somewhat abstracted).
 """
 
+import logging
 import typing
+from typing import Optional, Set, Type, Union
 
-from .. import _argument
-from ..abc.graph cimport Edge, Graph
-from ..verifier import FullTypeChecker, VerifyError
+from ._assembler import *
+from ._block import *
+from ._disassembler import *
+from ._edge import *
+from .trace import Trace
+from .. import _argument, types
+from ..abc.graph import Edge, Graph
+from ..classfile.attributes.code import StackMapTable
+from ..classfile.attributes.method import Code
+from ..instructions import jvm as instructions
+from ..instructions.jvm import Instruction, JsrInstruction
+from ..verifier import FullTypeChecker, Verifier, VerifyError
 
 if typing.TYPE_CHECKING:
     from ..classfile.members import MethodInfo
 
-include "_assembler.pxi"
-include "_block.pxi"
-include "_disassembler.pxi"
-include "_edge.pxi"
-
 logger = logging.getLogger("kirjava.analysis.graph")
 
 
-cdef class InsnGraph(Graph):
+class InsnGraph(Graph):
     """
     A control flow graph that contains Java instructions.
     """
 
     @classmethod
-    def disassemble(cls, code: Code) -> InsnGraph:
+    def disassemble(cls, code: Code) -> "InsnGraph":
         """
         Disassembles a method's code and returns the disassembled graph.
 
@@ -48,16 +53,14 @@ cdef class InsnGraph(Graph):
 
         logger.debug("Disassembling method %r:" % str(code.parent))
 
-        cdef InsnGraph graph = cls(code.parent)
+        graph = cls(code.parent)
 
         jump_targets, handler_targets, exception_bounds = _find_targets_and_bounds(code)
         logger.debug(" - Found %i jump target(s), %i exception handler target(s) and %i exception bound(s)." % (
             len(jump_targets), len(handler_targets), len(exception_bounds),
         ))
 
-        _create_blocks_and_edges(
-            graph, code, jump_targets, handler_targets, exception_bounds,
-        )
+        _create_blocks_and_edges(graph, code, jump_targets, handler_targets, exception_bounds)
         logger.debug(" - Found %i basic block(s)." % (len(graph._blocks) - 2))  # - 2 for the return and rethrow blocks
 
         return graph
@@ -92,8 +95,8 @@ cdef class InsnGraph(Graph):
                     self.method.class_.version.name, StackMapTable.since.name,
                 ))
 
-        cdef Verifier verifier = Verifier(FullTypeChecker())  # TODO: Allow specified type checker through verifier parameter
-        cdef Trace trace = Trace.from_graph(self, verifier)
+        verifier = Verifier(FullTypeChecker())  # TODO: Allow specified type checker through verifier parameter
+        trace = Trace.from_graph(self, verifier, compute_constants=False, compute_deltas=False)
         code = Code(self.method, trace.max_stack, trace.max_locals)
 
         logger.debug(" - Method trace information:")
@@ -106,21 +109,21 @@ cdef class InsnGraph(Graph):
         # Write blocks and record the offsets they were written at, as well as keeping track of jump, switch and
         # exception offsets for later adjustment, as we don't know all the offsets while we're writing.
 
-        cdef int offset = 0
+        offset = 0
         # Record the blocks that have been written and their start/end offsets as well as new instruction mappings
         # (this for keeping track of uninitialised types, hacky, I know). Note that blocks can actually be written
         # multiple times if they have inline=True, so take that into account.
-        cdef dict offsets = {}
-        cdef set dead = set()
+        offsets = {}
+        dead = set()
 
-        cdef dict jumps = {}
-        cdef dict switches = {}
-        cdef list exceptions = []
-        cdef dict inlined = {}
+        jumps = {}
+        switches = {}
+        exceptions = []
+        inlined = {}
 
         # We'll record blocks that we've created for the purpose of assembling so that we can remove them later, as we
         # don't want to alter the state of the graph.
-        cdef set temporary = set()
+        temporary: Set[InsnBlock] = set()
 
         logger.debug(" - Writing %i block(s):" % len(self._blocks))
 
@@ -142,7 +145,7 @@ cdef class InsnGraph(Graph):
         # We may need to forcefully write any inline blocks if we have direct jumps to them.
         for block in self._blocks.values():
             # Is the block inline-able or has already been written, so we don't need to worry about it.
-            if not block.inline_ or block in offsets:
+            if not block.inline or block in offsets:
                 continue
             for edge in itertools.chain(jumps.values(), *switches.values(), exceptions):
                 if edge is not None and edge.to == block:
@@ -200,7 +203,7 @@ cdef class InsnGraph(Graph):
             self,
             from_: InsnBlock,
             to: InsnBlock,
-            jump: Union[Type[Instruction], Instruction] = instructions.goto,
+            jump: Union[Type[Instruction], Instruction, None] = None,
             overwrite: bool = True,
     ) -> JumpEdge:
         """
@@ -229,7 +232,7 @@ cdef class InsnGraph(Graph):
             self,
             from_: InsnBlock,
             to: InsnBlock,
-            priority: Union[int, None] = None,
+            priority: Optional[int] = None,
             exception: _argument.ReferenceType = types.throwable_t,
     ) -> ExceptionEdge:
         """

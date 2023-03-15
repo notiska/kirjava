@@ -4,7 +4,7 @@
 Java reference types.
 """
 
-from typing import Any, Iterable, Union
+from typing import Any, Iterable, Optional, Union
 
 from . import BaseType, ReferenceType, TypeArgument, TypeArgumentList, TypeBound, VerificationType
 
@@ -19,9 +19,9 @@ class ClassOrInterfaceType(ReferenceType, VerificationType):
     def __init__(
             self,
             name: str,
-            type_arguments: Union[Iterable[TypeArgument], None] = None,
-            inner_name: Union[str, None] = None,
-            inner_type_arguments: Union[Iterable[TypeArgument], None] = None,
+            type_arguments: Optional[Iterable[TypeArgument]] = None,
+            inner_name: Optional[str] = None,
+            inner_type_arguments: Optional[Iterable[TypeArgument]] = None,
     ) -> None:
         """
         :param name: The name of the class.

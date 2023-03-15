@@ -1,21 +1,31 @@
-from typing import Any, Union
+#!/usr/bin/env python3
+
+__all__ = (
+    "InsnEdge", "FallthroughEdge", "JumpEdge", "JsrJumpEdge", "JsrFallthroughEdge", "RetEdge", "SwitchEdge", "ExceptionEdge",
+)
+
+import typing
+from typing import Any, Optional, Union
 
 from .. import types
-from ..abc.graph cimport Edge
-from ..instructions import jvm as instructions
-from ..instructions.jvm import (
-    Instruction, JsrInstruction, LookupSwitchInstruction,
-    RetInstruction, TableSwitchInstruction,
-)
+from ..abc.graph import Edge
 from ..types.reference import ClassOrInterfaceType
 
+if typing.TYPE_CHECKING:
+    from ._block import InsnBlock
+    from ..instructions.jvm import (
+        Instruction, JsrInstruction, LookupSwitchInstruction, RetInstruction, TableSwitchInstruction,
+    )
 
-cdef class InsnEdge(Edge):
+
+class InsnEdge(Edge):
     """
     An edge that can contain an instruction. This instruction is added to the block that we're coming from.
     """
 
-    def __init__(self, from_: InsnBlock, to: InsnBlock, instruction: Union[Instruction, None] = None) -> None:
+    __slots__ = ("instruction",)
+
+    def __init__(self, from_: "InsnBlock", to: "InsnBlock", instruction: Optional["Instruction"] = None) -> None:
         """
         :param instruction: The instruction that this edge contains.
         """
@@ -23,28 +33,34 @@ cdef class InsnEdge(Edge):
         super().__init__(from_, to)
 
         self.instruction = instruction
+        self._hash = hash((from_, to, instruction.opcode if instruction is not None else None))
 
     def __eq__(self, other: Any) -> bool:
         if other is self:
             return True
         return (
-            type(other) is self.__class__ and
-            (<InsnEdge>other).from_ == self.from_ and
-            (<InsnEdge>other).to == self.to and
-            (<InsnEdge>other).instruction == self.instruction
+            type(other) is type(self) and
+            # Faster check, though technically not necessary as dict code already performs this check to some extent.
+            # other._hash == self._hash and
+            other.from_ == self.from_ and
+            other.to == self.to and
+            other.instruction == self.instruction
         )
 
     def __hash__(self) -> int:
-        return hash((self.from_, self.to, self.instruction.opcode if self.instruction is not None else None))
+        return self._hash
 
-    def copy(self, from_: Union[InsnBlock, None] = None, to: Union[InsnBlock, None] = None) -> InsnEdge:
+    def copy(self, from_: Optional["InsnBlock"] = None, to: Optional["InsnBlock"] = None, deep: bool = True) -> "InsnEdge":
+        instruction = self.instruction
+        if instruction is not None and deep:
+            instruction = instruction.copy()
+
         return self.__class__(
-            self.from_ if from_ is None else from_, self.to if to is None else to,
-            self.instruction.copy() if self.instruction is not None else None,
+            self.from_ if from_ is None else from_, self.to if to is None else to, instruction,
         )
 
 
-cdef class FallthroughEdge(InsnEdge):
+class FallthroughEdge(InsnEdge):
     """
     A fallthrough edge (also called an immediate edge) between two blocks.
     This occurs when there are no jumps between blocks, so the flow just falls through to the next block.
@@ -61,7 +77,7 @@ cdef class FallthroughEdge(InsnEdge):
         return "%s %s -> %s" % (self.instruction, self.from_, self.to)
 
 
-cdef class JumpEdge(InsnEdge):
+class JumpEdge(InsnEdge):
     """
     An edge that occurs when an explicit jump instruction is used.
     This may be a conditional jump, if so, it must be matched with a fallthrough edge, this is enforced when the graph
@@ -70,7 +86,7 @@ cdef class JumpEdge(InsnEdge):
 
     limit = 1
 
-    def __init__(self, from_: InsnBlock, to: InsnBlock, instruction: Union[Instruction, None] = None) -> None:
+    def __init__(self, from_: "InsnBlock", to: "InsnBlock", instruction: Optional["Instruction"] = None) -> None:
         if instruction is None:
             instruction = instructions.goto()  # By default
 
@@ -83,13 +99,13 @@ cdef class JumpEdge(InsnEdge):
         return "%s %s -> %s" % (self.instruction, self.from_, self.to)
 
 
-cdef class JsrJumpEdge(JumpEdge):
+class JsrJumpEdge(JumpEdge):
     """
     Specific edge for jsr instruction. This edge jumps to the subroutine.
     The corresponding JsrFallthroughEdge is used to return from the subroutine, if it returns at all.
     """
 
-    def __init__(self, from_: InsnBlock, to: InsnBlock, instruction: JsrInstruction) -> None:
+    def __init__(self, from_: "InsnBlock", to: "InsnBlock", instruction: "JsrInstruction") -> None:
         super().__init__(from_, to, instruction)
 
     def __repr__(self) -> str:
@@ -99,13 +115,13 @@ cdef class JsrJumpEdge(JumpEdge):
         return "%s %s -> %s" % (self.instruction, self.from_, self.to)
 
 
-cdef class JsrFallthroughEdge(JumpEdge):
+class JsrFallthroughEdge(JumpEdge):
     """
     Specific edge for jsr instruction. This edge is used to return from the subroutine.
     Should be matched with a JsrJumpEdge.
     """
 
-    def __init__(self, from_: InsnBlock, to: InsnBlock, instruction: JsrInstruction) -> None:
+    def __init__(self, from_: "InsnBlock", to: "InsnBlock", instruction: "JsrInstruction") -> None:
         super().__init__(from_, to, instruction)
 
     def __repr__(self) -> str:
@@ -117,12 +133,12 @@ cdef class JsrFallthroughEdge(JumpEdge):
         return "fallthrough %s %s (-> %s)" % (self.instruction, self.from_, self.to)
 
 
-cdef class RetEdge(JumpEdge):
+class RetEdge(JumpEdge):
     """
     A specific edge for a ret instruction. Might be opaque, if the target is unknown.
     """
 
-    def __init__(self, from_: InsnBlock, to: Union[InsnBlock, None], instruction: RetInstruction) -> None:
+    def __init__(self, from_: "InsnBlock", to: Optional["InsnBlock"], instruction: "RetInstruction") -> None:
         super().__init__(from_, to, instruction)
 
     def __repr__(self) -> str:
@@ -134,20 +150,22 @@ cdef class RetEdge(JumpEdge):
         return "%s %s -> unknown" % (self.instruction, self.from_)
 
 
-cdef class SwitchEdge(JumpEdge):
+class SwitchEdge(JumpEdge):
     """
     An edge created by a switch instruction (tableswitch or lookupswitch).
     Contains the value and offset, as well as the switch instruction.
     """
 
+    __slots__ = ("value", "_hash")
+
     limit = None
 
     def __init__(
             self,
-            from_: InsnBlock,
-            to: InsnBlock,
-            instruction: Union[LookupSwitchInstruction, TableSwitchInstruction],
-            value: Union[int, None] = None,
+            from_: "InsnBlock",
+            to: "InsnBlock",
+            instruction: Union["LookupSwitchInstruction", "TableSwitchInstruction"],  # TODO: Common superclass
+            value: Optional[int] = None,
     ) -> None:
         """
         :param instruction: The switch instruction that created this edge.
@@ -157,6 +175,7 @@ cdef class SwitchEdge(JumpEdge):
         super().__init__(from_, to, instruction)
 
         self.value = value
+        self._hash = hash((from_, to, instruction.opcode, value))
 
     def __repr__(self) -> str:
         return "<SwitchEdge(from=%s, to=%s, instruction=%s, value=%s) at %x>" % (
@@ -172,34 +191,41 @@ cdef class SwitchEdge(JumpEdge):
         if other is self:
             return True
         return (
-            isinstance(other, SwitchEdge) and
-            (<SwitchEdge>other).from_ == self.from_ and
-            (<SwitchEdge>other).to == self.to and
-            (<SwitchEdge>other).instruction == self.instruction and
-            (<SwitchEdge>other).value == self.value
+            type(other) is SwitchEdge and
+            # other._hash == self._hash and
+            other.from_ == self.from_ and
+            other.to == self.to and
+            other.instruction == self.instruction and
+            other.value == self.value
         )
 
     def __hash__(self) -> int:
-        return hash((self.from_, self.to, self.instruction.opcode, self.value))
+        return self._hash
 
-    def copy(self, from_: Union[InsnBlock, None] = None, to: Union[InsnBlock, None] = None) -> SwitchEdge:
+    def copy(self, from_: Optional["InsnBlock"] = None, to: Optional["InsnBlock"] = None, deep: bool = True) -> "SwitchEdge":
+        instruction = self.instruction
+        if instruction is not None and deep:
+            instruction = instruction.copy()
+
         return SwitchEdge(
-            self.from_ if from_ is None else from_, self.to if to is None else to, self.instruction.copy(), self.value,
+            self.from_ if from_ is None else from_, self.to if to is None else to, instruction, self.value,
         )
 
 
-cdef class ExceptionEdge(InsnEdge):
+class ExceptionEdge(InsnEdge):
     """
     An edge for an exception handler.
     Contains the exception being caught and a priority (determined by the order of the handlers in the code).
     """
 
+    __slots__ = ("priority", "throwable", "inline_coverage")
+
     def __init__(
             self,
-            from_: InsnBlock,
-            to: InsnBlock,
+            from_: "InsnBlock",
+            to: "InsnBlock",
             priority: int,
-            throwable: Union[ClassOrInterfaceType, None] = None,
+            throwable: Optional[ClassOrInterfaceType] = None,
             inline_coverage: bool = False,
     ) -> None:
         """
@@ -216,6 +242,8 @@ cdef class ExceptionEdge(InsnEdge):
         self.throwable = throwable
         self.inline_coverage = inline_coverage
 
+        self._hash = hash((from_, to, priority, throwable))
+
     def __repr__(self) -> str:
         return "<ExceptionEdge(from=%s, to=%s, priority=%i, throwable=%s, inline_coverage=%s) at %x>" % (
             self.from_, self.to, self.priority, self.throwable, self.inline_coverage, id(self),
@@ -230,18 +258,22 @@ cdef class ExceptionEdge(InsnEdge):
         if other is self:
             return True
         return (
-            isinstance(other, ExceptionEdge) and
-            (<ExceptionEdge>other).from_ == self.from_ and
-            (<ExceptionEdge>other).to == self.to and
-            (<ExceptionEdge>other).priority == self.priority and
-            (<ExceptionEdge>other).throwable == self.throwable
+            type(other) is ExceptionEdge and
+            # other._hash == self._hash and
+            other.from_ == self.from_ and
+            other.to == self.to and
+            other.priority == self.priority and
+            other.throwable == self.throwable
         )
 
     def __hash__(self) -> int:
-        return hash((self.from_, self.to, self.priority, self.throwable))
+        return self._hash
 
-    def copy(self, from_: Union[InsnBlock, None] = None, to: Union[InsnBlock, None] = None) -> ExceptionEdge:
+    def copy(self, from_: Optional["InsnBlock"] = None, to: Optional["InsnBlock"] = None, deep: bool = True) -> "ExceptionEdge":
         return ExceptionEdge(
             self.from_ if from_ is None else from_, self.to if to is None else to,
             self.priority, self.throwable, self.inline_coverage,
         )
+
+
+from ..instructions import jvm as instructions

@@ -1,5 +1,4 @@
-# cython: language=c
-# cython: language_level=3
+#!/usr/bin/env python3
 
 from typing import Tuple, Union
 
@@ -7,7 +6,7 @@ from .. import types
 from ..types import BaseType, InvalidType
 from ..types.reference import ArrayType, ClassOrInterfaceType
 
-cdef dict _FORWARD_BASE_TYPES = {
+_FORWARD_BASE_TYPES = {
     "B": types.byte_t,
     "S": types.short_t,
     "I": types.int_t,
@@ -18,7 +17,7 @@ cdef dict _FORWARD_BASE_TYPES = {
     "Z": types.bool_t,
     "V": types.void_t,
 }
-cdef dict _BACKWARD_BASE_TYPES = {
+_BACKWARD_BASE_TYPES = {
     types.byte_t: "B",
     types.short_t: "S",
     types.int_t: "I",
@@ -31,17 +30,17 @@ cdef dict _BACKWARD_BASE_TYPES = {
 }
 
 
-cpdef inline tuple _find_enclosing(str string, str start_identifier, str end_identifier):
+def _find_enclosing(string: str, start_identifier: str, end_identifier: str) -> Tuple[str, str, str]:
     """
     Finds the enclosing arguments within the provided start and ending identifiers, as well as the string before and
     after the start and end.
     """
 
-    cdef int end_index = string.find(end_identifier)
+    end_index = string.find(end_identifier)
     if end_index < 0:
         return None, None, None
-    cdef int start_index = string.find(start_identifier)
-    cdef int offset = string.find(start_identifier, start_index + 1)
+    start_index = string.find(start_identifier)
+    offset = string.find(start_identifier, start_index + 1)
 
     while 0 < offset < end_index:  # Find the next start in the initial bound
         end_index = string.find(end_identifier, end_index + 1)
@@ -61,7 +60,8 @@ def to_descriptor(*values: Union[Tuple[BaseType, ...], BaseType], do_raise: bool
     :return: The serialized type string.
     """
 
-    cdef str descriptor = ""
+    descriptor = ""
+
     for value in values:
         base_type = _BACKWARD_BASE_TYPES.get(value, None)
         if base_type is not None:
@@ -81,7 +81,7 @@ def to_descriptor(*values: Union[Tuple[BaseType, ...], BaseType], do_raise: bool
     return descriptor
 
 
-cpdef inline tuple next_argument(str descriptor):  # -> Tuple[BaseType, str]:
+def next_argument(descriptor: str) -> Tuple[BaseType, str]:
     """
     Gets the next argument from the descriptor.
 
@@ -136,8 +136,6 @@ def parse_field_descriptor(
             raise ValueError("Descriptor is empty.")
         return InvalidType(descriptor)
 
-    cdef str remaining
-
     type_, remaining = next_argument(descriptor)
     if not force_read:
         # Check for trailing data
@@ -176,14 +174,10 @@ def parse_method_descriptor(
             raise ValueError("Descriptor is empty.")
         return InvalidType(descriptor)
 
-    cdef str preceding
-    cdef str arguments_descriptor
-    cdef str remaining
-
     # This is extra, but who cares :p, if it causes MAJOR issues I'll remove it later
     preceding, arguments_descriptor, remaining = _find_enclosing(descriptor, "(", ")")
 
-    cdef list argument_types = []
+    argument_types = []
     while arguments_descriptor:  # If there are no (), arguments_descriptor should be None
         type_, arguments_descriptor = next_argument(arguments_descriptor)
         argument_types.append(type_)

@@ -1,5 +1,4 @@
-# cython: language=c
-# cython: language_level=3
+#!/usr/bin/env python3
 
 __all__ = (
     "Value", "Expression", "Statement",
@@ -18,7 +17,7 @@ if typing.TYPE_CHECKING:
     from ..types.primitive import VoidType
 
 
-cdef class Value:
+class Value:
     """
     Any kind of value present in the IR.
     """
@@ -31,7 +30,7 @@ cdef class Value:
         ...
 
 
-cdef class Expression(Value):
+class Expression(Value):
     """
     A base expression.
     """
@@ -39,7 +38,7 @@ cdef class Expression(Value):
     ...
 
 
-cdef class Statement(Expression):
+class Statement(Expression):
     """
     A base statement.
     """

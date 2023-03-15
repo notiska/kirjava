@@ -4,7 +4,7 @@
 IR variables and variable-related expressions/statements.
 """
 
-from typing import Iterable, Union
+from typing import Iterable, Optional
 
 from .arithmetic import AdditionExpression, BinaryExpression
 from .value import ConstantValue
@@ -69,7 +69,7 @@ class DeclareStatement(Statement):
     A variable declaration statement.
     """
 
-    def __init__(self, target: Variable, value: Union[Value, None] = None) -> None:
+    def __init__(self, target: Variable, value: Optional[Value] = None) -> None:
         """
         :param target: The target variable to declare.
         :param value: The value to assign to the variable, if any.

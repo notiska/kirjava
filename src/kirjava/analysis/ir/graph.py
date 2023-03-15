@@ -9,10 +9,10 @@ A control flow graph containing the IR instructions.
 """
 
 import typing
-from typing import Iterable, List, Union
+from typing import Iterable, List, Optional
 
 from .variable import Parameter, Scope, Super, This
-from ..graph import InsnEdge
+from .._edge import InsnEdge
 from ..source import InstructionInBlock
 from ..trace import Trace
 from ...abc import Block, Graph, Statement
@@ -30,8 +30,8 @@ class IRBlock(Block):
 
     def __init__(
             self,
-            label: Union[int, None] = None,
-            statements: Union[Iterable[Statement], None] = None,
+            label: Optional[int] = None,
+            statements: Optional[Iterable[Statement]] = None,
     ) -> None:
         """
         :param statements: The IR statements.

@@ -9,7 +9,7 @@ Type checker implementations.
 """
 
 import logging
-from typing import Dict, Set, Tuple, Union
+from typing import Dict, Optional, Set, Tuple
 
 from .. import environment, types
 from ..abc import TypeChecker
@@ -25,7 +25,7 @@ class NoTypeChecker(TypeChecker):
     A type checker that does nothing (for no verification).
     """
 
-    def check_merge(self, expected: Union[VerificationType, None], actual: VerificationType) -> bool:
+    def check_merge(self, expected: Optional[VerificationType], actual: VerificationType) -> bool:
         return True  # Always assignable
 
     def check_reference(self, actual: VerificationType) -> bool:
@@ -40,7 +40,7 @@ class NoTypeChecker(TypeChecker):
     def check_category(self, actual: VerificationType, category: int = 2) -> bool:
         return True
 
-    def merge(self, expected: Union[VerificationType, None], actual: VerificationType) -> VerificationType:
+    def merge(self, expected: Optional[VerificationType], actual: VerificationType) -> VerificationType:
         return actual  # Assume that the actual type is always correct
 
 
@@ -49,7 +49,7 @@ class BasicTypeChecker(TypeChecker):
     Verifies that types are basically assignable, so doesn't check reference types thoroughly.
     """
 
-    def check_merge(self, expected: Union[VerificationType, None], actual: VerificationType) -> bool:
+    def check_merge(self, expected: Optional[VerificationType], actual: VerificationType) -> bool:
         if expected is None:
             return self.check_reference(actual)
         elif expected.can_merge(actual):
@@ -85,10 +85,10 @@ class BasicTypeChecker(TypeChecker):
 
     def merge(
             self,
-            expected: Union[VerificationType, None],
+            expected: Optional[VerificationType],
             actual: VerificationType,
             *,
-            fallback: Union[VerificationType, None] = None,
+            fallback: Optional[VerificationType] = None,
     ) -> VerificationType:
         if expected is None:
             return actual if fallback is None else fallback  # Might need to fall back sometimes, unfortunately
@@ -107,10 +107,10 @@ class FullTypeChecker(BasicTypeChecker):
 
     def merge(
             self,
-            expected: Union[VerificationType, None],
+            expected: Optional[VerificationType],
             actual: VerificationType,
             *,
-            fallback: Union[VerificationType, None] = None,
+            fallback: Optional[VerificationType] = None,
     ) -> VerificationType:
         if expected is None:
             return actual if fallback is None else fallback
@@ -121,7 +121,7 @@ class FullTypeChecker(BasicTypeChecker):
             # Merging class types
 
             if type(expected) is ClassOrInterfaceType and type(actual) is ClassOrInterfaceType:
-                common: Union[ClassOrInterfaceType, None] = self._supertype_cache.get((expected.name, actual.name), None)
+                common: Optional[ClassOrInterfaceType] = self._supertype_cache.get((expected.name, actual.name), None)
                 if common is not None:
                     return common
                 else:

@@ -13,7 +13,7 @@ import logging
 import time
 import typing
 from io import BytesIO
-from typing import Dict, IO, Iterable, List, Tuple, Union
+from typing import Dict, IO, Iterable, List, Optional, Tuple, Union
 
 from ._struct import *
 from .. import _argument, environment, types
@@ -205,24 +205,24 @@ class ClassFile(Class_):
         self._this = Class(value)
 
     @property
-    def super(self) -> Union[Class_, None]:
+    def super(self) -> Optional[Class_]:
         if self._super is None:
             return None
         return environment.find_class(self._super.name)
 
     @super.setter
-    def super(self, value: Union[Class_, None]) -> None:
+    def super(self, value: Optional[Class_]) -> None:
         if value is None:
             self._super = None
         else:
             self._super = Class(value.name)
 
     @property
-    def super_name(self) -> Union[str, None]:
+    def super_name(self) -> Optional[str]:
         return None if self._super is None else self._super.name
 
     @super_name.setter
-    def super_name(self, value: Union[str, None]) -> None:
+    def super_name(self, value: Optional[str]) -> None:
         if value is None:
             self._super = None
         else:
@@ -278,7 +278,7 @@ class ClassFile(Class_):
             self,
             name: str,
             super_: "_argument.ClassConstant" = types.object_t,
-            interfaces: Union[List["_argument.ClassConstant"], None] = None,
+            interfaces: Optional[List["_argument.ClassConstant"]] = None,
             version: Version = Version(52, 0),
             is_public: bool = False,
             is_final: bool = False,
@@ -321,7 +321,7 @@ class ClassFile(Class_):
         self.is_enum = is_enum
         self.is_module = is_module
 
-        self.constant_pool: Union[ConstantPool, None] = None
+        self.constant_pool: Optional[ConstantPool] = None
 
         self._methods: List[MethodInfo] = []
         self._fields: List[FieldInfo] = []
@@ -395,7 +395,7 @@ class ClassFile(Class_):
 
     # ------------------------------ Fields ------------------------------ #
 
-    def get_field(self, name: str, descriptor_: Union["_argument.FieldDescriptor", None] = None) -> "FieldInfo":
+    def get_field(self, name: str, descriptor_: Optional["_argument.FieldDescriptor"] = None) -> "FieldInfo":
         """
         Gets a field in this class.
 
@@ -421,7 +421,7 @@ class ClassFile(Class_):
         raise LookupError("Field %r was not found." % ("%s#%s" % (self.name, name)))
 
     def add_field(
-            self, name: str, descriptor_: Union["_argument.FieldDescriptor", None] = None, **access_flags: bool,
+            self, name: str, descriptor_: Optional["_argument.FieldDescriptor"] = None, **access_flags: bool,
     ) -> "FieldInfo":
         """
         Adds a field to this class.
@@ -435,7 +435,7 @@ class ClassFile(Class_):
         return FieldInfo(self, name, descriptor_, **access_flags)
 
     def remove_field(
-            self, name_or_field: Union[str, "FieldInfo"], descriptor_: Union["_argument.FieldDescriptor", None] = None,
+            self, name_or_field: Union[str, "FieldInfo"], descriptor_: Optional["_argument.FieldDescriptor"] = None,
     ) -> "FieldInfo":
         """
         Removes a field from this class.
@@ -500,6 +500,6 @@ class ClassFile(Class_):
         logger.debug("Wrote classfile %r in %.1fms." % (self.name, (time.perf_counter_ns() - start) / 1_000_000))
 
 
-from .members import FieldInfo, MethodInfo  # Important that these are imported first, I <3 Python
 from . import attributes, constants, descriptor, members, signature
 from .constants import ConstantPool, Class
+from .members import FieldInfo, MethodInfo  # Important that these are imported first, I <3 Python

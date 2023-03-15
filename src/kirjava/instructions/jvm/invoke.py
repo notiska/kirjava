@@ -97,6 +97,8 @@ class InvokeVirtualInstruction(InvokeInstruction):
     An instruction that invokes a virtual method.
     """
 
+    __slots__ = ()
+
     throws = (  # FIXME
         types.abstractmethoderror_t,
         types.incompatibleclasschangeerror_t,
@@ -115,6 +117,8 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction):
     """
     An instruction that is similar to invokevirtual, except it has handling for special methods.
     """
+
+    __slots__ = ()
 
     throws = (
         types.abstractmethoderror_t,
@@ -144,6 +148,8 @@ class InvokeStaticInstruction(InvokeInstruction):
     An instruction that invokes a static method.
     """
 
+    __slots__ = ()
+
     def trace(self, frame: Frame) -> None:
         self._trace_arguments(frame)
         if self.return_type != types.void_t:
@@ -154,6 +160,8 @@ class InvokeInterfaceInstruction(InvokeVirtualInstruction):
     """
     An instruction that invokes an interface method.
     """
+
+    __slots__ = ("count",)
 
     throws = (
         types.abstractmethoderror_t,

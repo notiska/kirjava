@@ -23,6 +23,8 @@ class ConversionInstruction(Instruction):
     Converts one type into another.
     """
 
+    __slots__ = ()
+
     type_in: PrimitiveType = ...
     type_out: PrimitiveType = ...
 
@@ -52,7 +54,7 @@ class ConversionInstruction(Instruction):
 
         frame.push(self.type_out.to_verification_type(), value)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         associations[delta.pushes[0]] = ValueCastExpression(associations[delta.pops[-1]], self.type_out)
 
 
@@ -60,6 +62,8 @@ class TruncationInstruction(ConversionInstruction):
     """
     Truncates integer primitive types.
     """
+
+    __slots__ = ()
 
     type_in = types.int_t
 
@@ -74,7 +78,7 @@ class CheckCastInstruction(Instruction):
     Checks if the top value on the stack is of a certain type.
     """
 
-    __slots__ = ("type",)
+    __slots__ = ("type", "_index")
 
     operands = {"_index": ">H"}
     throws = (types.classcastexception_t,)
@@ -115,7 +119,7 @@ class CheckCastInstruction(Instruction):
         entry = frame.pop(expect=None)
         frame.push(entry.cast(frame.source, self.type))
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         associations[delta.pushes[0]] = TypeCastExpression(associations[delta.pops[-1]], self.type)
 
 
@@ -124,7 +128,7 @@ class InstanceOfInstruction(Instruction):
     Determines if the top value on the stack is of a certain type.
     """
 
-    __slots__ = ("type",)
+    __slots__ = ("type", "_index")
 
     operands = {"_index": ">H"}
 
@@ -164,5 +168,5 @@ class InstanceOfInstruction(Instruction):
         frame.pop(expect=None)
         frame.push(types.int_t)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         associations[delta.pushes] = InstanceOfExpression(associations[delta.pops[-1]], self.type)

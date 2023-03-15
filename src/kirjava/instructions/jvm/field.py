@@ -82,12 +82,14 @@ class GetFieldInstruction(FieldInstruction):
     Gets the value from a field.
     """
 
+    __slots__ = ()
+
     def trace(self, frame: Frame) -> None:
         if not self.static:
             frame.pop(expect=None)
         frame.push(self.type.to_verification_type())
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         if self.static:
             associations[delta.pushes[0]] = GetStaticFieldExpression(self.class_, self.name, self.type)
         else:
@@ -99,13 +101,15 @@ class PutFieldInstruction(FieldInstruction):
     Sets the value of a field.
     """
 
+    __slots__ = ()
+
     def trace(self, frame: Frame) -> None:
         type_ = self.type.to_verification_type()
         frame.pop(type_.internal_size, tuple_=True, expect=type_)
         if not self.static:
             frame.pop(expect=None)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> Union[SetFieldStatement, SetStaticFieldStatement]:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> Union[SetFieldStatement, SetStaticFieldStatement]:
         if self.static:
             return SetStaticFieldStatement(self.class_, self.name, associations[delta.pops[-1]])
         else:

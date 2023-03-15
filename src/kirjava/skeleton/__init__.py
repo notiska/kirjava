@@ -11,7 +11,7 @@ Java class skeletons in case we haven't loaded any Java libraries (rt.jar specif
 import json
 import logging
 import os
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from .. import _argument, environment
 from ..abc import Class, Field, Method
@@ -139,11 +139,11 @@ class _SkeletonClass(Class):
         return self._name
 
     @property
-    def super(self) -> Union["_SkeletonClass", None]:
+    def super(self) -> Optional["_SkeletonClass"]:
         return self._super
 
     @property
-    def super_name(self) -> Union[str, None]:
+    def super_name(self) -> Optional[str]:
         if self._super is None:
             return None
         return self._super.name
@@ -167,7 +167,7 @@ class _SkeletonClass(Class):
     def __init__(
             self,
             name: str,
-            super_: Union["_SkeletonClass", None],
+            super_: Optional["_SkeletonClass"],
             interfaces: Tuple["_SkeletonClass", ...],
             is_public: bool = False,
             is_final: bool = False,
@@ -237,7 +237,7 @@ class _SkeletonClass(Class):
     ) -> None:
         raise AttributeError("Can't remove method from skeleton class.")
 
-    def get_field(self, name: str, descriptor_: Union[_argument.FieldDescriptor, None] = None) -> "_SkeletonField":
+    def get_field(self, name: str, descriptor_: Optional[_argument.FieldDescriptor] = None) -> "_SkeletonField":
         """
         Gets a field in this class.
 
@@ -263,12 +263,12 @@ class _SkeletonClass(Class):
         raise LookupError("Field %r was not found." % ("%s#%s" % (self.name, name)))
 
     def add_field(
-            self, name: str, descriptor_: Union[_argument.FieldDescriptor, None] = None, **access_flags: bool,
+            self, name: str, descriptor_: Optional[_argument.FieldDescriptor] = None, **access_flags: bool,
     ) -> None:
         raise AttributeError("Can't add field to skeleton class.")
 
     def remove_field(
-            self, name_or_field: Union[str, "_SkeletonField"], descriptor_: Union[_argument.FieldDescriptor, None] = None,
+            self, name_or_field: Union[str, "_SkeletonField"], descriptor_: Optional[_argument.FieldDescriptor] = None,
     ) -> None:
         raise AttributeError("Can't remove field from skeleton class.")
 

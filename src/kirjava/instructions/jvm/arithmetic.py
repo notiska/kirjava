@@ -4,10 +4,10 @@
 Arithmetic related instructions.
 """
 
-from typing import Dict, Union
+from typing import Dict, Optional
 
 from . import Instruction
-from ..ir.arithmetic import (
+from ..ir.arithmetic import (  # FIXME: import *
     AdditionExpression, BitwiseAndExpression, BitwiseOrExpression,
     BitwiseXorExpression, DivisionExpression, ModuloExpression,
     MultiplicationExpression, NegationExpression, ShiftLeftExpression,
@@ -26,6 +26,8 @@ class UnaryOperationInstruction(Instruction):
     A unary arithmetic operation.
     """
 
+    __slots__ = ()
+
     type_: BaseType = ...
 
     def trace(self, frame: Frame) -> None:
@@ -37,6 +39,8 @@ class BinaryOperationInstruction(Instruction):
     """
     A binary arithmetic operation.
     """
+
+    __slots__ = ()
 
     type_a: BaseType = ...
     type_b: BaseType = ...
@@ -57,7 +61,7 @@ class ComparisonInstruction(BinaryOperationInstruction):
         entry_b, *_ = frame.pop(self.type_.internal_size, tuple_=True, expect=self.type_)
         frame.push(types.int_t)
 
-    def apply(self, value_a: Constant, value_b: Constant) -> Union[Constant, None]:
+    def apply(self, value_a: Constant, value_b: Constant) -> Optional[Constant]:
         ...  # TODO
 
 
@@ -66,7 +70,7 @@ class AdditionInstruction(BinaryOperationInstruction):
     Adds two values.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = AdditionExpression(
@@ -81,7 +85,7 @@ class SubtractionInstruction(BinaryOperationInstruction):
     Subtracts two values.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = SubtractionExpression(
@@ -96,7 +100,7 @@ class MultiplicationInstruction(BinaryOperationInstruction):
     Multiplies two values.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = MultiplicationExpression(
@@ -111,7 +115,7 @@ class DivisionInstruction(BinaryOperationInstruction):
     Divides two values.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = DivisionExpression(
@@ -126,7 +130,7 @@ class RemainderInstruction(BinaryOperationInstruction):
     Gets the module of the first value by the second.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = ModuloExpression(
@@ -141,7 +145,7 @@ class NegationInstruction(UnaryOperationInstruction):
     Negates a value.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = NegationExpression(associations[delta.pops[-1]])
@@ -154,7 +158,7 @@ class ShiftLeftInstruction(BinaryOperationInstruction):
     Shifts the first value left by the second.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = ShiftLeftExpression(
@@ -169,7 +173,7 @@ class ShiftRightInstruction(BinaryOperationInstruction):
     Shifts the first value right by the second.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = ShiftRightExpression(
@@ -184,7 +188,7 @@ class UnsignedShiftRightInstruction(BinaryOperationInstruction):
     Shifts the first value right by the second, does not conserve the sign.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = UnsignedShiftRightExpression(
@@ -199,7 +203,7 @@ class BitwiseAndInstruction(BinaryOperationInstruction):
     The bitwise and of two values.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = BitwiseAndExpression(
@@ -214,7 +218,7 @@ class BitwiseOrInstruction(BinaryOperationInstruction):
     The bitwise or of two values.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = BitwiseOrExpression(
@@ -229,7 +233,7 @@ class BitwiseXorInstruction(BinaryOperationInstruction):
     The bitwise xor of two values.
     """
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         entry, = delta.pushes
         if entry.value is None:
             associations[entry] = BitwiseXorExpression(

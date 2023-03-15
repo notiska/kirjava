@@ -21,6 +21,8 @@ class ReturnInstruction(Instruction):
     An instruction that returns from the current method.
     """
 
+    __slots__ = ()
+
     throws = (types.illegalmonitorstateexception_t,)
 
     type_: BaseType = ...
@@ -44,6 +46,8 @@ class AThrowInstruction(Instruction):
     """
     An instruction that throws an exception.
     """
+
+    __slots__ = ()
 
     throws = (
         types.illegalmonitorstateexception_t,
@@ -70,6 +74,8 @@ class MonitorEnterInstruction(Instruction):
     An instruction that enters a monitor for an object.
     """
 
+    __slots__ = ()
+
     throws = (
         types.nullpointerexception_t,
     )
@@ -85,6 +91,8 @@ class MonitorExitInstruction(Instruction):
     """
     An instruction that exits a monitor for an object.
     """
+
+    __slots__ = ()
 
     throws = (
         types.illegalmonitorstateexception_t,

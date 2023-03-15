@@ -4,7 +4,7 @@
 IR expressions/statements that are not unique enough to fit into their own categories.
 """
 
-from typing import Iterable, Union
+from typing import Iterable, Optional
 
 from ...abc import Statement, Value
 
@@ -48,7 +48,7 @@ class ReturnStatement(Statement):
     Returns a value from the method.
     """
 
-    def __init__(self, value: Union[Value, None] = None) -> None:
+    def __init__(self, value: Optional[Value] = None) -> None:
         """
         :param value: The value to return, None if there is no return value.
         """

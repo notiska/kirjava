@@ -9,16 +9,21 @@ Attributes that are only found in method info structures.
 """
 
 import logging
+import typing
 from io import BytesIO
-from typing import Dict, IO, Iterable, List, Tuple, Union
+from typing import Dict, IO, Iterable, List, Optional, Tuple
 
 from . import AttributeInfo
 from .code import StackMapTable
 from .. import attributes, ClassFile
+from .._instructions import *
 from .._struct import *
 from ..constants import Class
-from ..members import MethodInfo
 from ...version import Version
+
+if typing.TYPE_CHECKING:
+    from ..members import MethodInfo
+    from ...instructions.jvm import Instruction
 
 logger = logging.getLogger("kirjava.classfile.attributes.method")
 
@@ -32,12 +37,12 @@ class Code(AttributeInfo):
 
     name_ = "Code"
     since = Version(45, 0)
-    locations = (MethodInfo,)
+    locations = ("MethodInfo",)
 
     _LEGACY_VERSION = Version(45, 3)
 
     @property
-    def stackmap_table(self) -> Union["StackMapTable", None]:
+    def stackmap_table(self) -> Optional["StackMapTable"]:
         """
         :return: The stackmap table in this code, or None if there isn't one.
         """
@@ -46,7 +51,7 @@ class Code(AttributeInfo):
         return stackmap_table
 
     @stackmap_table.setter
-    def stackmap_table(self, value: Union["StackMapTable", None]) -> None:
+    def stackmap_table(self, value: Optional["StackMapTable"]) -> None:
         """
         Sets the stackmap table attribute in this code.
         """
@@ -56,7 +61,7 @@ class Code(AttributeInfo):
         else:
             self.attributes[value.name] = (value,)
 
-    def __init__(self, parent: MethodInfo, max_stack: int = 0, max_locals: int = 0) -> None:
+    def __init__(self, parent: "MethodInfo", max_stack: int = 0, max_locals: int = 0) -> None:
         """
         :param max_stack: The maximum stack depth the code will reach.
         :param max_locals: The maximum number of locals.
@@ -67,7 +72,7 @@ class Code(AttributeInfo):
         self.max_stack = max_stack
         self.max_locals = max_locals
 
-        self.instructions: Dict[int, Instruction] = {}
+        self.instructions: Dict[int, "Instruction"] = {}
         self.exception_table: List[Code.ExceptionHandler] = []
         self.attributes: Dict[str, Tuple[AttributeInfo, ...]] = {}
 
@@ -86,7 +91,7 @@ class Code(AttributeInfo):
 
         self.instructions.clear()
         # Copy to a new BytesIO object as some instructions are byte-aligned to the start of the code
-        self.instructions.update(_instructions.read_instructions(
+        self.instructions.update(read_instructions(
             class_file, BytesIO(buffer.read(code_length)), code_length,
         ))
 
@@ -103,7 +108,7 @@ class Code(AttributeInfo):
 
     def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
         code = BytesIO()
-        _instructions.write_instructions(self.instructions, class_file, code)
+        write_instructions(self.instructions, class_file, code)
         code = code.getvalue()
 
         if class_file.version < self._LEGACY_VERSION:
@@ -195,9 +200,9 @@ class Exceptions(AttributeInfo):
 
     name_ = "Exceptions"
     since = Version(45, 0)
-    locations = (MethodInfo,)
+    locations = ("MethodInfo",)
 
-    def __init__(self, parent: MethodInfo, exceptions: Union[Iterable[Class], None] = None) -> None:
+    def __init__(self, parent: "MethodInfo", exceptions: Optional[Iterable[Class]] = None) -> None:
         super().__init__(parent, Exceptions.name_)
 
         self.exceptions: List[Class] = []
@@ -218,7 +223,3 @@ class Exceptions(AttributeInfo):
         buffer.write(pack_H(len(self.exceptions)))
         for exception in self.exceptions:
             buffer.write(pack_H(class_file.constant_pool.add(exception)))
-
-
-from .. import _instructions
-from ...instructions.jvm import Instruction

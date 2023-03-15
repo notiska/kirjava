@@ -9,7 +9,7 @@ Attributes that appear in multiple elements inside a class file.
 """
 
 import logging
-from typing import IO, Iterable, List, Tuple, Union
+from typing import IO, Iterable, List, Optional, Tuple, Union
 
 from . import AttributeInfo
 from .class_ import Record
@@ -58,7 +58,7 @@ class Signature(AttributeInfo):
     def __init__(
             self,
             parent: Union[ClassFile, FieldInfo, MethodInfo, Record.ComponentInfo],
-            signature: Union[UTF8, None] = None,
+            signature: Optional[UTF8] = None,
     ) -> None:
         super().__init__(parent, Signature.name_)
 
@@ -113,7 +113,7 @@ class Annotations(AttributeInfo):
             self,
             parent: Union[ClassFile, FieldInfo, MethodInfo],
             name: str,
-            annotations: Union[Iterable["Annotations.Annotation"], None] = None,
+            annotations: Optional[Iterable["Annotations.Annotation"]] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.
@@ -261,7 +261,7 @@ class Annotations(AttributeInfo):
             return annotation
 
         def __init__(
-                self, descriptor: UTF8, elements: Union[Iterable[Tuple[UTF8, "Annotations.Element"]], None] = None,
+                self, descriptor: UTF8, elements: Optional[Iterable[Tuple[UTF8, "Annotations.Element"]]] = None,
         ) -> None:
             """
             :param descriptor: The type descriptor for this element.
@@ -301,7 +301,7 @@ class RuntimeVisibleAnnotations(Annotations):
     def __init__(
             self,
             parent: Union[ClassFile, FieldInfo, MethodInfo],
-            annotations: Union[Iterable["RuntimeVisibleAnnotations.Annotation"], None] = None,
+            annotations: Optional[Iterable["RuntimeVisibleAnnotations.Annotation"]] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.
@@ -320,7 +320,7 @@ class RuntimeInvisibleAnnotations(Annotations):
     def __init__(
             self,
             parent: Union[ClassFile, FieldInfo, MethodInfo],
-            annotations: Union[Iterable["RuntimeInvisibleAnnotations.Annotation"], None] = None,
+            annotations: Optional[Iterable["RuntimeInvisibleAnnotations.Annotation"]] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.

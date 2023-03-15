@@ -4,7 +4,7 @@
 IR variables.
 """
 
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional
 
 from ...abc import Value
 from ...types import BaseType
@@ -21,7 +21,7 @@ class Scope:
         self._variable_id += 1
         return self._variable_id
 
-    def __init__(self, parent: Union["Scope", None] = None) -> None:
+    def __init__(self, parent: Optional["Scope"] = None) -> None:
         """
         :param parent: The parent scope to this scope.
         """

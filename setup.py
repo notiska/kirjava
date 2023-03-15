@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from Cython.Build import cythonize
 from setuptools import setup
 
 
@@ -33,19 +32,6 @@ if __name__ == "__main__":
             "kirjava.types",
             "kirjava.verifier",
         ],
-        ext_modules=cythonize([
-            "src/kirjava/abc/*.pyx",
-            "src/kirjava/analysis/*.pyx",
-            # "src/kirjava/analysis/ir/*.pyx",
-            "src/kirjava/classfile/*.pyx",
-            # "src/kirjava/classfile/attributes/*.pyx",
-            # "src/kirjava/classfile/instructions/*.pyx",
-            # "src/kirjava/jarfile/*.pyx",
-            # "src/kirjava/skeleton/*.pyx",
-            # "src/kirjava/skeleton/reconstruct/*.pyx",
-            # "src/kirjava/types/*.pyx",
-            "src/kirjava/verifier/*.pyx",
-        ], build_dir="build"),
         package_dir={
             "": "src",
         },
@@ -61,11 +47,5 @@ if __name__ == "__main__":
         #         "src/kirjava/skeleton/skeletons/skeletons_j19.json",
         #     ]),
         # ],
-        requires=[
-            "Cython",
-        ],
-        install_requires=[
-            "frozendict",
-        ],
     )
 

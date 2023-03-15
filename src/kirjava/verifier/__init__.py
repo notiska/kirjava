@@ -2,15 +2,12 @@
 
 __all__ = (
     "NoTypeChecker", "BasicTypeChecker", "FullTypeChecker",
-    "VerifyError", "Error", "ErrorType", "Verifier",
+    "VerifyError", "Error", "Verifier",
 )
 
 """
 A bytecode verifier implementation.
 """
-
-from enum import Enum
-from typing import Any, List, Union
 
 from ._types import *
 from ._verifier import *

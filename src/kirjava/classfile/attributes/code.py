@@ -11,7 +11,7 @@ Attributes found exclusively in the Code attribute.
 import logging
 import typing
 from abc import abstractmethod, ABC
-from typing import IO, Iterable, List, Tuple, Union
+from typing import IO, Iterable, List, Optional, Tuple
 
 from . import AttributeInfo
 from .. import descriptor, ClassFile
@@ -108,7 +108,7 @@ class StackMapTable(AttributeInfo):
         else:
             raise TypeError("Invalid verification type %r." % type_)
 
-    def __init__(self, parent: "Code", frames: Union[Iterable["StackMapTable.StackMapFrame"], None] = None) -> None:
+    def __init__(self, parent: "Code", frames: Optional[Iterable["StackMapTable.StackMapFrame"]] = None) -> None:
         """
         :param frames: The stackmap frames in this table.
         """
@@ -431,7 +431,7 @@ class LineNumberTable(AttributeInfo):
     since = Version(45, 3)
     locations = ("Code",)
 
-    def __init__(self, parent: "Code", entries: Union[Iterable["LineNumberTable.LineNumberEntry"], None] = None) -> None:
+    def __init__(self, parent: "Code", entries: Optional[Iterable["LineNumberTable.LineNumberEntry"]] = None) -> None:
         """
         :param entries: The line number entries.
         """
@@ -509,7 +509,7 @@ class LocalVariableTable(AttributeInfo):
     locations = ("Code",)
 
     def __init__(
-            self, parent: "Code", entries: Union[Iterable["LocalVariableTable.LocalVariableEntry"], None] = None,
+            self, parent: "Code", entries: Optional[Iterable["LocalVariableTable.LocalVariableEntry"]] = None,
     ) -> None:
         """
         :param entries: The local variable entries.
@@ -631,7 +631,7 @@ class LocalVariableTypeTable(AttributeInfo):
     locations = ("Code",)
 
     def __init__(
-            self, parent: "Code", entries: Union[Iterable["LocalVariableTypeTable.LocalVariableTypeEntry"], None] = None,
+            self, parent: "Code", entries: Optional[Iterable["LocalVariableTypeTable.LocalVariableTypeEntry"]] = None,
     ) -> None:
         """
         :param entries: The local variable type entries.

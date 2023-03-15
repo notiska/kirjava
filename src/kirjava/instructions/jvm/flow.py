@@ -6,7 +6,7 @@ Control flow related instructions.
 
 import struct
 from enum import Enum
-from typing import Any, Dict, IO, Iterable, Union
+from typing import Any, Dict, IO, Iterable, Optional
 
 from . import Instruction
 from ... import types
@@ -22,7 +22,7 @@ class JumpInstruction(Instruction):
 
     __slots__ = ("offset",)
 
-    def __init__(self, offset: Union[int, None] = None) -> None:
+    def __init__(self, offset: Optional[int] = None) -> None:
         self.offset = offset
 
     def __repr__(self) -> str:
@@ -64,6 +64,8 @@ class JsrInstruction(JumpInstruction):
     """
     A jump to subroutine instruction.
     """
+
+    __slots__ = ()
 
     def __repr__(self) -> str:
         return "<JsrInstruction(opcode=0x%x, mnemonic=%s, offset=%s) at %x>" % (
@@ -118,6 +120,8 @@ class ConditionalJumpInstruction(JumpInstruction):
     A jump instruction that jumps only if a certain condition is met.
     """
 
+    __slots__ = ()
+
     EQ = 0
     NE = 1
     LT = 2
@@ -137,6 +141,8 @@ class UnaryComparisonJumpInstruction(ConditionalJumpInstruction):
     """
     A conditional jump that compares one value to a fixed value.
     """
+
+    __slots__ = ()
 
     type_: BaseType = ...
 
@@ -158,6 +164,8 @@ class BinaryComparisonJumpInstruction(ConditionalJumpInstruction):
     """
     A conditional jump instruction that compares two values.
     """
+
+    __slots__ = ()
 
     type_: BaseType = ...
 

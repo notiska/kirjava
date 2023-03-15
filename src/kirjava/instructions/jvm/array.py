@@ -4,7 +4,7 @@
 Instructions related to arrays.
 """
 
-from typing import Dict, Union
+from typing import Dict, Optional
 
 from . import Instruction
 from ..ir.array import ArrayLoadExpression, ArrayLengthExpression, ArrayStoreStatement
@@ -21,12 +21,14 @@ class ArrayLoadInstruction(Instruction):
     Loads a value from an array.
     """
 
+    __slots__ = ()
+
     throws = (
         types.arrayindexoutofboundsexception_t,
         types.nullpointerexception_t,
     )
 
-    type_: Union[BaseType, None] = ...
+    type_: Optional[BaseType] = ...
 
     def trace(self, frame: Frame) -> None:
         frame.pop(expect=types.int_t)
@@ -49,7 +51,7 @@ class ArrayLoadInstruction(Instruction):
                 frame.verifier.report_expected_reference_type(frame.source, type_, array_entry.source)
             frame.push(type_)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         offset = self.type_.internal_size if self.type_ is not None else 1
         associations[delta.pushes[0]] = ArrayLoadExpression(
             array=associations[delta.pops[-(1 + offset)]],
@@ -62,13 +64,15 @@ class ArrayStoreInstruction(Instruction):
     Stores a value in an array.
     """
 
+    __slots__ = ()
+
     throws = (
         types.arrayindexoutofboundsexception_t,
         types.arraystoreexception_t,
         types.nullpointerexception_t,
     )
 
-    type_: Union[BaseType, None] = ...
+    type_: Optional[BaseType] = ...
 
     def trace(self, frame: Frame) -> None:
         # Check the array type matches what the instruction expects
@@ -90,7 +94,7 @@ class ArrayStoreInstruction(Instruction):
         if type_ != types.null_t and not frame.verifier.checker.check_merge(type_, entry.type):
             frame.verifier.report_invalid_type(frame.source, type_, entry.type, entry.source)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> ArrayStoreStatement:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> ArrayStoreStatement:
         offset = self.type_.internal_size if self.type_ is not None else 1
         return ArrayStoreStatement(
             array=associations[delta.pops[-(2 + offset)]],
@@ -104,11 +108,13 @@ class ArrayLengthInstruction(Instruction):
     Gets the length of an array.
     """
 
+    __slots__ = ()
+
     throws = (types.nullpointerexception_t,)
 
     def trace(self, frame: Frame) -> None:
         frame.pop(expect=ArrayType)
         frame.push(types.int_t)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
         associations[delta.pushes[0]] = ArrayLengthExpression(associations[delta.pops[-1]])

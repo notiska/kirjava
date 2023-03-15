@@ -8,14 +8,17 @@ __all__ = (
 Attributes that are only found in fields info structures.
 """
 
-from typing import IO, Union
+import typing
+from typing import IO, Optional
 
 from . import AttributeInfo
 from .. import ClassFile
 from .._struct import *
 from ..constants import ConstantInfo
-from ..members import FieldInfo
 from ...version import Version
+
+if typing.TYPE_CHECKING:
+    from ..members import FieldInfo
 
 
 class ConstantValue(AttributeInfo):
@@ -27,9 +30,9 @@ class ConstantValue(AttributeInfo):
 
     name_ = "ConstantValue"
     since = Version(45, 0)
-    locations = (FieldInfo,)
+    locations = ("FieldInfo",)
 
-    def __init__(self, parent: FieldInfo, value: Union[ConstantInfo, None] = None) -> None:
+    def __init__(self, parent: "FieldInfo", value: Optional[ConstantInfo] = None) -> None:
         super().__init__(parent, ConstantValue.name_)
 
         self.value = value

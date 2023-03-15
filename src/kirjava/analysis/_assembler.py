@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+
+__all__ = (
+    "_write_block",
+    "_adjust_jumps_and_add_exception_handlers",
+    "_simplify_exception_ranges",
+    "_nop_out_dead_blocks_and_compute_frames",
+)
+
 """
 Functions that make up Kirjava's assembler.
 Kept in a separate file because graph.py was previously 1500+ lines, which was unmanageable.
@@ -10,50 +19,51 @@ The assembler is quite complex, so it's split into multiple functions. The basic
 
 import itertools
 import logging
-from typing import Union
+import typing
+from typing import Dict, List, Optional, Set, Tuple, Union
 
-from .liveness cimport *
+from ._edge import *
+from .liveness import *
 from .source import InstructionInBlock
-from .trace cimport *
+from .trace import *
 from .. import types
 from ..classfile.attributes.code import StackMapTable
 from ..classfile.attributes.method import Code
 from ..classfile.constants import Class
 from ..instructions import jvm as instructions
 from ..instructions.jvm import (
-    Instruction, ConditionalJumpInstruction, JumpInstruction,
-    LookupSwitchInstruction, ReturnInstruction, TableSwitchInstruction,
+    ConditionalJumpInstruction, JumpInstruction, LookupSwitchInstruction, ReturnInstruction, TableSwitchInstruction,
 )
 from ..types.verification import Uninitialized
-from ..verifier import ErrorType
-from ..verifier._verifier cimport Error, Verifier
+from ..verifier import Error, Verifier
 
-_assembler_logger = logging.getLogger("kirjava.analysis._assembler")
+if typing.TYPE_CHECKING:
+    from ._block import InsnBlock
+    from .graph import InsnGraph
+
+logger = logging.getLogger("kirjava.analysis._assembler")
 
 
-cdef inline int _write_block(
-        InsnGraph graph,
-        Verifier verifier,
-        int offset,
-        InsnBlock block,
-        object code,
-        dict offsets,
-        dict jumps,
-        dict switches,
-        list exceptions,
-        set temporary,
-        dict inlined,
-        bint inline = False,
-) except *:
+def _write_block(
+        graph: "InsnGraph",
+        verifier: Verifier,
+        offset: int,
+        block: "InsnBlock",
+        code: "Code",
+        offsets: Dict["InsnBlock", List[Tuple[int, int, int]]],
+        jumps: Dict[int, JumpEdge],
+        switches: Dict[int, List[SwitchEdge]],
+        exceptions: List[ExceptionEdge],
+        temporary: Set["InsnBlock"],
+        inlined: Dict[InsnEdge, List[Tuple[int, int]]],  # FIXME: Dict["InsnBlock", Tuple[int, int]] ?
+        inline: bool = False,
+) -> int:
     """
     A helper method for writing individual blocks to the code's instructions.
     """
 
-    cdef InsnEdge edge
-    cdef InsnEdge fallthrough_edge
-
-    inline_ = inline and block.inline_
-    if block in offsets and not inline_:  # The block is already written, so nothing to do here
+    inline = inline and block.inline
+    if block in offsets and not inline:  # The block is already written, so nothing to do here
         return offset
     # No instructions means nothing to write, so skip this block. Keep in mind if we do have out edges though, we may
     # need to add jumps to account for impossible fallthroughs.
@@ -65,7 +75,7 @@ cdef inline int _write_block(
         fallthrough_edge = None
 
         for edge in graph._forward_edges[previous]:
-            if isinstance(edge, FallthroughEdge):
+            if isinstance(edge, FallthroughEdge):  # FIXME: See below
                 fallthrough_edge = edge
                 break
 
@@ -83,19 +93,20 @@ cdef inline int _write_block(
             jumps[offset] = JumpEdge(previous, fallthrough_edge.to, instruction)
             offset += instruction.get_size(offset, False)
 
-            _assembler_logger.debug("    - Generated jump %s to account for edge %s." % (instruction, fallthrough_edge))
+            logger.debug("    - Generated jump %s to account for edge %s." % (instruction, fallthrough_edge))
 
     start = offset
 
     # Stuff for keeping track of instructions
-    cdef dict instructions_ = {}
-    cdef dict news = {}
+    instructions_ = {}
+    news = {}
 
-    cdef bint unbound_jumps = False
-    cdef bint unbound_returns = False
-    cdef bint unbound_athrows = False
+    unbound_jumps = False
+    unbound_returns = False
+    unbound_athrows = False
 
-    cdef bint shifted = False
+    shifted = False
+    
     while not shifted:
         offset = start
 
@@ -141,22 +152,22 @@ cdef inline int _write_block(
             offset = _write_block(
                 graph, verifier, offset, intermediary, code, offsets, jumps, switches, exceptions, temporary, inlined,
             )
-            _assembler_logger.debug("    - Generated %s to account for edge %s." % (intermediary, edge))
+            logger.debug("    - Generated %s to account for edge %s." % (intermediary, edge))
 
         if not shifted:
             break
 
-        _assembler_logger.debug("    - Shifted %s by %+i bytes." % (block, offset - start))
+        logger.debug("    - Shifted %s by %+i byte(s)." % (block, offset - start))
         start = offset
 
     code.instructions.update(instructions_)  # Add the new instructions to the code
 
     if unbound_jumps:
-        verifier.report(Error(ErrorType.INVALID_BLOCK, block, "block has unbound jumps"))
+        verifier.report(Error(Error.Type.INVALID_BLOCK, block, "block has unbound jumps"))
     if unbound_returns:
-        verifier.report(Error(ErrorType.INVALID_BLOCK, block, "block has unbound returns"))
+        verifier.report(Error(Error.Type.INVALID_BLOCK, block, "block has unbound returns"))
     if unbound_athrows:
-        verifier.report(Error(ErrorType.INVALID_BLOCK, block, "block has unbound athrows"))
+        verifier.report(Error(Error.Type.INVALID_BLOCK, block, "block has unbound athrows"))
 
     # if multiple_returns:
     #     errors.append(Error(Error.Type.INVALID_BLOCK, block, "block has multiple return instructions"))
@@ -167,33 +178,33 @@ cdef inline int _write_block(
 
     # Validate that the out edges from this block are valid, and get the required ones.
 
-    cdef bint multiple_fallthroughs = False
-    cdef bint multiple_jumps = False
-    cdef bint has_out_edges = False
+    multiple_fallthroughs = False
+    multiple_jumps = False
+    has_out_edges = False
 
-    fallthrough_edge = None  # Declared above
-    cdef JumpEdge jump_edge = None
-    cdef SwitchEdge switch_edge
-    cdef list switch_edges = []
+    fallthrough_edge: Optional[FallthroughEdge] = None
+    jump_edge:        Optional[JumpEdge] = None
+    switch_edge:      Optional[SwitchEdge] = None
+    switch_edges: List[SwitchEdge] = []
 
     for edge in graph._forward_edges[block]:
-        if isinstance(edge, FallthroughEdge):
+        if isinstance(edge, FallthroughEdge):  # FIXME: JsrFallthroughEdge subclasses this in the future?
             if fallthrough_edge is not None:
                 multiple_fallthroughs = True
             fallthrough_edge = edge
             has_out_edges = True
 
-        elif isinstance(edge, JsrFallthroughEdge):
+        elif type(edge) is JsrFallthroughEdge:
             if fallthrough_edge is not None:
                 multiple_fallthroughs = True
             fallthrough_edge = edge  # Not technically a fallthrough, but I don't want to add more complexity
             has_out_edges = True
 
-        elif isinstance(edge, SwitchEdge):
+        elif type(edge) is SwitchEdge:
             switch_edges.append(edge)
             has_out_edges = True
 
-        elif isinstance(edge, ExceptionEdge):
+        elif type(edge) is ExceptionEdge:
             exceptions.append(edge)
 
         elif isinstance(edge, JumpEdge):
@@ -205,15 +216,11 @@ cdef inline int _write_block(
     # Check that all the edges are valid
 
     if multiple_fallthroughs:
-        verifier.report(Error(ErrorType.INVALID_BLOCK, block, "multiple fallthrough edges on block"))
-
-    # cdef int delta
-    cdef bint is_conditional
-    cdef bint multiple
+        verifier.report(Error(Error.Type.INVALID_BLOCK, block, "multiple fallthrough edges on block"))
 
     if jump_edge is not None:
         if multiple_jumps:
-            verifier.report(Error(ErrorType.INVALID_BLOCK, block, "multiple jumps on block"))
+            verifier.report(Error(Error.Type.INVALID_BLOCK, block, "multiple jumps on block"))
 
         jump_instruction = jump_edge.instruction.copy()
         is_conditional = isinstance(jump_instruction, ConditionalJumpInstruction)
@@ -227,7 +234,7 @@ cdef inline int _write_block(
         if (
             not is_conditional and
             jump_edge.to is not None and
-            jump_edge.to.inline_ and
+            jump_edge.to.inline and
             len(graph._forward_edges[jump_edge.to]) <= 1
         ):
             offset = _write_block(
@@ -253,7 +260,7 @@ cdef inline int _write_block(
                     jump_instruction = instructions.jsr_w(delta)
                 else:
                     jump_instruction = instructions.goto_w(delta)
-                _assembler_logger.debug("    - Adjusted edge %s to wide jump %s." % (jump_edge, jump_instruction))
+                logger.debug("    - Adjusted edge %s to wide jump %s." % (jump_edge, jump_instruction))
 
                 # Also create a new jump edge, we don't need to add it, but we do need to represent the new jump in
                 # jumps with and edge.
@@ -269,19 +276,19 @@ cdef inline int _write_block(
         if type(jump_edge) is JsrJumpEdge:
             if type(fallthrough_edge) is not JsrFallthroughEdge:
                 verifier.report(Error(
-                    ErrorType.INVALID_BLOCK, block, "jsr jump edge with no jsr fallthrough edge on block",
+                    Error.Type.INVALID_BLOCK, block, "jsr jump edge with no jsr fallthrough edge on block",
                 ))
         elif is_conditional and fallthrough_edge is None:
             verifier.report(Error(
-                ErrorType.INVALID_BLOCK, block, "conditional jump edge with no fallthrough edge on block",
+                Error.Type.INVALID_BLOCK, block, "conditional jump edge with no fallthrough edge on block",
             ))
         elif not is_conditional and fallthrough_edge is not None:
             verifier.report(Error(
-                ErrorType.INVALID_BLOCK, block, "unconditional jump edge with a fallthrough edge on block",
+                Error.Type.INVALID_BLOCK, block, "unconditional jump edge with a fallthrough edge on block",
             ))
 
         if switch_edges:
-            verifier.report(Error(ErrorType.INVALID_BLOCK, block, "jump and switch edges on block"))
+            verifier.report(Error(Error.Type.INVALID_BLOCK, block, "jump and switch edges on block"))
 
     elif switch_edges:
         switch_instruction: Union[TableSwitchInstruction, LookupSwitchInstruction, None] = None
@@ -296,7 +303,7 @@ cdef inline int _write_block(
 
         if multiple:
             verifier.report(Error(
-                ErrorType.INVALID_BLOCK, block,
+                Error.Type.INVALID_BLOCK, block,
                 "block has multiple switch edges which reference different switch instructions",
             ))
 
@@ -328,7 +335,7 @@ cdef inline int _write_block(
         offsets[block][-1] = (start, offset, news)
 
     if not has_out_edges and block != graph.return_block and block != graph.rethrow_block:
-        verifier.report(Error(ErrorType.INVALID_BLOCK, block, "block has no out edges"))
+        verifier.report(Error(Error.Type.INVALID_BLOCK, block, "block has no out edges"))
 
     if fallthrough_edge is not None:
         offsets_ = offsets.get(fallthrough_edge.to, None)
@@ -343,7 +350,7 @@ cdef inline int _write_block(
         else:
             # Try to inline the fallthrough block if we can, taking into account if a blocks fallthrough is itself. This
             # could create an infinite loop, which is not good lol.
-            if fallthrough_edge.to.inline_ and fallthrough_edge.to != block:
+            if fallthrough_edge.to.inline and fallthrough_edge.to != block:
                 offset = _write_block(
                     graph, verifier, offset, fallthrough_edge.to, code,
                     offsets, jumps, switches, exceptions,
@@ -370,24 +377,24 @@ cdef inline int _write_block(
                 code.instructions[offset] = goto_instruction
                 offset += goto_instruction.get_size(offset, wide)
 
-                _assembler_logger.debug("    - Generated jump %s to account for edge %s." % (goto_instruction, fallthrough_edge))
+                logger.debug("    - Generated jump %s to account for edge %s." % (goto_instruction, fallthrough_edge))
 
     return offset
 
 
-cdef void _adjust_jumps_and_add_exception_handlers(
-        Verifier verifier, object code, dict jumps, dict switches, list exceptions, dict offsets, dict inlined,
-) except *:
+def _adjust_jumps_and_add_exception_handlers(
+        verifier: Verifier,
+        code: "Code",
+        jumps: Dict[int, JumpEdge],
+        switches: Dict[int, List[SwitchEdge]],
+        exceptions: List[ExceptionEdge],
+        offsets: Dict["InsnBlock", List[Tuple[int, int, int]]],
+        inlined: Dict[InsnEdge, List[Tuple[int, int]]],
+) -> None:
     """
     Adjusts jump offsets to be absolute, given their corresponding edges and adds exception handlers to the code from
     the exception edges.
     """
-
-    # Variables that will be used later
-    cdef list switch_edges
-    cdef JumpEdge jump_edge
-    cdef SwitchEdge switch_edge
-    cdef ExceptionEdge exception_edge
 
     for offset, jump_edge in jumps.items():
         instruction = code.instructions[offset]
@@ -403,7 +410,7 @@ cdef void _adjust_jumps_and_add_exception_handlers(
             #     continue
             # raise Exception("Internal error while adjusting offset for jump edge %r." % jump_edge)
             verifier.report(Error(
-                ErrorType.INVALID_EDGE, jump_edge,
+                Error.Type.INVALID_EDGE, jump_edge,
                 "jump edge to unknown block", "use graph.add() to add it to the graph",
             ))
             continue
@@ -412,7 +419,7 @@ cdef void _adjust_jumps_and_add_exception_handlers(
         instruction.offset = start - offset
 
     if jumps:
-        _assembler_logger.debug(" - Adjusted %i jump(s)." % len(jumps))
+        logger.debug(" - Adjusted %i jump(s)." % len(jumps))
 
     for offset, switch_edges in switches.items():
         instruction = code.instructions[offset]
@@ -426,7 +433,7 @@ cdef void _adjust_jumps_and_add_exception_handlers(
                 #     continue
                 # raise Exception("Internal error while adjusting offset for switch edge %r." % switch_edge)
                 verifier.report(Error(
-                    ErrorType.INVALID_EDGE, switch_edge,
+                    Error.Type.INVALID_EDGE, switch_edge,
                     "switch edge to unknown block", "use graph.add() to add it to the graph",
                 ))
                 continue
@@ -439,7 +446,7 @@ cdef void _adjust_jumps_and_add_exception_handlers(
                 instruction.offsets[value] = start - offset
 
     if switches:
-        _assembler_logger.debug(" - Adjusted %i switch(es)." % len(switches))
+        logger.debug(" - Adjusted %i switch(es)." % len(switches))
 
     # Add exception handlers and set their offsets to the correct positions to, then simplify any overlapping ones
     # if required (simplify_exception_ranges=True).
@@ -450,7 +457,7 @@ cdef void _adjust_jumps_and_add_exception_handlers(
             (handler, _, _), *extra = offsets[exception_edge.to]
             if extra:
                 verifier.report(Error(
-                    ErrorType.INVALID_EDGE, exception_edge,
+                    Error.Type.INVALID_EDGE, exception_edge,
                     "multiple exception handler targets", "is the handler inlined?",
                 ))
 
@@ -464,10 +471,12 @@ cdef void _adjust_jumps_and_add_exception_handlers(
             ))
 
     if code.exception_table:
-        _assembler_logger.debug(" - Generated %i exception handler(s)." % len(code.exception_table))
+        logger.debug(" - Generated %i exception handler(s)." % len(code.exception_table))
 
 
-cdef inline void _simplify_exception_ranges(object code, list exceptions, dict offsets):
+def _simplify_exception_ranges(
+        code: "Code", exceptions: List[ExceptionEdge], offsets: Dict["InsnBlock", List[Tuple[int, int, int]]],
+) -> None:
     """
     Simplifies exception ranges by combining handlers that can be merged.
     """
@@ -475,23 +484,25 @@ cdef inline void _simplify_exception_ranges(object code, list exceptions, dict o
     ...  # TODO
 
 
-cdef inline void _nop_out_dead_blocks_and_compute_frames(
-        InsnGraph graph, Verifier verifier, Trace trace, object code,
-        dict jumps, dict switches, list exceptions,
-        set dead, dict offsets, dict inlined,
-        bint compress_frames,
-) except *:
+def _nop_out_dead_blocks_and_compute_frames(
+        graph: "InsnGraph",
+        verifier: Verifier,
+        trace: Trace,
+        code: "Code",
+        jumps: Dict[int, JumpEdge],
+        switches: Dict[int, List[SwitchEdge]],
+        exceptions: List[ExceptionEdge],
+        dead: Set["InsnBlock"],
+        offsets: Dict["InsnBlock", List[Tuple[int, int, int]]],
+        inlined: Dict[InsnEdge, List[Tuple[int, int]]],
+        compress_frames: bool,
+) -> None:
     """
     Nops out any dead blocks and computes stackmap frames, adding a StackMapTable attribute if necessary.
     """
 
-    cdef bint write_frames = dead or jumps or switches or exceptions
-    cdef dict dead_frames = {}
-
-    # Variables that'll be used later
-    cdef InsnBlock block
-    cdef InsnEdge edge
-    cdef Frame frame
+    write_frames = dead or jumps or switches or exceptions
+    dead_frames: Dict["InsnBlock", Frame] = {}
 
     if dead:
         # The standard state we'll use for these dead blocks' stackmap frames, since these are never actually visited,
@@ -502,13 +513,13 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
         frame = Frame(verifier)
         frame.push(types.throwable_t)
 
-        _assembler_logger.debug(" - %i dead block(s):" % len(dead))
+        logger.debug(" - %i dead block(s):" % len(dead))
         for block in dead:
             if not block in offsets:
-                _assembler_logger.debug("    - %s (unwritten)" % block)
+                logger.debug("    - %s (unwritten)" % block)
                 continue
 
-            _assembler_logger.debug("    - %s (written at %s)" % (
+            logger.debug("    - %s (written at %s)" % (
                 block, ", ".join(map(str, (start for start, _, _ in offsets[block]))),
             ))
             dead_frames[block] = frame
@@ -527,7 +538,7 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
         return
 
     for edge in jumps.values():
-        if isinstance(edge, JsrJumpEdge):
+        if type(edge) is JsrJumpEdge:
             # We can't compute frames if we find any live jsr edge at all, even if it's not part of a
             # subroutine. This is because at the jump target, the stackmap frame will contain the return address
             # in the stack, which isn't valid. We still need to write the stackmap table attribute though.
@@ -535,16 +546,16 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
             break
 
     if not write_frames:
-        _assembler_logger.debug(" - Not computing frames as live jsr edges were found.")
+        logger.debug(" - Not computing frames as live jsr edges were found.")
         return
 
     stackmap_table = StackMapTable(code)
-    cdef dict stackmap_frames = {
+    stackmap_frames: Dict[int, Tuple["InsnBlock", Frame]] = {
         # Create the bootstrap (implicit) frame
         -1: (graph.entry_block, trace.frames[graph.entry_block][0][0]),
     }
-    cdef set visited = set()
-    cdef Liveness liveness = Liveness.from_trace(trace)
+    visited: Set["InsnBlock"] = set()
+    liveness = Liveness.from_trace(trace)
 
     # Add the dead stackmap frames first.
     for block, frame in dead_frames.items():
@@ -556,10 +567,6 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
     # only need to write the states at basic blocks that are jumped to. At this stage, we'll also combine the
     # states from different paths.
 
-    cdef list offsets_
-    cdef list frames
-    cdef Frame base
-
     for edge in itertools.chain(jumps.values(), *switches.values(), exceptions):
         if edge is None:
             continue
@@ -569,7 +576,7 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
         base = None
 
         # We can split constraints on inlined blocks
-        if block.inline_ and edge in inlined:
+        if block.inline and edge in inlined:
             frames = trace.frames[edge.from_]
             offsets_ = (inlined[edge],)
         elif block in visited:  # Don't check this for inline edges, obviously
@@ -589,14 +596,14 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
             # Check that the stack is merge-able
             if len(frame.stack) > len(base.stack):
                 verifier.report(Error(
-                    ErrorType.INVALID_STACK_MERGE, edge,
+                    Error.Type.INVALID_STACK_MERGE, edge,
                     "stack overrun, expected stack size %i for edge, got size %i" % (
                         len(base.stack), len(frame.stack),
                     ),
                 ))
             elif len(frame.stack) < len(base.stack):
                 verifier.report(Error(
-                    ErrorType.INVALID_STACK_MERGE, edge,
+                    Error.Type.INVALID_STACK_MERGE, edge,
                     "stack underrun, expected stack size %i for edge, got size %i" % (
                         len(base.stack), len(frame.stack),
                     ),
@@ -605,7 +612,7 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
             for index, (entry_a, entry_b) in enumerate(zip(base.stack, frame.stack)):
                 if not verifier.checker.check_merge(entry_a.type, entry_b.type):
                     verifier.report(Error(
-                        ErrorType.INVALID_STACK_MERGE, edge,
+                        Error.Type.INVALID_STACK_MERGE, edge,
                         "invalid stack type merge at index %i (%s, via %s and %s, via %s)" % (
                             index, entry_a.type, entry_a.source, entry_b.type, entry_b.source,
                         ),
@@ -623,13 +630,13 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
 
                 if entry_a is None and entry_b is None:
                     verifier.report(Error(
-                        ErrorType.INVALID_LOCALS_MERGE, edge,
+                        Error.Type.INVALID_LOCALS_MERGE, edge,
                         "illegal locals type merge at index %i, expected live local" % index,
                     ))
                     continue
                 elif entry_a is None:
                     verifier.report(Error(
-                        ErrorType.INVALID_LOCALS_MERGE, edge,
+                        Error.Type.INVALID_LOCALS_MERGE, edge,
                         "invalid locals type merge at index %i, expected live local (have %s via %s)" % (
                             index, entry_b.type, entry_b.source,
                         ),
@@ -638,7 +645,7 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
                     continue
                 elif entry_b is None:
                     verifier.report(Error(
-                        ErrorType.INVALID_LOCALS_MERGE, edge,
+                        Error.Type.INVALID_LOCALS_MERGE, edge,
                         "invalid locals type merge at index %i, expected live local (have %s via %s)" % (
                             index, entry_a.type, entry_a.source,
                         ),
@@ -647,7 +654,7 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
 
                 if not verifier.checker.check_merge(entry_a.type, entry_b.type):
                     verifier.report(Error(
-                        ErrorType.INVALID_LOCALS_MERGE, edge,
+                        Error.Type.INVALID_LOCALS_MERGE, edge,
                         "invalid locals type merge at index %i (%s via %s and %s via %s)" % (
                             index, entry_a.type, entry_a.source, entry_b.type, entry_b.source,
                         ),
@@ -659,13 +666,6 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
 
         for start, _, _ in offsets_:
             stackmap_frames[start] = (block, base)
-
-    cdef set live
-    cdef list locals_
-    cdef list stack
-
-    cdef Entry entry
-    cdef bint wide
 
     for offset in sorted(stackmap_frames):
         block, frame = stackmap_frames[offset]
@@ -697,13 +697,13 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
                     if (
                         isinstance(entry.type, Uninitialized) and
                         entry.type != types.uninit_this_t and
-                        isinstance(entry.source, InstructionInBlock)
+                        type(entry.source) is InstructionInBlock
                     ):
                         done = False
                         for _, _, news in offsets[entry.source.block]:
                             if done:
                                 verifier.report(Error(
-                                    ErrorType.INVALID_TYPE, entry.source,
+                                    Error.Type.INVALID_TYPE, entry.source,
                                     "unable to determine source of uninitialised type as block is written multiple times",
                                 ))
                                 break
@@ -723,13 +723,13 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
             elif (
                 isinstance(entry.type, Uninitialized) and
                 entry.type != types.uninit_this_t and
-                isinstance(entry.source, InstructionInBlock)
+                type(entry.source) is InstructionInBlock
             ):
                 done = False
                 for _, _, news in offsets[entry.source.block]:
                     if done:
                         verifier.report(Error(
-                            ErrorType.INVALID_TYPE, entry.source,
+                            Error.Type.INVALID_TYPE, entry.source,
                             "unable to determine source of uninitialised type as block is written multiple times",
                         ))
                         break
@@ -744,7 +744,7 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
         # print("stack:  [", ", ".join(map(str, stack)), "]")
 
         if offset >= 0:  # Don't write the bootstrap frame (offset -1)
-            stackmap_frame: Union[StackMapTable.StackMapFrame, None] = None
+            stackmap_frame: Optional[StackMapTable.StackMapFrame] = None
             offset_delta = offset - (prev_offset + 1)
 
             if compress_frames:
@@ -784,4 +784,4 @@ cdef inline void _nop_out_dead_blocks_and_compute_frames(
 
     if stackmap_table.frames:
         code.stackmap_table = stackmap_table
-        _assembler_logger.debug(" - Generated %i stackmap frame(s)." % len(stackmap_table.frames))
+        logger.debug(" - Generated %i stackmap frame(s)." % len(stackmap_table.frames))
