@@ -17,19 +17,20 @@ from .classfile import ClassFile
 from .classfile.members import MethodInfo
 
 
-def load(file_data_or_stream: Union[str, bytes, IO[bytes]]) -> ClassFile:
+def load(file_data_or_stream: Union[str, bytes, IO[bytes]], *, fail_fast: bool = True) -> ClassFile:
     """
     Reads a classfile given either the path to the file or a binary stream.
 
     :param file_data_or_stream: The path to a file, binary data or a binary stream.
+    :param fail_fast: If the classfile is obviously invalid, should we raise an exception ASAP?
     :return: The classfile that was read.
     """
 
     if type(file_data_or_stream) is str:
         with open(file_data_or_stream, "rb") as stream:
-            return ClassFile.read(stream)
+            return ClassFile.read(stream, fail_fast)
     elif type(file_data_or_stream) is bytes:
-        return ClassFile.read(BytesIO(file_data_or_stream))
+        return ClassFile.read(BytesIO(file_data_or_stream), fail_fast)
     return ClassFile.read(file_data_or_stream)
 
 

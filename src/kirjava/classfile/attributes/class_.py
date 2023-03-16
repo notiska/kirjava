@@ -550,15 +550,18 @@ class Record(AttributeInfo):
             :param buffer: The binary buffer to write to.
             """
 
-            buffer.write(pack_HHH(
+            buffer.write(pack_HH(
                 class_file.constant_pool.add(self.name),
                 class_file.constant_pool.add(self.descriptor),
-                len(self.attributes),
             ))
 
-            for attributes_ in self.attributes.values():
-                for attribute in attributes_:
-                    attributes.write_attribute(attribute, class_file, buffer)
+            attributes_ = []
+            for attributes__ in self.attributes.values():
+                attributes_.extend(attributes__)
+
+            buffer.write(pack_H(len(attributes_)))
+            for attribute in attributes_:
+                attributes.write_attribute(attribute, class_file, buffer)
 
 
 class SourceFile(AttributeInfo):

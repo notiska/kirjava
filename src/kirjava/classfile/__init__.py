@@ -38,11 +38,12 @@ class ClassFile(Class_):
     )
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> "ClassFile":
+    def read(cls, buffer: IO[bytes], fail_fast: bool = True) -> "ClassFile":
         """
         Reads a class file from the given buffer.
 
         :param buffer: The binary data buffer.
+        :param fail_fast: If the class is invalid, should we fail immediately?
         :return: The class file that was read.
         """
 
@@ -57,30 +58,50 @@ class ClassFile(Class_):
         constant_pool = ConstantPool.read(version, buffer)
 
         access_flags, this_class_index, super_class_index = unpack_HHH(buffer.read(6))
-        this = constant_pool[this_class_index]
-        super_ = None if super_class_index < 1 else constant_pool[super_class_index]
+        this = constant_pool.get(this_class_index, do_raise=fail_fast)
+        super_ = None if super_class_index < 1 else constant_pool.get(super_class_index, do_raise=fail_fast)
 
-        interfaces_count, = unpack_H(buffer.read(2))
-        interfaces = [constant_pool[unpack_H(buffer.read(2))[0]] for index in range(interfaces_count)]
+        try:
+            interfaces_count, = unpack_H(buffer.read(2))
+        except Exception as error:
+            if fail_fast:
+                raise error
+            interfaces_count = 0
+
+        interfaces = [ 
+            constant_pool.get(unpack_H(buffer.read(2))[0], do_raise=fail_fast) for index in range(interfaces_count)
+        ]
 
         class_file = cls(this.name, super_, interfaces, version)
         class_file.access_flags = access_flags
         class_file.constant_pool = constant_pool
 
-        fields_count, = unpack_H(buffer.read(2))
-        for index in range(fields_count):
-            FieldInfo.read(class_file, buffer)
+        try:
+            fields_count, = unpack_H(buffer.read(2))
+            for index in range(fields_count):
+                FieldInfo.read(class_file, buffer, fail_fast)
+        except Exception as error:
+            if fail_fast:
+                raise error
 
-        methods_count, = unpack_H(buffer.read(2))
-        for index in range(methods_count):
-            MethodInfo.read(class_file, buffer)
+        try:
+            methods_count, = unpack_H(buffer.read(2))
+            for index in range(methods_count):
+                MethodInfo.read(class_file, buffer, fail_fast)
+        except Exception as error:
+            if fail_fast:
+                raise error
 
-        attributes_count, = unpack_H(buffer.read(2))
-        for index in range(attributes_count):
-            attribute_info = attributes.read_attribute(class_file, class_file, buffer)
-            class_file.attributes[attribute_info.name] = (
-                class_file.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
-            )
+        try:
+            attributes_count, = unpack_H(buffer.read(2))
+            for index in range(attributes_count):
+                attribute_info = attributes.read_attribute(class_file, class_file, buffer, fail_fast)
+                class_file.attributes[attribute_info.name] = (
+                    class_file.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
+                )
+        except Exception as error:
+            if fail_fast:
+                raise error
 
         logger.debug("Read classfile %r in %.1fms." % (class_file.name, (time.perf_counter_ns() - start) / 1_000_000))
 
@@ -488,10 +509,13 @@ class ClassFile(Class_):
         for method in self._methods:
             method.write(self, data)
 
-        data.write(pack_H(len(self.attributes)))
-        for attributes_ in self.attributes.values():
-            for attribute in attributes_:
-                attributes.write_attribute(attribute, self, data)
+        attributes_ = []
+        for attributes__ in self.attributes.values():
+            attributes_.extend(attributes__)
+
+        data.write(pack_H(len(attributes_)))
+        for attribute in attributes_:
+            attributes.write_attribute(attribute, self, data)
 
         self.constant_pool.write(self, buffer)
         buffer.write(data.getvalue())

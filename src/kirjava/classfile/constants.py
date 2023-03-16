@@ -964,6 +964,14 @@ class ConstantPool:
 
         return constant_pool
 
+    @property
+    def entries(self) -> Dict[int, ConstantInfo]:
+        """
+        :return: A dictionary containing the forward entries in the pool.
+        """
+
+        return self._forward_entries.copy()
+
     def __init__(self) -> None:
         self._index = 1
 
@@ -1062,22 +1070,23 @@ class ConstantPool:
 
         return Index(index)
 
-    def get_utf8(self, index: int, default: Optional[str] = None) -> str:
+    def get_utf8(self, index: int, default: Optional[str] = None, *, do_raise: bool = True) -> str:
         """
         Gets a UTF-8 value at the given index.
 
         :param index: The index of the constant.
         :param default: The value to default to if not found.
+        :param do_raise: Should we raise an exception if the index is invalid?
         :return: The UTF-8 value of the constant.
         """
 
         constant = self._forward_entries.get(index)
         if constant is None:
-            if default is not None:
+            if not do_raise or default is not None:
                 return default
             raise ValueError("Index %i not in constant pool." % index)
         elif type(constant) is not UTF8:
-            if default is not None:
+            if not do_raise or default is not None:
                 return default
             raise TypeError("Index %i is not a valid UTF-8 constant." % index)
 

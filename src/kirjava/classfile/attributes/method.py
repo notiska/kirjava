@@ -122,10 +122,13 @@ class Code(AttributeInfo):
         for exception in self.exception_table:
             exception.write(class_file, buffer)
 
-        buffer.write(pack_H(len(self.attributes)))
-        for attributes_ in self.attributes.values():
-            for attribute in attributes_:
-                attributes.write_attribute(attribute, class_file, buffer)
+        attributes_ = []
+        for attributes__ in self.attributes.values():
+            attributes_.extend(attributes__)
+
+        buffer.write(pack_H(len(attributes_)))
+        for attribute in attributes_:
+            attributes.write_attribute(attribute, class_file, buffer)
 
     class ExceptionHandler:
         """
