@@ -19,7 +19,7 @@ In [1]: import kirjava
    ...:     skeletons_version=kirjava.version.Version.get("11"),  # Use skeleton classes from Java 11.
    ...: )
 ```
-Kirjava bases all information (currently just classes) around the `kirjava.environment.Environment` class. Calling `kirjava.initialise` simply loads the skelton
+Kirjava bases all information (currently just classes) around the `kirjava.environment` module. Calling `kirjava.initialise` simply loads the skelton
 classes as of right now, it may do more in the future however.  
 **Note:** it is not always necessary to perform this step, if the assembler (or Java) gives errors though, you may want to.
 
