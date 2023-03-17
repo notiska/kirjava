@@ -447,10 +447,10 @@ class Class(ConstantInfo):
         super().__init__(name)
 
         self.name = name
-
-        if name.startswith("["):  # Array type
+        try:
             self.type = descriptor.parse_field_descriptor(name)
-        else:
+        except (TypeError, ValueError):
+            # https://github.com/ItzSomebody/stopdecompilingmyjava/blob/master/decompiler-tool-bugs/entry-007/entry.md
             self.type = ClassOrInterfaceType(name)
 
     def __repr__(self) -> str:
