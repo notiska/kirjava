@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "ValueCastExpression", "TypeCastExpression", "InstanceOfExpression",
+)
+
 """
 Type and value casting IR instructions.
 """
@@ -7,8 +11,7 @@ Type and value casting IR instructions.
 from .arithmetic import BinaryExpression
 from ... import types
 from ...abc import Expression, Value
-from ...types import PrimitiveType, ReferenceType
-from ...types.primitive import IntegerType
+from ...types import Primitive, Reference
 
 
 class ValueCastExpression(Expression):
@@ -16,7 +19,7 @@ class ValueCastExpression(Expression):
     Casts a primitive value to another.
     """
 
-    def __init__(self, value: Value, type_: PrimitiveType) -> None:
+    def __init__(self, value: Value, type_: Primitive) -> None:
         """
         :param value: The value to cast.
         :param type_: The type to cast the value to.
@@ -33,7 +36,7 @@ class ValueCastExpression(Expression):
             return "(%s)(%s)" % (self.type, self.value)
         return "(%s)%s" % (self.type, self.value)
 
-    def get_type(self) -> PrimitiveType:
+    def get_type(self) -> Primitive:
         return self.type
 
 
@@ -42,7 +45,7 @@ class TypeCastExpression(Expression):
     Casts a reference type to another reference type.
     """
 
-    def __init__(self, value: Value, type_: ReferenceType) -> None:
+    def __init__(self, value: Value, type_: Reference) -> None:
         """
         :param value: The value being checked.
         :param type_: The type to check against.
@@ -57,7 +60,7 @@ class TypeCastExpression(Expression):
     def __str__(self) -> str:
         return "(%s)%s" % (self.type, self.value)
 
-    def get_type(self) -> ReferenceType:
+    def get_type(self) -> Reference:
         return self.type
 
 
@@ -66,7 +69,7 @@ class InstanceOfExpression(Expression):
     Checks if a value is an instance of a type.
     """
 
-    def __init__(self, value: Value, type_: ReferenceType) -> None:
+    def __init__(self, value: Value, type_: Reference) -> None:
         """
         :param value: The value being checked.
         :param type_: The type to check against.
@@ -81,5 +84,5 @@ class InstanceOfExpression(Expression):
     def __str__(self) -> str:
         return "%s instanceof %s" % (self.value, self.type)
 
-    def get_type(self) -> IntegerType:
+    def get_type(self) -> Primitive:
         return types.int_t

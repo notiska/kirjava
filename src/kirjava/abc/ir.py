@@ -13,8 +13,7 @@ import typing
 from .. import types
 
 if typing.TYPE_CHECKING:
-    from ..types import BaseType
-    from ..types.primitive import VoidType
+    from ..types import Type
 
 
 class Value:
@@ -22,7 +21,7 @@ class Value:
     Any kind of value present in the IR.
     """
 
-    def get_type(self) -> "BaseType":
+    def get_type(self) -> "Type":
         """
         :return: The output type of this value.
         """
@@ -43,5 +42,5 @@ class Statement(Expression):
     A base statement.
     """
 
-    def get_type(self) -> "VoidType":
+    def get_type(self) -> "Type":
         return types.void_t

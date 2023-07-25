@@ -12,14 +12,24 @@ import operator
 import typing
 from typing import Dict, IO
 
-from . import ClassFile
-from ..instructions import jvm as instructions
+from ..instructions.jvm import wide, INSTRUCTIONS, Instruction
 
 if typing.TYPE_CHECKING:
-    from ..instructions.jvm import Instruction
+    from . import ClassFile
+
+# Some hacky stuff to make reading instructions faster follows!!! Beware!!!
+_immutable_opcode_map = {}
+_mutable_opcode_map = {}
+wide = wide()
+
+for instruction in INSTRUCTIONS:
+    if not instruction.operands:
+        _immutable_opcode_map[instruction.opcode] = instruction()
+    else:
+        _mutable_opcode_map[instruction.opcode] = instruction
 
 
-def read_instructions(class_file: ClassFile, buffer: IO[bytes], length: int) -> Dict[int, "Instruction"]:
+def read_instructions(class_file: "ClassFile", buffer: IO[bytes], length: int) -> Dict[int, Instruction]:
     """
     Reads a list of instructions from the provided buffer.
 
@@ -32,26 +42,30 @@ def read_instructions(class_file: ClassFile, buffer: IO[bytes], length: int) -> 
     instructions_ = {}
 
     offset = buffer.tell()
-    wide = False
+    is_wide = False
 
     while offset < length:
         opcode, = buffer.read(1)
-        instruction = instructions._opcode_map.get(opcode)
+
+        instruction = _immutable_opcode_map.get(opcode)
         if instruction is None:
-            raise ValueError("Unknown opcode: 0x%x." % opcode)
-        instruction = instruction.__new__(instruction)
-        instruction.read(class_file, buffer, wide)
+            instruction = _mutable_opcode_map.get(opcode)
+            if instruction is None:
+               raise ValueError("Unknown opcode: 0x%x at offset %i." % (opcode, offset))
+            instruction = instruction.__new__(instruction)
+            instruction.read(class_file, buffer, is_wide)
+        else:  # We only do this here as we know that the wide instruction is immutable.
+            is_wide = instruction is wide
 
         instructions_[offset] = instruction
         # print(offset, "\t", instruction)
 
         offset = buffer.tell()
-        wide = instruction == instructions.wide
 
     return instructions_
 
 
-def write_instructions(instructions_: Dict[int, "Instruction"], class_file: ClassFile, buffer: IO[bytes]) -> None:
+def write_instructions(instructions_: Dict[int, Instruction], class_file: "ClassFile", buffer: IO[bytes]) -> None:
     """
     Writes a list of instructions to the buffer.
 
@@ -60,9 +74,9 @@ def write_instructions(instructions_: Dict[int, "Instruction"], class_file: Clas
     :param buffer: The binary buffer to write to.
     """
 
-    wide = False
+    is_wide = False  # FIXME: Speed up
     for offset, instruction in sorted(instructions_.items(), key=operator.itemgetter(0)):
         buffer.write(bytes((instruction.opcode,)))
-        instruction.write(class_file, buffer, wide)
+        instruction.write(class_file, buffer, is_wide)
 
-        wide = instruction == instructions.wide
+        is_wide = instruction is wide

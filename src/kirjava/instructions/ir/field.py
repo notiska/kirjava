@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "GetFieldExpression", "GetStaticFieldExpression", "SetFieldStatement", "SetStaticFieldStatement",
+)
+
 """
 Field related IR expressions/statements.
 """
 
 from .cast import TypeCastExpression
 from ...abc import Expression, Statement, Value
-from ...types import BaseType
-from ...types.reference import ClassOrInterfaceType
+from ...constants import FieldRef
+from ...types import Type
 
 
 class GetFieldExpression(Expression):
@@ -15,29 +19,27 @@ class GetFieldExpression(Expression):
     Gets a field, not static.
     """
 
-    def __init__(self, instance: Value, name: str, type_: BaseType) -> None:
+    def __init__(self, target: Value, reference: FieldRef) -> None:
         """
-        :param instance: The instance to get the field from.
-        :param name: The name of the field to get.
-        :param type_: The type of the field.
+        :param target: The instance to get the field from.
+        :param reference: The reference to the field.
         """
 
-        self.instance = instance
-        self.name = name
-        self.type = type_
+        self.target = target
+        self.reference = reference
 
     def __repr__(self) -> str:
-        return "<GetFieldExpression(instance=%r, name=%r, type=%s) at %x>" % (
-            self.instance, self.name, self.type, id(self),
+        return "<GetFieldExpression(target=%r, reference=%r) at %x>" % (
+            self.target, self.reference, id(self),
         )
 
     def __str__(self) -> str:
-        if isinstance(self.instance, TypeCastExpression):
-            return "(%s).%s" % (self.instance, self.name)
-        return "%s.%s" % (self.instance, self.name)
+        if isinstance(self.target, TypeCastExpression):
+            return "(%s).%s" % (self.target, self.reference.name)
+        return "%s.%s" % (self.target, self.reference.name)
 
-    def get_type(self) -> BaseType:
-        return self.type
+    def get_type(self) -> Type:
+        return self.reference.field_type
 
 
 class GetStaticFieldExpression(Expression):
@@ -45,27 +47,21 @@ class GetStaticFieldExpression(Expression):
     Gets a static field.
     """
 
-    def __init__(self, class_: ClassOrInterfaceType, name: str, type_: BaseType) -> None:
+    def __init__(self, reference: FieldRef) -> None:
         """
-        :param class_: The class to get the field from.
-        :param name: The name of the field.
-        :param type_: The type of the field.
+        :param reference: The reference to the field.
         """
 
-        self.class_ = class_
-        self.name = name
-        self.type = type_
+        self.reference = reference
 
     def __repr__(self) -> str:
-        return "<GetStaticFieldExpression(class=%s, name=%r, type=%s) at %x>" % (
-            self.class_, self.name, self.type, id(self),
-        )
+        return "<GetStaticFieldExpression(reference=%r) at %x>" % (self.reference, id(self))
 
     def __str__(self) -> str:
-        return "%s.%s" % (self.class_, self.name)
+        return "%s.%s" % (self.reference.class_, self.reference.name)
 
-    def get_type(self) -> BaseType:
-        return self.type
+    def get_type(self) -> Type:
+        return self.reference.field_type
 
 
 class SetFieldStatement(Statement):
@@ -73,26 +69,26 @@ class SetFieldStatement(Statement):
     Sets a field, not static.
     """
 
-    def __init__(self, instance: Value, name: str, value: Value) -> None:
+    def __init__(self, target: Value, value: Value, reference: FieldRef) -> None:
         """
-        :param instance: The instance to set the field on.
-        :param name: The name of the field to set.
+        :param target: The instance to set the field on.
         :param value: The value to set the field to.
+        :param reference: The reference to the field.
         """
 
-        self.instance = instance
-        self.name = name
+        self.target = target
         self.value = value
+        self.reference = reference
 
     def __repr__(self) -> str:
-        return "<SetFieldStatement(instance=%r, name=%r, value=%r) at %x>" % (
-            self.instance, self.name, self.value, id(self),
+        return "<SetFieldStatement(target=%r, value=%r, reference=%r) at %x>" % (
+            self.target, self.value, self.reference, id(self),
         )
 
     def __str__(self) -> str:
         if isinstance(self.value, TypeCastExpression):
-            return "(%s).%s = %s" % (self.instance, self.name, self.value)
-        return "%s.%s = %s" % (self.instance, self.name, self.value)
+            return "(%s).%s = %s" % (self.target, self.reference.name, self.value)
+        return "%s.%s = %s" % (self.target, self.reference.name, self.value)
 
 
 class SetStaticFieldStatement(Statement):
@@ -100,21 +96,19 @@ class SetStaticFieldStatement(Statement):
     Sets a static field.
     """
 
-    def __init__(self, class_: ClassOrInterfaceType, name: str, value: Value) -> None:
+    def __init__(self, value: Value, reference: FieldRef) -> None:
         """
-        :param class_: The class
-        :param name: The name of the field to set.
         :param value: The value to set the field to.
+        :param reference: The reference to the field.
         """
 
-        self.class_ = class_
-        self.name = name
         self.value = value
+        self.reference = reference
 
     def __repr__(self) -> str:
-        return "<SetStaticFieldStatement(class=%s, name=%r, value=%r) at %x>" % (
-            self.class_, self.name, self.value, id(self),
+        return "<SetStaticFieldStatement(value=%r, reference=%r) at %x>" % (
+            self.value, self.reference, id(self),
         )
 
     def __str__(self) -> str:
-        return "%s.%s = %s" % (self.class_, self.name, self.value)
+        return "%s.%s = %s" % (self.reference.class_, self.reference.name, self.value)

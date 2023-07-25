@@ -10,36 +10,34 @@
 # )
 
 """
-Kirjava - A Java bytecode library for Python.
+kirjava - a Java bytecode library for Python.
 """
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
-# Expose API
-from . import abc, analysis, classfile, environment, instructions, jarfile, skeleton, types, verifier
+from . import abc, analysis, classfile, constants, environment, error, instructions, jarfile, source, types
 from ._helper import *
 from .analysis import *
 from .classfile import *
 from .environment import *
+from .error import *
 # from .jarfile import *
 from .version import *
 
-_initialised = False
 
-
-def initialise(load_skeletons: bool = True, skeletons_version: Version = Version.get("11")) -> None:
-    """
-    Initialises Kirjava.
-
-    :param load_skeletons: Loads the skeleton classes.
-    :param skeletons_version: The Java version to load the skeleton classes for.
-    """
-
-    global _initialised
-
-    if _initialised:
-        return
-    _initialised = True
-
-    if load_skeletons:
-        skeleton.load_skeletons(skeletons_version)
+# def initialise(load_skeletons: bool = True, skeletons_version: Version = Version.get("11")) -> None:
+#     """
+#     Initialises Kirjava.
+#
+#     :param load_skeletons: Loads the skeleton classes.
+#     :param skeletons_version: The Java version to load the skeleton classes for.
+#     """
+#
+#     global _initialised
+#
+#     if _initialised:
+#         return
+#     _initialised = True
+#
+#     if load_skeletons:
+#         skeleton.load_skeletons(skeletons_version)

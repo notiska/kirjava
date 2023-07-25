@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "UnaryExpression", "BinaryExpression",
+    "AdditionExpression", "SubtractionExpression", "MultiplicationExpression", "DivisionExpression", "ModuloExpression",
+    "NegationExpression",
+    "ShiftLeftExpression", "ShiftRightExpression", "UnsignedShiftRightExpression",
+    "BitwiseAndExpression", "BitwiseOrExpression", "BitwiseXorExpression",
+)
+
 """
 Arithmetic related IR expressions, includes comparisons.
 """
 
-from abc import ABC
-
 from ...abc import Expression, Value
-from ...types import BaseType
+from ...types import Type
 
 
-class UnaryExpression(Expression, ABC):
+class UnaryExpression(Expression):
     """
     An expression that takes in one value.
     """
@@ -26,7 +32,7 @@ class UnaryExpression(Expression, ABC):
         self.value = value
 
     def __repr__(self) -> str:
-        return "<%s(value=%r) at %x>" % (self.__class__.__name__, self.value, id(self))
+        return "<%s(value=%r) at %x>" % (type(self).__name__, self.value, id(self))
 
     def __str__(self) -> str:
         if (
@@ -36,11 +42,11 @@ class UnaryExpression(Expression, ABC):
             return "%s(%s)" % (self.operator, self.value)
         return "%s%s" % (self.operator, self.value)
 
-    def get_type(self) -> BaseType:
+    def get_type(self) -> Type:
         return self.value.get_type()
 
 
-class BinaryExpression(Expression, ABC):
+class BinaryExpression(Expression):
     """
     An arithmetic expression that takes in two values.
     """
@@ -58,7 +64,7 @@ class BinaryExpression(Expression, ABC):
         self.right = right
 
     def __repr__(self) -> str:
-        return "<%s(left=%r, right=%r) at %x>" % (self.__class__.__name__, self.left, self.right, id(self))
+        return "<%s(left=%r, right=%r) at %x>" % (type(self).__name__, self.left, self.right, id(self))
 
     def __str__(self) -> str:
         left = self.left
@@ -71,7 +77,7 @@ class BinaryExpression(Expression, ABC):
 
         return "%s %s %s" % (left, self.operator, right)
 
-    def get_type(self) -> BaseType:
+    def get_type(self) -> Type:
         return self.left.get_type()  # TODO: Merge types
 
 

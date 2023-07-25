@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "ConstantInstruction", "FixedConstantInstruction", "IntegerConstantInstruction", "LoadConstantInstruction",
+)
+
 """
 Instructions that push constants to the stack.
 """
 
-from typing import Any, Dict, IO
+import typing
+from typing import Any, Dict, IO, Union
 
 from . import Instruction
 from ..ir.value import ConstantValue
 from ... import types
 from ...abc import Value
-from ...analysis.ir.variable import Scope
-from ...analysis.trace import Entry, Frame, FrameDelta
-from ...classfile import ClassFile
-from ...classfile.constants import ConstantInfo, Integer
-from ...verifier import Error
+from ...constants import ConstantInfo, Integer
+
+if typing.TYPE_CHECKING:
+    from ...analysis import Context
+    from ...classfile import ClassFile
 
 
 class ConstantInstruction(Instruction):
@@ -29,6 +34,7 @@ class ConstantInstruction(Instruction):
         :param constant: The constant that this instruction holds.
         """
 
+        # TODO: Might be nice to have it automatically work out constant types from the value passed?
         self.constant = constant
 
     def __repr__(self) -> str:
@@ -40,22 +46,17 @@ class ConstantInstruction(Instruction):
         return "%s %s" % (self.mnemonic, self.constant)
 
     def __eq__(self, other: Any) -> bool:
-        return (type(other) is self.__class__ and other.constant == self.constant) or other is self.__class__
+        return (type(other) is type(self) and other.constant == self.constant) or other is type(self)
 
     def copy(self) -> "ConstantInstruction":
-        return self.__class__(self.constant)
+        return type(self)(self.constant)
 
-    def trace(self, frame: Frame) -> None:
-        try:
-            frame.push(self.constant.get_type(), self.constant)
-        except TypeError:
-            frame.verifier.report(Error(
-                Error.Type.INVALID_CONSTANT, frame.source, "can't convert constant %s to Java type" % self.constant,
-            ))
-            frame.push(types.top_t)  # Placeholder, doesn't account for wide types tho :(
+    def trace(self, context: "Context") -> None:
+        context.push(self.constant.type or context.frame.TOP)
+        # TODO: Report error if not valid type
 
-    def lift(self, delta: FrameDelta, scope: "Scope", associations: Dict[Entry, Value]) -> None:
-        associations[delta.pushes[0]] = ConstantValue(self.constant)
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    #     associations[delta.pushes[0]] = ConstantValue(self.constant)
 
 
 class FixedConstantInstruction(ConstantInstruction):
@@ -74,15 +75,15 @@ class FixedConstantInstruction(ConstantInstruction):
         return self.mnemonic
 
     def __eq__(self, other: Any) -> bool:
-        return type(other) is self.__class__ or other is self.__class__
+        return type(other) is type(self) or other is type(self)
 
     def copy(self) -> "FixedConstantInstruction":
         return self  # Immutable type technically
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         ...
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         ...
 
 
@@ -93,14 +94,16 @@ class IntegerConstantInstruction(ConstantInstruction):
 
     __slots__ = ("_value",)
 
-    def __init__(self, constant: Integer) -> None:
+    def __init__(self, constant: Union[int, Integer]) -> None:
+        if type(constant) is int:
+            constant = Integer(constant)
         super().__init__(constant)
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
         self.constant = Integer(self._value)
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         self._value = self.constant.value
         super().write(class_file, buffer, wide)
 
@@ -112,25 +115,27 @@ class LoadConstantInstruction(ConstantInstruction):
 
     __slots__ = ("_index",)
 
-    category: int = ...
+    wide: bool = False
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
         self.constant = class_file.constant_pool[self._index]
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         self._index = class_file.constant_pool.add(self.constant)
         super().write(class_file, buffer, wide)
 
-    def trace(self, frame: Frame) -> None:
+    def trace(self, context: "Context") -> None:
         try:
-            type_ = self.constant.get_type()
-            if not frame.verifier.checker.check_category(type_, self.category):
-                frame.verifier.report_invalid_type_category(frame.source, self.category, type_, None)
-            frame.push(type_, self.constant)
-        except TypeError:
-            frame.verifier.report(Error(
-                Error.Type.INVALID_CONSTANT, frame.source, "can't convert constant %s to Java type" % self.constant,
-            ))
-            frame.push(types.top_t)  # Placeholder, doesn't account for wide types tho :(
+            type_ = self.constant.type
+            if type_.wide != self.wide and context.do_raise:
+                ...  # TODO: Report error
+            context.push(type_)
+        except TypeError as error:
+            # frame.verifier.report(Error(
+            #     Error.Type.INVALID_CONSTANT, frame.source, "can't convert constant %s to Java type" % self.constant,
+            # ))
+            if context.do_raise:
+                raise error
+            context.push(context.frame.TOP)
 

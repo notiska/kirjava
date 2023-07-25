@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "ArrayLoadExpression", "ArrayLengthExpression", "ArrayStoreStatement"
+)
+
 """
 Array related IR expressions/statements.
 """
 
 from ... import types
 from ...abc import Expression, Statement, Value
-from ...types import BaseType
+from ...types import Type
 
 
 class ArrayLoadExpression(Expression):
@@ -29,9 +33,8 @@ class ArrayLoadExpression(Expression):
     def __str__(self) -> str:
         return "%s[%s]" % (self.array, self.index)
 
-    def get_type(self) -> BaseType:
-        type_ = self.array.get_type()
-        return type_.set_dimension(type_.dimension - 1)
+    def get_type(self) -> Type:
+        return self.array.get_type().element
 
 
 class ArrayLengthExpression(Expression):
@@ -52,7 +55,7 @@ class ArrayLengthExpression(Expression):
     def __str__(self) -> str:
         return "%s.length" % self.array
 
-    def get_type(self) -> BaseType:
+    def get_type(self) -> Type:
         return types.int_t
 
 

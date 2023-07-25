@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "Source", 
+    "Offset", "Source",
     "Constant",
     "Class", "Field", "Method",
     "Block", "Edge", "Graph", "RethrowBlock", "ReturnBlock",
     "Expression", "Statement", "Value",
-    "TypeChecker",
 )
 
 """
@@ -22,4 +21,3 @@ from .field import *
 from .graph import *
 from .ir import *
 from .method import *
-from .verifier import *

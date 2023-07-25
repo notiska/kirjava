@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "ConstantValue", "NewExpression", "NewArrayExpression",
+)
+
 """
 IR expressions that create values.
 """
@@ -7,8 +11,7 @@ IR expressions that create values.
 from typing import Iterable
 
 from ...abc import Constant, Expression, Value
-from ...types import BaseType
-from ...types.reference import ArrayType, ClassOrInterfaceType
+from ...types import Array, Class, Type
 
 
 class ConstantValue(Value):
@@ -29,8 +32,8 @@ class ConstantValue(Value):
     def __str__(self) -> str:
         return str(self.constant)
 
-    def get_type(self) -> BaseType:
-        return self.constant.get_type()
+    def get_type(self) -> Type:
+        return self.constant.type
 
 
 class NewExpression(Expression):
@@ -38,7 +41,7 @@ class NewExpression(Expression):
     Creates a new object.
     """
 
-    def __init__(self, type_: ClassOrInterfaceType) -> None:
+    def __init__(self, type_: Class) -> None:
         """
         :param type_: The type of the object to create.
         """
@@ -51,7 +54,7 @@ class NewExpression(Expression):
     def __str__(self) -> str:
         return "new %s" % self.type
 
-    def get_type(self) -> ClassOrInterfaceType:
+    def get_type(self) -> Class:
         return self.type
 
 
@@ -60,7 +63,7 @@ class NewArrayExpression(Expression):
     Creates a new array.
     """
 
-    def __init__(self, type_: ArrayType, sizes: Iterable[Value]) -> None:
+    def __init__(self, type_: Array, sizes: Iterable[Value]) -> None:
         """
         :param type_: The array type to initialise.
         :param sizes: The sizes to initialise the array with.
@@ -78,5 +81,5 @@ class NewArrayExpression(Expression):
             "".join("[%s]" % size for size in self.sizes),
         )
 
-    def get_type(self) -> ArrayType:
+    def get_type(self) -> Array:
         return self.type

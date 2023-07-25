@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "ReturnInstruction", "AThrowInstruction",
+    "MonitorEnterInstruction", "MonitorExitInstruction",
+)
+
 """
 Other instructions that don't really fall into a category or don't have enough similar instructions for me to count it
 as a valid category, because I'm lazy.
 """
 
+import typing
 from typing import Dict
 
 from . import Instruction
-from ..ir.other import MonitorEnterStatement, MonitorExitStatement, ReturnStatement, ThrowStatement
+from ..ir.other import *
 from ... import types
 from ...abc import Value
-from ...analysis.ir.variable import Scope
-from ...analysis.trace import Entry, Frame, FrameDelta
-from ...types import BaseType
+from ...types import Class, Verification
+
+if typing.TYPE_CHECKING:
+    from ...analysis import Context
 
 
 class ReturnInstruction(Instruction):
@@ -23,23 +30,20 @@ class ReturnInstruction(Instruction):
 
     __slots__ = ()
 
-    throws = (types.illegalmonitorstateexception_t,)
+    throws = (Class("java/lang/IllegalMonitorStateException"),)
 
-    type_: BaseType = ...
+    type: Verification = ...
 
-    def trace(self, frame: Frame) -> None:
-        # TODO: Check method return type too?
-        if self.type_ != types.void_t:  # Void returns accept no value
-            if self.type_ is not None:
-                frame.pop(self.type_.internal_size, expect=self.type_)
-            else:
-                frame.pop(expect=self.type_)
+    def trace(self, context: "Context") -> None:
+        if self.type is not types.void_t:
+            *_, entry = context.pop(1 + self.type.wide, as_tuple=True)
+            context.constrain(entry, self.type)
 
         # if state.stack:
         #     raise ValueError("Stack is not empty after return.")
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> ReturnStatement:
-        return ReturnStatement(associations[delta.pops[-1]] if self.type_ != types.void_t else None)
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> ReturnStatement:
+    #     return ReturnStatement(associations[delta.pops[-1]] if self.type_ != types.void_t else None)
 
 
 class AThrowInstruction(Instruction):
@@ -50,23 +54,21 @@ class AThrowInstruction(Instruction):
     __slots__ = ()
 
     throws = (
-        types.illegalmonitorstateexception_t,
-        types.nullpointerexception_t,
+        Class("java/lang/IllegalMonitorStateException"),
+        Class("java/lang/NullPointerException"),
     )
 
-    def trace(self, frame: Frame) -> None:
-        entry = frame.pop(expect=types.throwable_t)
-        if frame.stack:
-            frame.pop(len(frame.stack))
+    def trace(self, context: "Context") -> None:
+        entry = context.pop()
+        context.pop(len(context.frame.stack))
 
-        # TODO: We might be able to work out the lower bound from the exception ranges?
         if entry.type == types.null_t:  # FIXME: This might throw things off the in the future?
-            frame.push(types.nullpointerexception_t)
+            context.push(Class("java/lang/NullPointerException"))
         else:
-            frame.push(entry)
+            context.push(entry, types.throwable_t)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> ThrowStatement:
-        return ThrowStatement(associations[delta.pops[-1]])
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> ThrowStatement:
+    #     return ThrowStatement(associations[delta.pops[-1]])
 
 
 class MonitorEnterInstruction(Instruction):
@@ -76,15 +78,13 @@ class MonitorEnterInstruction(Instruction):
 
     __slots__ = ()
 
-    throws = (
-        types.nullpointerexception_t,
-    )
+    throws = (Class("java/lang/NullPointerException"),)
 
-    def trace(self, frame: Frame) -> None:
-        frame.pop(expect=None)
+    def trace(self, context: "Context") -> None:
+        context.constrain(context.pop(), types.object_t)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> MonitorEnterStatement:
-        return MonitorEnterStatement(associations[delta.pops[-1]])
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> MonitorEnterStatement:
+    #     return MonitorEnterStatement(associations[delta.pops[-1]])
 
 
 class MonitorExitInstruction(Instruction):
@@ -95,12 +95,12 @@ class MonitorExitInstruction(Instruction):
     __slots__ = ()
 
     throws = (
-        types.illegalmonitorstateexception_t,
-        types.nullpointerexception_t,
+        Class("java/lang/IllegalMonitorStateException"),
+        Class("java/lang/NullPointerException"),
     )
 
-    def trace(self, frame: Frame) -> None:
-        frame.pop(expect=None)
+    def trace(self, context: "Context") -> None:
+        context.constrain(context.pop(), types.object_t)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> MonitorExitStatement:
-        return MonitorExitStatement(associations[delta.pops[-1]])
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> MonitorExitStatement:
+    #     return MonitorExitStatement(associations[delta.pops[-1]])

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "CompoundStatement",
+    "ReturnStatement", "ThrowStatement",
+    "MonitorEnterStatement", "MonitorExitStatement",
+)
+
 """
 IR expressions/statements that are not unique enough to fit into their own categories.
 """
@@ -28,21 +34,6 @@ class CompoundStatement(Statement):
         return "\n".join(map(str, self.statements))
 
 
-class ThrowStatement(Statement):
-    """
-    A throw statement.
-    """
-
-    def __init__(self, value: Value) -> None:
-        self.value = value
-
-    def __repr__(self) -> str:
-        return "<ThrowStatement(value=%r) at %x>" % (self.value, id(self))
-
-    def __str__(self) -> str:
-        return "throw %s" % self.value
-
-
 class ReturnStatement(Statement):
     """
     Returns a value from the method.
@@ -62,6 +53,21 @@ class ReturnStatement(Statement):
         if self.value is None:
             return "return"
         return "return %s" % self.value
+
+
+class ThrowStatement(Statement):
+    """
+    A throw statement.
+    """
+
+    def __init__(self, value: Value) -> None:
+        self.value = value
+
+    def __repr__(self) -> str:
+        return "<ThrowStatement(value=%r) at %x>" % (self.value, id(self))
+
+    def __str__(self) -> str:
+        return "throw %s" % self.value
 
 
 class MonitorEnterStatement(Statement):

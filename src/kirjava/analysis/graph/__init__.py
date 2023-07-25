@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+
+__all__ = (
+    "block", "edge",
+    "InsnBlock", "InsnReturnBlock", "InsnRethrowBlock",
+    "InsnEdge", "FallthroughEdge", "JumpEdge",
+    "JsrJumpEdge", "JsrFallthroughEdge", "RetEdge",
+    "ExceptionEdge",
+    "InsnGraph",
+)
+
+"""
+A control flow graph containing JVM instructions.
+"""
+
+import logging
+import typing
+from typing import Dict, Optional, Set, Tuple, Type, Union
+
+from . import block, edge
+from ._asm import assemble
+from ._dis import disassemble
+from .block import *
+from .edge import *
+from ... import _argument, instructions, types
+from ...abc import Graph
+from ...instructions.jvm import Instruction, JsrInstruction
+from ...source import *
+
+if typing.TYPE_CHECKING:
+    from ...classfile import MethodInfo
+
+logger = logging.getLogger("kirjava.analysis.graph")
+
+
+class InsnGraph(Graph):
+    """
+    A control flow graph that contains Java instructions.
+    """
+
+    __slots__ = ("source_map",)
+
+    # Type hints for the fancy IDEs
+
+    method: "MethodInfo"
+
+    entry_block: InsnBlock
+    return_block: InsnReturnBlock
+    rethrow_block: InsnRethrowBlock
+
+    _blocks: Dict[int, InsnBlock]
+    _forward_edges: Dict[InsnBlock, Set[InsnEdge]]
+    _backward_edges: Dict[InsnBlock, Set[InsnEdge]]
+    _opaque_edges: Set[InsnEdge]
+
+    @classmethod
+    def disassemble(
+            cls,
+            method: "MethodInfo",
+            *,
+            do_raise: bool = True,
+            keep_lnt: bool = True,
+            keep_lvt: bool = True,
+            keep_lvtt: bool = True,
+            gen_source_map: bool = True,
+    ) -> "InsnGraph":
+        """
+        Disassembles a method into a control flow graph.
+
+        :param method: The method to disassemble.
+        :param do_raise: Raise an exception if any errors occurred during disassembling.
+        :param keep_lnt: Should we keep the line number table?
+        :param keep_lvt: Should we keep the local variable table?
+        :param keep_lvtt: Should we keep the local variable type table?
+        :param gen_source_map: Should we generate a mapping of bytecode offset to block index?
+        :return: The control flow graph.
+        """
+
+        # TODO: Add a "generate source map" option
+
+        self = cls(method)
+        disassemble(self, method, do_raise, keep_lnt, keep_lvt, keep_lvtt, gen_source_map)
+        return self
+
+    def __init__(self, method: "MethodInfo") -> None:
+        super().__init__(method, InsnBlock(0), InsnReturnBlock(), InsnRethrowBlock())
+
+        self.source_map: Dict[int, Union[InstructionInBlock, InsnEdge]] = {}
+
+    def new(self) -> InsnBlock:
+        block = InsnBlock(max(self._blocks, default=0) + 1)
+        self.add(block, check=False)
+        return block
+
+    def assemble(
+            self,
+            *,
+            do_raise: bool = True,
+            adjust_wides: bool = True,
+            adjust_ldcs: bool = True,
+            adjust_jumps: bool = True,
+            adjust_fallthroughs: bool = True,
+            simplify_exception_ranges: bool = True,
+            compute_maxes: bool = True,
+            compute_frames: bool = True,
+            compress_frames: bool = True,
+            add_lnt: bool = True,
+            add_lvt: bool = True,
+            add_lvtt: bool = True,
+            remove_dead_blocks: bool = True,
+    ) -> None:
+        """
+        Assembles this graph into the method's code attribute.
+
+        :param do_raise: Raise an exception if any errors occurred during assembling.
+        :param adjust_wides: Should we add/remove wide instructions if necessary?
+        :param adjust_ldcs: Should we transform ldc instructions to ldc_w if necessary?
+        :param adjust_jumps: Should we adjust jumps by generating new blocks if necessary?
+        :param adjust_fallthroughs: Should we generate gotos if certain fallthroughs are impossible?
+        :param simplify_exception_ranges: Should we merge same priority exception edges in the exception table?
+        :param compute_maxes: Should we compute max stack and locals?
+        :param compute_frames: Should we compute stack map frames?
+        :param compress_frames: Should we compress stack map frames?
+        :param add_lnt: Should we add a line number table?
+        :param add_lvt: Should we add a local variable table?
+        :param add_lvtt: Should we add a local variable type table?
+        :param remove_dead_blocks: Should we remove dead blocks?
+        """
+
+        assemble(
+            self, self.method, self.method.class_, do_raise,
+            adjust_wides, adjust_ldcs,
+            adjust_jumps, adjust_fallthroughs,
+            simplify_exception_ranges,
+            compute_maxes, compute_frames, compress_frames,
+            add_lnt, add_lvt, add_lvtt,
+            remove_dead_blocks,
+        )
+
+    def strip(self, line_numbers: bool = True, local_variables: bool = True) -> None:
+        """
+        Strips debug information from this graph.
+
+        :param line_numbers: Should we strip line number markers?
+        :param local_variables: Should we strip local variable info?
+        """
+
+        for block in self._blocks.values():
+            block.strip(line_numbers, local_variables)
+
+    # ------------------------------ Blocks ------------------------------ #
+
+    def instructions(self, block_or_label: Union[InsnBlock, int]) -> Tuple[Instruction, ...]:
+        """
+        Iterates over all the instructions in a block (including any instructions in its out edges).
+
+        :param block_or_label: A block or a label for a block in this graph.
+        :return: A copy of the instructions, note that the instructions themselves are not copied and are still mutable.
+        """
+
+        if type(block_or_label) is int:
+            block_or_label = self._blocks.get(block_or_label)
+        if block_or_label is None or not block_or_label in self._blocks.values():
+            raise ValueError("Provided block or label %r is not a valid block in this graph." % block_or_label)
+
+        instructions_ = list(block_or_label._instructions)
+        edge_instruction = False
+        for out_edge in self._forward_edges.get(block_or_label, ()):
+            if not edge_instruction and out_edge.instruction is not None:
+                instructions_.append(out_edge.instruction)
+                edge_instruction = True
+        return tuple(instructions_)
+
+    # ------------------------------ Edges ------------------------------ #
+
+    def fallthrough(self, from_: InsnBlock, to: InsnBlock, overwrite: bool = False) -> FallthroughEdge:
+        """
+        Creates and connects a fallthrough edge between two blocks.
+
+        :param from_: The block we're coming from.
+        :param to: The block we're going to.
+        :param overwrite: Removes already existing fallthrough edges.
+        :return: The created fallthrough edge.
+        """
+
+        edge = FallthroughEdge(from_, to)
+        self.connect(edge, overwrite)
+        return edge
+
+    def jump(
+            self,
+            from_: InsnBlock,
+            to: InsnBlock,
+            jump: Union[Type[Instruction], Instruction, None] = None,
+            overwrite: bool = True,
+    ) -> JumpEdge:
+        """
+        Creates a jump edge between two blocks.
+
+        :param from_: The block we're jumping from.
+        :param to: The block we're jumping to.
+        :param jump: The jump instruction.
+        :param overwrite: Overwrites already existing jump edges.
+        :return: The jump edge that was created.
+        """
+
+        if type(jump) is type:
+            jump = jump()
+
+        if isinstance(jump, JsrInstruction) or jump == instructions.ret:
+            raise TypeError("Cannot add jsr/ret instructions with jump() method.")
+        elif jump in (instructions.tableswitch, instructions.lookupswitch):
+            raise TypeError("Cannot add switch instructions with jump() method.")
+
+        edge = JumpEdge(from_, to, jump)
+        self.connect(edge, overwrite)
+        return edge
+
+    def catch(
+            self,
+            from_: InsnBlock,
+            to: InsnBlock,
+            priority: Optional[int] = None,
+            exception: _argument.ReferenceType = types.throwable_t,
+    ) -> ExceptionEdge:
+        """
+        Creates an exception edge between two blocks.
+
+        :param from_: The block we're coming from.
+        :param to: The block that will act as the exception handler.
+        :param priority: The priority of this exception handler, lower values mean higher priority.
+        :param exception: The exception type being caught.
+        :return: The exception edge that was created.
+        """
+
+        exception = _argument.get_reference_type(exception)
+        if priority is None:  # Determine this automatically
+            priority = 0
+            for edge in self._forward_edges.get(from_, ()):
+                if isinstance(edge, ExceptionEdge) and edge.priority >= priority:
+                    priority = edge.priority + 1
+
+        edge = ExceptionEdge(from_, to, priority, exception)
+        self.connect(edge)
+        return edge
+
+    def return_(self, from_: InsnBlock, overwrite: bool = False) -> FallthroughEdge:
+        """
+        Creates a fallthrough edge from the given block to the return block.
+
+        :param from_: The block we're coming from.
+        :param overwrite: Overwrites any existing fallthrough edges.
+        :return: The fallthrough edge that was created.
+        """
+
+        return_type = self.method.return_type
+
+        if return_type != types.void_t:
+            return_type = return_type.to_verification_type()
+
+            if return_type == types.int_t:
+                instruction = instructions.ireturn()
+            elif return_type == types.long_t:
+                instruction = instructions.lreturn()
+            elif return_type == types.float_t:
+                instruction = instructions.freturn()
+            elif return_type == types.double_t:
+                instruction = instructions.dreturn()
+            else:
+                instruction = instructions.areturn()
+        else:
+            instruction = instructions.return_()
+
+        edge = JumpEdge(from_, self.return_block, instruction)
+        self.connect(edge, overwrite)
+        return edge
+
+    def throw(self, from_: InsnBlock, overwrite: bool = False) -> FallthroughEdge:
+        """
+        Creates a fallthrough edge from the given block to the rethrow block.
+
+        :param from_: The block we're coming from.
+        :param overwrite: Overwrites any existing fallthrough edges.
+        :return: The fallthrough edge that was created.
+        """
+
+        edge = JumpEdge(from_, self.rethrow_block, instructions.athrow())
+        self.connect(edge, overwrite)
+        return edge

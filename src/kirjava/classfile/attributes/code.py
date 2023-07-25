@@ -10,19 +10,28 @@ Attributes found exclusively in the Code attribute.
 
 import logging
 import typing
-from typing import IO, Iterable, List, Optional, Tuple
+from typing import Any, IO, Iterable, List, Optional, Tuple
 
 from . import AttributeInfo
-from .. import descriptor, ClassFile
-from .._struct import *
-from ..constants import Class, UTF8
 from ... import types
-from ...types.verification import VerificationType, Uninitialized
-from ...types.reference import ArrayType, ClassOrInterfaceType
+from ..._struct import *
+from ...abc import Offset, Source
+from ...analysis import Entry, Frame
+from ...constants import Class as ClassConstant, UTF8
+from ...source import InstructionAtOffset
+from ...types import (
+    descriptor,
+    # I did a performance analysis and StackMapTable._read_verification_type had the most CPU time by far, most likely
+    # due to how many times it's called, so I've decided to import these directly instead of referencing them via
+    # types.<...> as it's faster, and any performance savings are welcome.
+    double_t, float_t, int_t, long_t, null_t, reserved_t, top_t, uninitialized_this_t,
+    Array, Class as ClassType, Uninitialized, Verification,
+)
 from ...version import Version
 
 if typing.TYPE_CHECKING:
     from .method import Code
+    from .. import ClassFile
 
 logger = logging.getLogger("kirjava.classfile.attributes.code")
 
@@ -41,7 +50,7 @@ class StackMapTable(AttributeInfo):
     locations = ("Code",)
 
     @classmethod
-    def _read_verification_type(cls, class_file: ClassFile, buffer: IO[bytes]) -> VerificationType:
+    def _read_verification_type(cls, class_file: "ClassFile", buffer: IO[bytes]) -> Verification:
         """
         Reads a verification type info from a buffer.
         """
@@ -52,60 +61,60 @@ class StackMapTable(AttributeInfo):
         # distinguish in terms of usage, but the most common types tend to be class, int and top, in that order.
         if tag == 7:
             class_index, = unpack_H(buffer.read(2))
-            return class_file.constant_pool[class_index].type
+            # constant = class_file.constant_pool[class_index]
+            # if type(constant) is ClassConstant:
+            #     return constant.type
+            return class_file.constant_pool[class_index].class_type  # FIXME: Support invalid CP indices.
         elif tag == 1:
-            return types.int_t
+            return int_t
         elif tag == 0:
-            return types.top_t
+            return top_t
         elif tag == 2:
-            return types.float_t
+            return float_t
         elif tag == 3:
-            return types.double_t
+            return double_t
         elif tag == 4:
-            return types.long_t
+            return long_t
         elif tag == 8:
             offset, = unpack_H(buffer.read(2))
-            return Uninitialized(offset)
+            return Uninitialized(Offset(offset))
         elif tag == 5:
-            return types.null_t
+            return null_t
         elif tag == 6:
-            return types.uninit_this_t
+            return uninitialized_this_t
 
         raise ValueError("Invalid tag %i for verification type." % tag)
 
     @classmethod
-    def _write_verification_type(cls, type_: VerificationType, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def _write_verification_type(cls, type_: Verification, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         """
         Writes a verification type to a buffer.
         """
 
-        type_class = type(type_)
-
-        if type_class is ClassOrInterfaceType:
+        if isinstance(type_, ClassType):
             buffer.write(bytes((7,)))
-            buffer.write(pack_H(class_file.constant_pool.add(Class(type_.name))))
-        elif type_ == types.this_t:
-            buffer.write(bytes((7,)))
-            buffer.write(pack_H(class_file.constant_pool.add(Class(type_.class_.name))))
-        elif type_ == types.int_t:
+            buffer.write(pack_H(class_file.constant_pool.add(ClassConstant(type_.name))))
+        elif type_ is int_t:
             buffer.write(bytes((1,)))
-        elif type_ == types.top_t:
+        elif type_ is top_t:
             buffer.write(bytes((0,)))
-        elif type_class is ArrayType:
+        elif type(type_) is Array:
             buffer.write(bytes((7,)))
-            buffer.write(pack_H(class_file.constant_pool.add(Class(descriptor.to_descriptor(type_)))))
-        elif type_ == types.float_t:
+            buffer.write(pack_H(class_file.constant_pool.add(ClassConstant(descriptor.to_descriptor(type_)))))
+        elif type_ is float_t:
             buffer.write(bytes((2,)))
-        elif type_ == types.double_t:
+        elif type_ is double_t:
             buffer.write(bytes((3,)))
-        elif type_ == types.long_t:
+        elif type_ is long_t:
             buffer.write(bytes((4,)))
-        elif type_class is Uninitialized:
+        elif type(type_) is Uninitialized:
+            if not isinstance(type_.source, cls.Offset):
+                raise TypeError("Invalid source %r for Uninitialized." % type(type_.source))
             buffer.write(bytes((8,)))
-            buffer.write(pack_H(type_.offset))
-        elif type_ == types.null_t:
+            buffer.write(pack_H(type_.source.offset))
+        elif type_ is null_t:
             buffer.write(bytes((5,)))
-        elif type_ == types.uninit_this_t:
+        elif type_ == uninitialized_this_t:
             buffer.write(bytes((6,)))
         else:
             raise TypeError("Invalid verification type %r." % type_)
@@ -124,7 +133,22 @@ class StackMapTable(AttributeInfo):
     def __repr__(self) -> str:
         return "<StackMapTable(%r) at %x>" % (self.frames, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def __iter__(self) -> Iterable["StackMapTable.StackMapFrame"]:
+        return iter(self.frames)
+
+    def __getitem__(self, index: int) -> "StackMapTable.StackMapFrame":
+        return self.frames[index]
+
+    def __setitem__(self, index: int, value: "StackMapTable.StackMapFrame") -> None:
+        self.frames[index] = value
+
+    def __contains__(self, item: Any) -> bool:
+        return item in self.frames
+
+    def __len__(self) -> int:
+        return len(self.frames)
+
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.frames.clear()
         frames_count, = unpack_H(buffer.read(2))
         for index in range(frames_count):
@@ -136,7 +160,7 @@ class StackMapTable(AttributeInfo):
             else:
                 raise ValueError("Unknown stackmap frame type %i." % frame_type)
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(len(self.frames)))
         for stack_frame in self.frames:
             stack_frame.write(class_file, buffer)
@@ -154,7 +178,7 @@ class StackMapTable(AttributeInfo):
 
         @classmethod
         # @abstractmethod
-        def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.StackMapFrame":
+        def read(cls, frame_type: int, class_file: "ClassFile", buffer: IO[bytes]) -> "StackMapTable.StackMapFrame":
             """
             Reads a stack map frame from a buffer.
 
@@ -174,15 +198,40 @@ class StackMapTable(AttributeInfo):
             self.offset_delta = offset_delta
 
         def __repr__(self) -> str:
-            return "<%s(offset_delta=%i) at %x>" % (self.__class__.__name__, self.offset_delta, id(self))
+            return "<%s(offset_delta=%i) at %x>" % (type(self).__name__, self.offset_delta, id(self))
+
+        def _make_entry(self, type_: Verification, code: Optional["Code"]) -> Entry:
+            if type_ is top_t:
+                return Frame.TOP
+            elif type_ is reserved_t:
+                return Frame.RESERVED
+
+            if code is not None and type(type_) is Uninitialized and type(type_.source) is Offset:
+                # We need to convert the Offsets to InstructionAtOffsets as those are used in the analyser.
+                type_ = Uninitialized(InstructionAtOffset(
+                    type_.source.offset, code.instructions.get(type_.source.offset),
+                ))
+
+            return Entry(type_, definite=True)
 
         # @abstractmethod
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             """
             Writes this stack map frame to a buffer.
 
             :param class_file: The classfile that this stack map frame belongs to.
             :param buffer: The binary buffer to write to.
+            """
+
+            ...
+
+        def to_frame(self, previous: Frame, code: Optional["Code"] = None) -> Frame:
+            """
+            Converts this stack map frame to a frame.
+
+            :param code: The code attribute the frame belongs to.
+            :param previous: The previous frame.
+            :return: The frame that was created.
             """
 
             ...
@@ -197,11 +246,16 @@ class StackMapTable(AttributeInfo):
         frame_type = range(0, 64)
 
         @classmethod
-        def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.SameFrame":
+        def read(cls, frame_type: int, class_file: "ClassFile", buffer: IO[bytes]) -> "StackMapTable.SameFrame":
             return cls(frame_type)
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             buffer.write(bytes((self.offset_delta,)))
+
+        def to_frame(self, previous: Frame, code: Optional["Code"] = None) -> Frame:
+            frame = previous.copy()
+            frame.pop(len(frame.stack))
+            return frame
 
     class SameLocals1StackItemFrame(StackMapFrame):
         """
@@ -214,12 +268,12 @@ class StackMapTable(AttributeInfo):
 
         @classmethod
         def read(
-                cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes],
+                cls, frame_type: int, class_file: "ClassFile", buffer: IO[bytes],
         ) -> "StackMapTable.SameLocals1StackItemFrame":
             stack_item = StackMapTable._read_verification_type(class_file, buffer)
             return cls(frame_type - 64, stack_item)
 
-        def __init__(self, offset_delta: int, stack_item: VerificationType) -> None:
+        def __init__(self, offset_delta: int, stack_item: Verification) -> None:
             """
             :param stack_item: The extra stack item.
             """
@@ -233,9 +287,17 @@ class StackMapTable(AttributeInfo):
                 self.offset_delta, self.stack_item, id(self),
             )
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             buffer.write(bytes((self.offset_delta + 64,)))
             StackMapTable._write_verification_type(self.stack_item, class_file, buffer)
+
+        def to_frame(self, previous: Frame, code: Optional["Code"] = None) -> Frame:
+            frame = previous.copy()
+            frame.pop(len(frame.stack))
+            frame.push(self._make_entry(self.stack_item, code))
+            if self.stack_item.wide:
+                frame.push(frame.RESERVED)
+            return frame
 
     class SameLocals1StackItemFrameExtended(StackMapFrame):  # Uh, yeah lmao
         """
@@ -249,13 +311,13 @@ class StackMapTable(AttributeInfo):
 
         @classmethod
         def read(
-                cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes],
+                cls, frame_type: int, class_file: "ClassFile", buffer: IO[bytes],
         ) -> "StackMapTable.SameLocals1StackItemFrameExtended":
             offset_delta, = unpack_H(buffer.read(2))
             stack_item = StackMapTable._read_verification_type(class_file, buffer)
             return cls(offset_delta, stack_item)
 
-        def __init__(self, offset_delta: int, stack_item: VerificationType) -> None:
+        def __init__(self, offset_delta: int, stack_item: Verification) -> None:
             """
             :param stack_item: The extra stack item.
             """
@@ -269,10 +331,18 @@ class StackMapTable(AttributeInfo):
                 self.offset_delta, self.stack_item, id(self),
             )
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             buffer.write(bytes((247,)))
             buffer.write(pack_H(self.offset_delta))
             StackMapTable._write_verification_type(self.stack_item, class_file, buffer)
+
+        def to_frame(self, previous: Frame, code: Optional["Code"] = None) -> Frame:
+            frame = previous.copy()
+            frame.pop(len(frame.stack))
+            frame.push(self._make_entry(self.stack_item, code))
+            if self.stack_item.wide:
+                frame.push(frame.RESERVED)
+            return frame
 
     class ChopFrame(StackMapFrame):
         """
@@ -285,7 +355,7 @@ class StackMapTable(AttributeInfo):
         frame_type = range(248, 251)
 
         @classmethod
-        def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.ChopFrame":
+        def read(cls, frame_type: int, class_file: "ClassFile", buffer: IO[bytes]) -> "StackMapTable.ChopFrame":
             offset_delta, = unpack_H(buffer.read(2))
             return cls(offset_delta, 251 - frame_type)
 
@@ -301,9 +371,27 @@ class StackMapTable(AttributeInfo):
         def __repr__(self) -> str:
             return "<ChopFrame(offset_delta=%i, chopped=%i) at %x>" % (self.offset_delta, self.chopped, id(self))
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             buffer.write(bytes((251 - self.chopped,)))
             buffer.write(pack_H(self.offset_delta))
+
+        def to_frame(self, previous: Frame, code: Optional["Code"] = None) -> Frame:
+            frame = previous.copy()
+            frame.pop(len(frame.stack))
+
+            max_local = max(frame.locals)
+
+            for index in range(self.chopped):
+                # Removing locals from a frame isn't really possible but we'll handle it as if we're popping from the
+                # stack, which involves adding said entry to the untracked set.
+                entry = frame.locals.pop(max_local)
+                max_local -= 1
+                if entry.type is reserved_t:  # Category 2 type
+                    frame.untracked.add(frame.locals.pop(max_local))
+                    max_local -= 1
+                frame.untracked.add(entry)
+
+            return frame
 
     class SameFrameExtended(StackMapFrame):
         """
@@ -316,13 +404,18 @@ class StackMapTable(AttributeInfo):
         frame_type = range(251, 252)
 
         @classmethod
-        def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.SameFrameExtended":
+        def read(cls, frame_type: int, class_file: "ClassFile", buffer: IO[bytes]) -> "StackMapTable.SameFrameExtended":
             offset_delta, = unpack_H(buffer.read(2))
             return cls(offset_delta)
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             buffer.write(bytes((251,)))
             buffer.write(pack_H(self.offset_delta))
+
+        def to_frame(self, previous: Frame, code: Optional["Code"] = None) -> Frame:
+            frame = previous.copy()
+            frame.pop(len(frame.stack))
+            return frame
 
     class AppendFrame(StackMapFrame):
         """
@@ -335,14 +428,14 @@ class StackMapTable(AttributeInfo):
         frame_type = range(252, 255)
 
         @classmethod
-        def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.AppendFrame":
+        def read(cls, frame_type: int, class_file: "ClassFile", buffer: IO[bytes]) -> "StackMapTable.AppendFrame":
             offset_delta, = unpack_H(buffer.read(2))
             locals_ = tuple(
                 StackMapTable._read_verification_type(class_file, buffer) for index in range(frame_type - 251)
             )
             return cls(offset_delta, locals_)
 
-        def __init__(self, offset_delta: int, locals_: Tuple[VerificationType, ...]) -> None:
+        def __init__(self, offset_delta: int, locals_: Tuple[Verification, ...]) -> None:
             """
             :param locals_: The locals to append.
             """
@@ -356,11 +449,25 @@ class StackMapTable(AttributeInfo):
                 self.offset_delta, ", ".join(map(str, self.locals)), id(self),
             )
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             buffer.write(bytes((251 + len(self.locals),)))
             buffer.write(pack_H(self.offset_delta))
             for local in self.locals:
                 StackMapTable._write_verification_type(local, class_file, buffer)
+
+        def to_frame(self, previous: Frame, code: Optional["Code"] = None) -> Frame:
+            frame = previous.copy()
+            frame.pop(len(frame.stack))
+
+            index = max(frame.locals, default=-1) + 1
+            for type_ in self.locals:
+                frame.set(index, self._make_entry(type_, code))
+                index += 1
+                if type_.wide:
+                    frame.set(index, frame.RESERVED)
+                    index += 1
+
+            return frame
 
     class FullFrame(StackMapFrame):
         """
@@ -372,7 +479,7 @@ class StackMapTable(AttributeInfo):
         frame_type = range(255, 256)
 
         @classmethod
-        def read(cls, frame_type: int, class_file: ClassFile, buffer: IO[bytes]) -> "StackMapTable.FullFrame":
+        def read(cls, frame_type: int, class_file: "ClassFile", buffer: IO[bytes]) -> "StackMapTable.FullFrame":
             offset_delta, = unpack_H(buffer.read(2))
             locals_ = tuple(
                 StackMapTable._read_verification_type(class_file, buffer)
@@ -386,7 +493,7 @@ class StackMapTable(AttributeInfo):
             return cls(offset_delta, locals_, stack)
 
         def __init__(
-                self, offset_delta: int, locals_: Tuple[VerificationType, ...], stack: Tuple[VerificationType, ...],
+                self, offset_delta: int, locals_: Tuple[Verification, ...], stack: Tuple[Verification, ...],
         ) -> None:
             """
             :param locals_: The locals in this frame.
@@ -403,7 +510,7 @@ class StackMapTable(AttributeInfo):
                 self.offset_delta, ", ".join(map(str, self.locals)), ", ".join(map(str, self.stack)), id(self),
             )
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             buffer.write(bytes((255,)))
             buffer.write(pack_H(self.offset_delta))
 
@@ -414,6 +521,28 @@ class StackMapTable(AttributeInfo):
             buffer.write(pack_H(len(self.stack)))
             for state in self.stack:
                 StackMapTable._write_verification_type(state, class_file, buffer)
+
+        def to_frame(self, previous: Frame, code: Optional["Code"] = None) -> Frame:
+            frame = previous.copy()
+            frame.pop(len(frame.stack))
+            # As stated before, you can't really "remove" a local so we'll add them all to untracked.
+            frame.untracked.update(frame.locals.values())
+            frame.locals.clear()
+
+            index = 0
+            for type_ in self.locals:
+                frame.set(index, self._make_entry(type_, code))
+                index += 1
+                if type_.wide:
+                    frame.set(index, frame.RESERVED)
+                    index += 1
+
+            for type_ in self.stack:
+                frame.push(self._make_entry(type_, code))
+                if type_.wide:
+                    frame.push(frame.RESERVED)
+
+            return frame
 
     STACK_MAP_FRAMES = (
         SameFrame,
@@ -451,13 +580,28 @@ class LineNumberTable(AttributeInfo):
     def __repr__(self) -> str:
         return "<LineNumberTable(%r) at %x>" % (self.entries, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def __iter__(self) -> Iterable["LineNumberTable.LineNumberEntry"]:
+        return iter(self.entries)
+
+    def __getitem__(self, index: int) -> "LineNumberTable.LineNumberEntry":
+        return self.entries[index]
+
+    def __setitem__(self, index: int, value: "LineNumberTable.LineNumberEntry") -> None:
+        self.entries[index] = value
+
+    def __contains__(self, item: Any) -> bool:
+        return item in self.entries
+
+    def __len__(self) -> int:
+        return len(self.entries)
+
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.entries.clear()
         entry_count, = unpack_H(buffer.read(2))
         for index in range(entry_count):
             self.entries.append(LineNumberTable.LineNumberEntry.read(buffer))
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(len(self.entries)))
         for entry in self.entries:
             entry.write(buffer)
@@ -530,13 +674,28 @@ class LocalVariableTable(AttributeInfo):
     def __repr__(self) -> str:
         return "<LocalVariableTable(%r) at %x>" % (self.entries, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def __iter__(self) -> Iterable["LocalVariableTable.LocalVariableEntry"]:
+        return iter(self.entries)
+
+    def __getitem__(self, index: int) -> "LocalVariableTable.LocalVariableEntry":
+        return self.entries[index]
+
+    def __setitem__(self, index: int, value: "LocalVariableTable.LocalVariableEntry") -> None:
+        self.entries[index] = value
+
+    def __contains__(self, item: Any) -> bool:
+        return item in self.entries
+
+    def __len__(self) -> int:
+        return len(self.entries)
+
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.entries.clear()
         entries_count, = unpack_H(buffer.read(2))
         for index in range(entries_count):
             self.entries.append(LocalVariableTable.LocalVariableEntry.read(class_file, buffer, fail_fast))
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(len(self.entries)))
         for entry in self.entries:
             entry.write(class_file, buffer)
@@ -549,7 +708,7 @@ class LocalVariableTable(AttributeInfo):
         __slots__ = ("start_pc", "length", "name", "descriptor", "index")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "LocalVariableTable.LocalVariableEntry":
+        def read(cls, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool) -> "LocalVariableTable.LocalVariableEntry":
             """
             Reads a local variable entry from the buffer.
 
@@ -608,7 +767,7 @@ class LocalVariableTable(AttributeInfo):
                 self.start_pc, self.length, self.index, self.name, self.descriptor, id(self),
             )
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             """
             Writes this local variable entry to the buffer.
 
@@ -652,13 +811,31 @@ class LocalVariableTypeTable(AttributeInfo):
     def __repr__(self) -> str:
         return "<LocalVariableTypeTable(%r) at %x>" % (self.entries, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def __len__(self) -> int:
+        return len(self.entries)
+
+    def __bool__(self) -> bool:
+        return bool(self.entries)
+
+    def __iter__(self) -> Iterable["LocalVariableTypeTable.LocalVariableTypeEntry"]:
+        return iter(self.entries)
+
+    def __contains__(self, item: Any) -> bool:
+        return item in self.entries
+
+    def __getitem__(self, index: int) -> "LocalVariableTypeTable.LocalVariableTypeEntry":
+        return self.entries[index]
+
+    def __setitem__(self, index: int, value: "LocalVariableTypeTable.LocalVariableTypeEntry") -> None:
+        self.entries[index] = value
+
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.entries.clear()
         entries_count, = unpack_H(buffer.read(2))
         for index in range(entries_count):
             self.entries.append(LocalVariableTypeTable.LocalVariableTypeEntry.read(class_file, buffer, fail_fast))
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(len(self.entries)))
         for entry in self.entries:
             entry.write(class_file, buffer)
@@ -671,7 +848,7 @@ class LocalVariableTypeTable(AttributeInfo):
         __slots__ = ("start_pc", "length", "name", "signature", "index")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "LocalVariableTypeTable.LocalVariableTypeEntry":
+        def read(cls, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool) -> "LocalVariableTypeTable.LocalVariableTypeEntry":
             """
             Reads a local variable type entry from the buffer.
 
@@ -730,7 +907,7 @@ class LocalVariableTypeTable(AttributeInfo):
                 self.start_pc, self.length, self.index, self.name, self.signature, id(self),
             )
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             """
             Writes this local variable type entry to the buffer.
 

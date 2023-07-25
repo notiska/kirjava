@@ -1,22 +1,30 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "LoadLocalInstruction", "LoadLocalFixedInstruction",
+    "StoreLocalInstruction", "StoreLocalFixedInstruction",
+    "IncrementLocalInstruction",
+)
+
 """
 Local-related instructions.
 """
 
+import typing
 from typing import Any, Dict, IO, Optional
 
 from . import Instruction
 from ..ir.arithmetic import AdditionExpression
-from ..ir.variable import AssignStatement, DeclareStatement
+from ..ir.variable import GetLocalExpression, SetLocalStatement
 from ..ir.value import ConstantValue
 from ... import types
 from ...abc import Value
-from ...analysis.ir.variable import Local, Scope
-from ...analysis.trace import Entry, Frame, FrameDelta
-from ...classfile import ClassFile
-from ...classfile.constants import Integer
-from ...types import BaseType
+from ...constants import Integer
+from ...types import Reference, ReturnAddress, Verification
+
+if typing.TYPE_CHECKING:
+    from ...analysis import Context
+    from ...classfile import ClassFile
 
 
 class LoadLocalInstruction(Instruction):
@@ -29,7 +37,7 @@ class LoadLocalInstruction(Instruction):
     operands = {"index": ">B"}
     operands_wide = {"index": ">H"}
 
-    type_: Optional[BaseType] = ...  # None means don't check the type
+    type: Verification = ...
 
     def __init__(self, index: int) -> None:
         self.index = index
@@ -43,18 +51,21 @@ class LoadLocalInstruction(Instruction):
         return "%s %i" % (self.mnemonic, self.index)
 
     def __eq__(self, other: Any) -> bool:
-        return (type(other) is self.__class__ and other.index == self.index) or other is self.__class__
+        return (type(other) is type(self) and other.index == self.index) or other is type(self)
 
     def copy(self) -> "LoadLocalInstruction":
-        return self.__class__(self.index)
+        return type(self)(self.index)
 
-    def trace(self, frame: Frame) -> None:
-        frame.push(frame.get(self.index, expect=self.type_))
+    def trace(self, context: "Context") -> None:
+        entry = context.get(self.index)
+        context.push(entry, self.type)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
-        entry = delta.pushes[0]
-        if not isinstance(associations.get(entry), Local):
-            associations[entry] = Local(self.index, entry.type)
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    #     entry = delta.pushes[0]
+    #     value = associations[entry]
+    #     if type(value) is Parameter:
+    #         return
+    #     associations[entry] = GetLocalExpression(self.index, associations[entry])
 
 
 class LoadLocalFixedInstruction(LoadLocalInstruction):
@@ -81,15 +92,15 @@ class LoadLocalFixedInstruction(LoadLocalInstruction):
         return self.mnemonic
 
     def __eq__(self, other: Any) -> bool:
-        return type(other) is self.__class__ or other is self.__class__
+        return type(other) is type(self) or other is type(self)
 
     def copy(self) -> "LoadLocalFixedInstruction":
         return self
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         ...
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         ...
 
 
@@ -103,7 +114,7 @@ class StoreLocalInstruction(Instruction):
     operands = {"index": ">B"}
     operands_wide = {"index": ">H"}
 
-    type_: Optional[BaseType] = ...
+    type: Verification = ...
 
     def __init__(self, index: int) -> None:
         self.index = index
@@ -117,33 +128,26 @@ class StoreLocalInstruction(Instruction):
         return "%s %i" % (self.mnemonic, self.index)
 
     def __eq__(self, other: Any) -> bool:
-        return (type(other) is self.__class__ and other.index == self.index) or other is self.__class__
+        return (type(other) is type(self) and other.index == self.index) or other is type(self)
 
     def copy(self) -> "StoreLocalInstruction":
-        return self.__class__(self.index)
+        return type(self)(self.index)
 
-    def trace(self, frame: Frame) -> None:
-        if self.type_ is not None:
-            *_, entry = frame.pop(self.type_.internal_size, tuple_=True)
+    def trace(self, context: "Context") -> None:
+        *_, entry = context.pop(1 + self.type.wide, as_tuple=True)
+        # The astore instruction has a special case for storing return addresses which we need to account for.
+        if isinstance(self.type, Reference) and isinstance(entry.type, ReturnAddress):
+            context.set(self.index, entry)
         else:
-            entry = frame.pop()
-        frame.set(self.index, entry, expect=self.type_)
+            context.constrain(entry, self.type)
+            context.set(self.index, entry, self.type)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> Optional[AssignStatement]:
-        if not self.index in delta.overwrites:
-            return None
-
-        entry = delta.pops[-1]
-        local = Local(scope.variable_id, self.index, entry.type)
-
-        if type(associations.get(entry)) is not Local:
-            statement = DeclareStatement(local, associations[entry])
-            associations[entry] = local
-        else:
-            local = entry
-            statement = AssignStatement(local, associations[entry])
-
-        return statement
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> Optional[SetLocalStatement]:
+    #     if not self.index in delta.overwrites:
+    #         return None
+    #
+    #     entry = delta.pops[-1]
+    #     return SetLocalStatement(self.index, associations[entry])
 
 
 class StoreLocalFixedInstruction(StoreLocalInstruction):
@@ -170,15 +174,15 @@ class StoreLocalFixedInstruction(StoreLocalInstruction):
         return self.mnemonic
 
     def __eq__(self, other: Any) -> bool:
-        return type(other) is self.__class__ or other is self.__class__
+        return type(other) is type(self) or other is type(self)
 
     def copy(self) -> "StoreLocalFixedInstruction":
         return self
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         ...
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         ...
 
 
@@ -206,19 +210,22 @@ class IncrementLocalInstruction(Instruction):
 
     def __eq__(self, other: Any) -> bool:
         return (
-            type(other) is self.__class__ and
+            type(other) is type(self) and
             other.index == self.index and
             other.value == self.value
-        ) or other is self.__class__
+        ) or other is type(self)
 
     def copy(self) -> "IncrementLocalInstruction":
-        return self.__class__(self.index, self.value)
+        return type(self)(self.index, self.value)
 
-    def trace(self, frame: Frame) -> None:
-        entry = frame.get(self.index, expect=types.int_t)
-        frame.set(self.index, types.int_t)
+    def trace(self, context: "Context") -> None:
+        entry = context.get(self.index)
+        context.set(self.index, entry, types.int_t)
 
-    def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> AssignStatement:
-        old, new = delta.overwrites[self.index]
-        associations[new] = AdditionExpression(associations[old], ConstantValue(Integer(self.value)))
-        return AssignStatement(associations[old], associations[new])
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> SetLocalStatement:
+    #     old, new = delta.overwrites[self.index]
+    #     value = AdditionExpression(
+    #         GetLocalExpression(self.index, associations[old]), ConstantValue(Integer(self.value)),
+    #     )
+    #     associations[new] = value
+    #     return SetLocalStatement(self.index, value)

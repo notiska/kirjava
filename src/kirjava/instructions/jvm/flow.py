@@ -1,18 +1,30 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "JumpInstruction", "SwitchInstruction",
+    "ConditionalJumpInstruction",
+    "UnaryComparisonJumpInstruction", "BinaryComparisonJumpInstruction",
+    "JsrInstruction", "RetInstruction",
+    "TableSwitchInstruction", "LookupSwitchInstruction",
+)
+
 """
 Control flow related instructions.
 """
 
+import operator
 import struct
+import typing
 from enum import Enum
-from typing import Any, Dict, IO, Iterable, Optional
+from typing import Any, Dict, IO, Optional
 
 from . import Instruction
 from ... import types
-from ...analysis.trace import Entry, Frame
-from ...classfile import ClassFile
-from ...types import BaseType
+from ...types import ReturnAddress, Type, Verification
+
+if typing.TYPE_CHECKING:
+    from ...analysis import Context
+    from ...classfile import ClassFile
 
 
 class JumpInstruction(Instruction):
@@ -39,18 +51,18 @@ class JumpInstruction(Instruction):
         return (type(other) is type(self) and other.offset == self.offset) or other is type(self)
 
     def copy(self) -> "JumpInstruction":
-        return self.__class__(self.offset)
+        return type(self)(self.offset)
 
-    def trace(self, frame: Frame) -> "JumpInstruction.Troolean":
+    def trace(self, context: "Context") -> "JumpInstruction.WillJump":
         """
         :return: will this jump instruction actually jump?
         """
 
-        return JumpInstruction.Troolean.ALWAYS
+        return JumpInstruction.WillJump.ALWAYS
 
     # ------------------------------ Classes ------------------------------ #
 
-    class Troolean(Enum):
+    class WillJump(Enum):
         """
         A three-state enum for representing jump predicates.
         """
@@ -58,6 +70,30 @@ class JumpInstruction(Instruction):
         ALWAYS = 0
         MAYBE  = 1
         NEVER  = 2
+
+
+class SwitchInstruction(Instruction):
+    """
+    The base class for switch instructions.
+    """
+
+    __slots__ = ("default", "offsets")  # As a bare minimum, they must have a default and jump table
+
+    operands = {"_": ">B"}  # Dummy operands so that the instruction is not mistaken for immutable.
+
+    def __init__(self, default: int, offsets: Dict[int, int]) -> None:
+        """
+        :param default: The default offset to jump to.
+        :param offsets: The offsets to jump to, keyed by the index/value in the jump table.
+        """
+
+        self.default = default
+        self.offsets = offsets.copy()
+
+    def __repr__(self) -> str:
+        return "<SwitchInstruction(opcode=0x%x, mnemonic=%s, default=%s, offsets=%r) at %x>" % (
+            self.opcode, self.mnemonic, self.default, self.offsets, id(self),
+        )
 
 
 class JsrInstruction(JumpInstruction):
@@ -72,9 +108,9 @@ class JsrInstruction(JumpInstruction):
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, frame: Frame) -> JumpInstruction.Troolean:
-        frame.push(types.return_address_t)
-        return JumpInstruction.Troolean.ALWAYS
+    def trace(self, context: "Context") -> JumpInstruction.WillJump:
+        context.push(ReturnAddress(context.source))
+        return JumpInstruction.WillJump.ALWAYS
 
 
 class RetInstruction(JumpInstruction):
@@ -108,11 +144,11 @@ class RetInstruction(JumpInstruction):
         return (type(other) is type(self) and other.index == self.index) or other is type(self)
 
     def copy(self) -> "RetInstruction":
-        return self.__class__(self.index)
+        return type(self)(self.index)
 
-    def trace(self, frame: Frame) -> JumpInstruction.Troolean:
-        frame.get(self.index, expect=types.return_address_t)
-        return JumpInstruction.Troolean.ALWAYS
+    def trace(self, context: "Context") -> JumpInstruction.WillJump:
+        context.constrain(context.get(self.index), types.return_address_t)
+        return JumpInstruction.WillJump.ALWAYS
 
 
 class ConditionalJumpInstruction(JumpInstruction):
@@ -144,20 +180,17 @@ class UnaryComparisonJumpInstruction(ConditionalJumpInstruction):
 
     __slots__ = ()
 
-    type_: BaseType = ...
+    type: Type = ...
 
     def __repr__(self) -> str:
         return "<UnaryComparisonJumpInstruction(opcode=0x%x, mnemonic=%s, offset=%s) at %x>" % (
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, frame: Frame) -> JumpInstruction.Troolean:
-        if self.type_ is not None:
-            frame.pop(self.type_.internal_size, expect=self.type_)
-        else:
-            frame.pop(expect=None)
-
-        return JumpInstruction.Troolean.MAYBE
+    def trace(self, context: "Context") -> JumpInstruction.WillJump:
+        *_, entry = context.pop(1 + self.type.wide, as_tuple=True)
+        context.constrain(entry, self.type)
+        return JumpInstruction.WillJump.MAYBE
 
 
 class BinaryComparisonJumpInstruction(ConditionalJumpInstruction):
@@ -167,21 +200,19 @@ class BinaryComparisonJumpInstruction(ConditionalJumpInstruction):
 
     __slots__ = ()
 
-    type_: BaseType = ...
+    type: Verification = ...
 
     def __repr__(self) -> str:
         return "<BinaryComparisonJumpInstruction(opcode=0x%x, mnemonic=%s, offset=%s) at %x>" % (
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, frame: Frame) -> JumpInstruction.Troolean:
-        if self.type_ is not None:
-            entry_a, *_ = frame.pop(self.type_.internal_size, tuple_=True, expect=self.type_)
-            entry_b, *_ = frame.pop(self.type_.internal_size, tuple_=True, expect=self.type_)
-        else:
-            entry_a, entry_b = frame.pop(2, expect=None)
-
-        return JumpInstruction.Troolean.MAYBE  # self.compare(entry_a, entry_b)
+    def trace(self, context: "Context") -> JumpInstruction.WillJump:
+        *_, entry_a = context.pop(1 + self.type.wide, as_tuple=True)
+        context.constrain(entry_a, self.type)
+        *_, entry_b = context.pop(1 + self.type.wide, as_tuple=True)
+        context.constrain(entry_b, self.type)
+        return JumpInstruction.WillJump.MAYBE  # self.compare(entry_a, entry_b)
 
     # @abstractmethod
     # def compare(self, entry_a: Entry, entry_b: Entry) -> JumpInstruction.Troolean:
@@ -196,18 +227,23 @@ class BinaryComparisonJumpInstruction(ConditionalJumpInstruction):
     #     ...
 
 
-class TableSwitchInstruction(Instruction):
+class TableSwitchInstruction(SwitchInstruction):
     """
     Continues execution at the address in the jump table, given an index on the top of the stack.
     """
 
-    __slots__ = ("default", "low", "high", "offsets")
+    __slots__ = ("low", "high")
 
-    def __init__(self, default: int, low: int, high: int, offsets: Iterable[int]) -> None:
-        self.default = default
+    def __init__(self, default: int, low: int, high: int, offsets: Dict[int, int]) -> None:
+        """
+        :param low: The lowest index in the jump table.
+        :param high: The highest index in the jump table.
+        """
+
+        super().__init__(default, offsets)
+
         self.low = low
         self.high = high
-        self.offsets = list(offsets)
 
     def __repr__(self) -> str:
         return "<TableSwitchInstruction(opcode=0x%x, mnemonic=%s, default=%s, low=%i, high=%i, offsets=%r) at %x>" % (
@@ -219,7 +255,8 @@ class TableSwitchInstruction(Instruction):
             return "%s %i to %i" % (self.mnemonic, self.low, self.high)
         return "%s %i to %i default %+i offsets %s" % (
             self.mnemonic, self.low, self.high, self.default, 
-            ", ".join(map(lambda offset: "%+i" % offset, self.offsets)),
+            # The next line is not pretty, be warned
+            ", ".join(map("%+i".__mod__, map(operator.itemgetter(1), sorted(self.offsets.items(), key=operator.itemgetter(0))))),
         )
 
     def __eq__(self, other: Any) -> bool:
@@ -232,40 +269,36 @@ class TableSwitchInstruction(Instruction):
         )
 
     def copy(self) -> "TableSwitchInstruction":
-        return self.__class__(self.default, self.low, self.high, self.offsets)
+        return type(self)(self.default, self.low, self.high, self.offsets)
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         buffer.read((4 - buffer.tell() % 4) % 4)  # Padding
 
         self.default, self.low, self.high = struct.unpack(">iii", buffer.read(12))
 
-        self.offsets = []
+        self.offsets = {}
         for index in range((self.high - self.low) + 1):
-            self.offsets.append(struct.unpack(">i", buffer.read(4))[0])
+            self.offsets[index], = struct.unpack(">i", buffer.read(4))
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         buffer.write(b"\x00" * ((4 - buffer.tell() % 4) % 4))
         buffer.write(struct.pack(">iii", self.default, self.low, self.high))
-        for offset in self.offsets:
+        for _, offset in sorted(self.offsets.items(), key=operator.itemgetter(0)):
             buffer.write(struct.pack(">i", offset))
 
     def get_size(self, offset: int, wide: bool = False) -> int:
         return 1 + 3 - offset % 4 + 12 + 4 * len(self.offsets)
 
-    def trace(self, frame: Frame) -> None:
-        entry = frame.pop(expect=types.int_t)
+    def trace(self, context: "Context") -> None:
+        context.constrain(context.pop(), types.int_t)
 
 
-class LookupSwitchInstruction(Instruction):
+class LookupSwitchInstruction(SwitchInstruction):
     """
     Continues execution at the address in the jump table, given a key match on the top of the stack.
     """
 
-    __slots__ = ("default", "offsets")
-
-    def __init__(self, default: int, offsets: Dict[int, int]) -> None:
-        self.default = default
-        self.offsets = offsets.copy()
+    __slots__ = ()
 
     def __repr__(self) -> str:
         return "<LookupSwitchInstruction(opcode=0x%x, mnemonic=%s, default=%s, offsets=%r) at %x>" % (
@@ -277,7 +310,7 @@ class LookupSwitchInstruction(Instruction):
             return self.mnemonic
         return "%s default %+i offsets %s" % (
             self.mnemonic, self.default, 
-            ", ".join(map(lambda pair: "%i: %+i" % pair, self.offsets.items())),
+            ", ".join(map("%i: %+i".__mod__, self.offsets.items())),
         )
 
     def __eq__(self, other: Any) -> bool:
@@ -288,9 +321,9 @@ class LookupSwitchInstruction(Instruction):
         )
 
     def copy(self) -> "LookupSwitchInstruction":
-        return self.__class__(self.default, self.offsets)
+        return type(self)(self.default, self.offsets)
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         buffer.read((4 - buffer.tell() % 4) % 4)
 
         self.default, = struct.unpack(">i", buffer.read(4))
@@ -301,14 +334,14 @@ class LookupSwitchInstruction(Instruction):
             match, offset = struct.unpack(">ii", buffer.read(8))
             self.offsets[match] = offset
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         buffer.write(b"\x00" * ((4 - (buffer.tell() % 4)) % 4))
         buffer.write(struct.pack(">ii", self.default, len(self.offsets)))
-        for match, offset in sorted(self.offsets.items(), key=lambda item: item[0]):
+        for match, offset in sorted(self.offsets.items(), key=operator.itemgetter(0)):
             buffer.write(struct.pack(">ii", match, offset))
 
     def get_size(self, offset: int, wide: bool = False) -> int:
         return 1 + 3 - offset % 4 + 8 + 8 * len(self.offsets)
 
-    def trace(self, frame: Frame) -> None:
-        entry = frame.pop(expect=types.int_t)
+    def trace(self, context: "Context") -> None:
+        context.constrain(context.pop(), types.int_t)

@@ -1,21 +1,32 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "InvokeInstruction",
+    "InvokeVirtualInstruction", "InvokeSpecialInstruction", "InvokeInterfaceInstruction",
+    "InvokeStaticInstruction",
+    "InvokeDynamicInstruction",
+)
+
 """
 Invocation instructions.
 """
 
-from typing import Any, IO, List
+import typing
+from typing import Any, IO, List, Optional, Union
 
 from . import Instruction
-from ... import _argument, types
-from ...analysis.trace import Entry, Frame
-from ...classfile import descriptor, ClassFile
-from ...classfile.constants import Class, InterfaceMethodRef, InvokeDynamic, MethodRef, NameAndType
-from ...types.reference import ClassOrInterfaceType
-from ...types.verification import This, Uninitialized
+from .new import NewInstruction
+from ..ir.invoke import *
+from ..ir.variable import AssignStatement
+from ... import types
+from ...abc import Value
+from ...constants import InterfaceMethodRef, InvokeDynamic, MethodRef
+from ...source import *
+from ...types import Class, Uninitialized
 
-# TODO: Signature polymorphic methods (check specification)
-# FIXME: Clean this file up lol
+if typing.TYPE_CHECKING:
+    from ...analysis import Context
+    from ...classfile import ClassFile
 
 
 class InvokeInstruction(Instruction):
@@ -23,73 +34,45 @@ class InvokeInstruction(Instruction):
     An instruction that invokes a method.
     """
 
-    __slots__ = ("class_", "name", "argument_types", "return_type")
+    __slots__ = ("_index", "reference")
 
-    def __init__(
-            self, class_: "_argument.ReferenceType", name: str, *descriptor_: "_argument.MethodDescriptor",
-    ) -> None:
+    def __init__(self, reference: Union[MethodRef, InterfaceMethodRef, InvokeDynamic]) -> None:
         """
-        :param class_: The class that the method belongs to.
-        :param name: The name of the method.
-        :param descriptor_: The method descriptor.
+        :param reference: The reference to the method.
         """
 
-        self.class_ = _argument.get_reference_type(class_)
-        self.name = name
-        self.argument_types, self.return_type = _argument.get_method_descriptor(*descriptor_)
+        self.reference = reference
 
     def __repr__(self) -> str:
-        return "<InvokeInstruction(opcode=0x%x, mnemonic=%s, class=%s, name=%r, argument_types=(%s), return_type=%s) at %x>" % (
-            self.opcode, self.mnemonic, self.class_, self.name, 
-            ", ".join(map(str, self.argument_types)) + ("," if len(self.argument_types) == 1 else ""),
-            self.return_type, id(self),
+        return "<InvokeInstruction(opcode=0x%x, mnemonic=%s, reference=%r) at %x>" % (
+            self.opcode, self.mnemonic, self.reference, id(self),
         )
 
     def __str__(self) -> str:
-        return "%s %s#%s %s(%s)" % (
-            self.mnemonic, self.class_, self.return_type, self.name, ", ".join(map(str, self.argument_types)),
-        )
+        return "%s %s" % (self.mnemonic, self.reference)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            type(other) is self.__class__ and
-            other.class_ == self.class_ and
-            other.name == self.name and
-            other.argument_types == self.argument_types and
-            other.return_type == self.return_type
-        ) or other is self.__class__
+        return (type(other) is type(self) and other.reference == self.reference) or other is type(self)
 
     def copy(self) -> "InvokeInstruction":
-        return self.__class__(self.class_, self.name, self.argument_types, self.return_type)
+        return type(self)(self.reference)
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
+        self.reference = class_file.constant_pool[self._index]
 
-        method_ref = class_file.constant_pool[self._index]
-        self.class_ = method_ref.class_.type
-        self.name = method_ref.name_and_type.name
-        self.argument_types, self.return_type = descriptor.parse_method_descriptor(method_ref.name_and_type.descriptor)
-
-    def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
-        if type(self.class_) is ClassOrInterfaceType:
-            class_ = Class(self.class_.name)
-        else:
-            class_ = Class(descriptor.to_descriptor(self.class_))
-        method_ref = MethodRef(
-            class_, NameAndType(self.name, descriptor.to_descriptor(self.argument_types, self.return_type)),
-        )
-        self._index = class_file.constant_pool.add(method_ref)
-
+    def write(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
+        self._index = class_file.constant_pool.add(self.reference)
         super().write(class_file, buffer, wide)
 
-    def _trace_arguments(self, frame: Frame) -> None:  # List[Entry]:
+    def _trace_arguments(self, context: "Context") -> None:  # List[Entry]:
         """
         Partial tracing for the arguments this instruction should accept.
         """
 
-        for argument_type in reversed(self.argument_types):
-            argument_type = argument_type.to_verification_type()
-            frame.pop(argument_type.internal_size, expect=argument_type)
+        for argument_type in reversed(self.reference.argument_types):
+            *_, entry = context.pop(1 + argument_type.wide, as_tuple=True)
+            context.constrain(entry, argument_type)
 
 
 class InvokeVirtualInstruction(InvokeInstruction):
@@ -100,17 +83,25 @@ class InvokeVirtualInstruction(InvokeInstruction):
     __slots__ = ()
 
     throws = (  # FIXME
-        types.abstractmethoderror_t,
-        types.incompatibleclasschangeerror_t,
-        types.nullpointerexception_t,
-        types.unsatisfiedlinkerror_t,
+        Class("java/lang/AbstractMethodError"),
+        Class("java/lang/IncompatibleClassChangeError"),
+        Class("java/lang/NullPointerException"),
+        Class("java/lang/UnsatisfiedLinkError"),
     )
 
-    def trace(self, frame: Frame) -> None:
-        self._trace_arguments(frame)
-        frame.pop(expect=self.class_)
-        if self.return_type != types.void_t:
-            frame.push(self.return_type.to_verification_type())
+    def trace(self, context: "Context") -> None:
+        self._trace_arguments(context)
+        context.constrain(context.pop(), self.reference.class_.class_type)
+        if self.reference.return_type is not types.void_t:
+            context.push(self.reference.return_type)
+
+    # def lift(
+    #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
+    # ) -> Union[InvokeStatement, AssignStatement]:
+    #     ...
+    #
+    #     # if self.reference.return_type == types.void_t:
+    #     #     return InvokeStatement()
 
 
 class InvokeSpecialInstruction(InvokeVirtualInstruction):
@@ -121,26 +112,46 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction):
     __slots__ = ()
 
     throws = (
-        types.abstractmethoderror_t,
-        types.incompatibleclasschangeerror_t,
-        types.nullpointerexception_t,
-        types.unsatisfiedlinkerror_t,
+        Class("java/lang/AbstractMethodError"),
+        Class("java/lang/IllegalAccessError"),
+        Class("java/lang/IncompatibleClassChangeError"),
+        Class("java/lang/NullPointerException"),
+        Class("java/lang/UnsatisfiedLinkError"),
     )
 
-    def trace(self, frame: Frame) -> None:
-        self._trace_arguments(frame)
-        entry = frame.pop(expect=self.class_)
+    def trace(self, context: "Context") -> None:
+        self._trace_arguments(context)
+        entry = context.pop()
 
-        if self.name == "<init>" and self.return_type == types.void_t:
-            if entry.type == types.uninit_this_t:
-                frame.replace(entry, This(entry.type.class_))
+        if self.reference.name == "<init>" and self.reference.return_type is types.void_t:
+            if entry.type == types.uninitialized_this_t:
+                context.replace(entry, context.method.class_.get_type())
                 return
-            elif type(entry.type) is Uninitialized:  # Unverified code can cause this not to be an uninitialized type
-                frame.replace(entry, entry.type.class_)
+            # Unverified code can cause this not to be an uninitialized type
+            elif isinstance(entry.type, Uninitialized):
+                class_type: Optional[Class] = None
+                source = entry.type.source
+
+                if isinstance(source, NewInstruction):
+                    class_type = source.type
+                elif type(source) in (InstructionInBlock, InstructionAtOffset) and isinstance(source.instruction, NewInstruction):
+                    class_type = source.instruction.type
+
+                if class_type is None:
+                    class_type = self.reference.class_.class_type
+                    # TODO: Report some kind of error here?
+
+                context.replace(entry, class_type)
                 return
 
-        if self.return_type != types.void_t:
-            frame.push(self.return_type.to_verification_type())
+        context.constrain(entry, self.reference.class_.class_type)
+        if self.reference.return_type is not types.void_t:
+            context.push(self.reference.return_type)
+
+    # def lift(
+    #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
+    # ) -> Union[InvokeStatement, AssignStatement]:
+    #     ...
 
 
 class InvokeStaticInstruction(InvokeInstruction):
@@ -150,10 +161,15 @@ class InvokeStaticInstruction(InvokeInstruction):
 
     __slots__ = ()
 
-    def trace(self, frame: Frame) -> None:
-        self._trace_arguments(frame)
-        if self.return_type != types.void_t:
-            frame.push(self.return_type.to_verification_type())
+    def trace(self, context: "Context") -> None:
+        self._trace_arguments(context)
+        if self.reference.return_type is not types.void_t:
+            context.push(self.reference.return_type)
+
+    # def lift(
+    #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
+    # ) -> Union[InvokeStaticStatement, AssignStatement]:
+    #     ...
 
 
 class InvokeInterfaceInstruction(InvokeVirtualInstruction):
@@ -161,41 +177,22 @@ class InvokeInterfaceInstruction(InvokeVirtualInstruction):
     An instruction that invokes an interface method.
     """
 
-    __slots__ = ("count",)
+    __slots__ = ("_index", "count")
 
     throws = (
-        types.abstractmethoderror_t,
-        types.illegalaccesserror_t,
-        types.incompatibleclasschangeerror_t,
-        types.nullpointerexception_t,
-        types.unsatisfiedlinkerror_t,
+        Class("java/lang/AbstractMethodError"),
+        Class("java/lang/IllegalAccessError"),
+        Class("java/lang/IncompatibleClassChangeError"),
+        Class("java/lang/NullPointerException"),
+        Class("java/lang/UnsatisfiedLinkError"),
     )
 
-    def __init__(
-            self,
-            class_: "_argument.ReferenceType",
-            name: str,
-            *descriptor_: "_argument.MethodDescriptor",
-            count: int = 0,
-    ) -> None:
-        super().__init__(class_, name, *descriptor_)
-
+    def __init__(self, reference: InterfaceMethodRef, count: int = 0) -> None:
+        super().__init__(reference)
         self.count = count
 
     def copy(self) -> "InvokeInterfaceInstruction":
-        return self.__class__(self.class_, self.name, self.argument_types, self.return_type, count=self.count)
-
-    def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
-        if type(self.class_) is ClassOrInterfaceType:
-            class_ = Class(self.class_.name)
-        else:
-            class_ = Class(descriptor.to_descriptor(self.class_))
-        method_ref = InterfaceMethodRef(
-            class_, NameAndType(self.name, descriptor.to_descriptor(self.argument_types, self.return_type)),
-        )
-        self._index = class_file.constant_pool.add(method_ref)
-
-        Instruction.write(self, class_file, buffer, wide)
+        return type(self)(self.reference, self.count)
 
 
 class InvokeDynamicInstruction(InvokeStaticInstruction):
@@ -203,58 +200,19 @@ class InvokeDynamicInstruction(InvokeStaticInstruction):
     An instruction that invokes a dynamically computed callsite.
     """
 
-    __slots__ = ("bootstrap_method_attr_index",)
+    __slots__ = ()
 
-    def __init__(
-            self, bootstrap_method_attr_index: int, name: str, *descriptor_: "_argument.MethodDescriptor",
-    ) -> None:
-        """
-        :param bootstrap_method_attr_index: The index in the bootstrap methods attribute this invokedynamic refers to.
-        """
-
-        self.bootstrap_method_attr_index = bootstrap_method_attr_index
-        self.name = name
-        self.argument_types, self.return_type = _argument.get_method_descriptor(*descriptor_)
+    def __init__(self, reference: InvokeDynamic) -> None:
+        super().__init__(reference)
 
     def __repr__(self) -> str:
         # Ugly, but whatever
-        return "<InvokeDynamicInstruction(opcode=0x%x, mnemonic=%s, bootstrap_method_attr_index=%i, name=%r, argument_types=(%s), return_type=%s) at %x>" % (
-            self.opcode, self.mnemonic, self.bootstrap_method_attr_index, self.name, 
-            ", ".join(map(str, self.argument_types)) + ("," if len(self.argument_types) == 1 else ""),
-            self.return_type, id(self),
+        return "<InvokeDynamicInstruction(opcode=0x%x, mnemonic=%s, reference=%r) at %x>" % (
+            self.opcode, self.mnemonic, self.reference, id(self),
         )
 
     def __str__(self) -> str:
-        return "%s index %i %s %s(%s)" % (
-            self.mnemonic, self.bootstrap_method_attr_index, self.return_type, self.name, ", ".join(map(str, self.argument_types)),
-        )
+        return "%s %s" % (self.mnemonic, self.reference)
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            type(other) is self.__class__ and
-            other.bootstrap_method_attr_index == self.bootstrap_method_attr_index and
-            other.name == self.name and
-            other.argument_types == self.argument_types and
-            other.return_type == self.return_type
-        ) or other is self.__class__
-
-    def copy(self) -> "InvokeDynamicInstruction":
-        return self.__class__(self.bootstrap_method_attr_index, self.name, self.argument_types, self.return_type)
-
-    def read(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
-        Instruction.read(self, class_file, buffer, wide)
-
-        invoke_dynamic = class_file.constant_pool[self._index]
-
-        self.bootstrap_method_attr_index = invoke_dynamic.bootstrap_method_attr_index
-        self.name = invoke_dynamic.name_and_type.name
-        self.argument_types, self.return_type = descriptor.parse_method_descriptor(invoke_dynamic.name_and_type.descriptor)
-
-    def write(self, class_file: ClassFile, buffer: IO[bytes], wide: bool) -> None:
-        invoke_dynamic = InvokeDynamic(
-            self.bootstrap_method_attr_index,
-            NameAndType(self.name, descriptor.to_descriptor(self.argument_types, self.return_type)),
-        )
-        self._index = class_file.constant_pool.add(invoke_dynamic)
-
-        Instruction.write(self, class_file, buffer, wide)
+        return (type(other) is type(self) and other.reference == self.reference) or other is type(self)

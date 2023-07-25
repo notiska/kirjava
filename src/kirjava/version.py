@@ -1,5 +1,29 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "JAVA_1_1",
+    "JAVA_1_2",
+    "JAVA_1_3",
+    "JAVA_1_4",
+    "JAVA_5",
+    "JAVA_6",
+    "JAVA_7",
+    "JAVA_8",
+    "JAVA_9",
+    "JAVA_10",
+    "JAVA_11",
+    "JAVA_12",
+    "JAVA_13",
+    "JAVA_14",
+    "JAVA_15",
+    "JAVA_16",
+    "JAVA_17",
+    "JAVA_18",
+    "JAVA_19",
+    "JAVA_20",
+    "Version",
+)
+
 from typing import Any, Tuple, Union
 
 
@@ -30,6 +54,7 @@ class Version:
         61: "17",
         62: "18",
         63: "19",
+        64: "20",
     }
 
     @classmethod
@@ -84,7 +109,10 @@ class Version:
         self.minor = minor
 
     def __repr__(self) -> str:
-        return "<Version(name=%r, major=%i) at %x>" % (self.name, self.major, id(self))
+        return "<Version(name=%r, major=%i)>" % (self.name, self.major)
+
+    def __str__(self) -> str:
+        return self.name
 
     def __eq__(self, other: Any) -> bool:
         if other is self:
@@ -126,3 +154,25 @@ class Version:
 
     def __le__(self, other: Any) -> bool:
         return self == other or self < other
+
+
+JAVA_1_1 = Version(45, 3)
+JAVA_1_2 = Version(46, 0)
+JAVA_1_3 = Version(47, 0)
+JAVA_1_4 = Version(48, 0)
+JAVA_5 = Version(49, 0)
+JAVA_6 = Version(50, 0)
+JAVA_7 = Version(51, 0)
+JAVA_8 = Version(52, 0)
+JAVA_9 = Version(53, 0)
+JAVA_10 = Version(54, 0)
+JAVA_11 = Version(55, 0)
+JAVA_12 = Version(56, 0)
+JAVA_13 = Version(57, 0)
+JAVA_14 = Version(58, 0)
+JAVA_15 = Version(59, 0)
+JAVA_16 = Version(60, 0)
+JAVA_17 = Version(61, 0)
+JAVA_18 = Version(62, 0)
+JAVA_19 = Version(63, 0)
+JAVA_20 = Version(64, 0)

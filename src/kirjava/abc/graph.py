@@ -118,7 +118,7 @@ class Edge(Source):
         self._hash = hash((self.from_, self.to))
 
     def __repr__(self) -> str:
-        return "<%s(from=%s, to=%s) at %x>" % (self.__class__.__name__, self.from_, self.to, id(self))
+        return "<%s(from=%s, to=%s) at %x>" % (type(self).__name__, self.from_, self.to, id(self))
 
     def __str__(self) -> str:
         return "%s -> %s" % (self.from_, self.to)
@@ -196,14 +196,6 @@ class Graph:
         self.add(return_block, check=False)
         self.add(rethrow_block, check=False)
 
-    def __len__(self) -> int:
-        return len(self._blocks)
-
-    def __contains__(self, item: Any) -> bool:
-        if isinstance(item, Block):
-            return item.label in self._blocks and self._blocks[item.label] == item
-        return False
-
     def __iter__(self) -> Iterator[Block]:
         return iter(self._blocks.values())
 
@@ -212,7 +204,22 @@ class Graph:
             return self._blocks[item]
         raise TypeError("Expected int, got %r." % type(item))
 
+    def __contains__(self, item: Any) -> bool:
+        if isinstance(item, Block):
+            return item.label in self._blocks and self._blocks[item.label] == item
+        return False
+
+    def __len__(self) -> int:
+        return len(self._blocks)
+
     # ------------------------------ Public API ------------------------------ #
+
+    def new(self) -> Block:
+        """
+        Creates a new block with the correct label.
+        """
+
+        ...
 
     def get(self, label: int) -> Block:
         """
@@ -267,9 +274,14 @@ class Graph:
         if block == self.entry_block:
             self.entry_block = None
 
-        edges = self._forward_edges.pop(block)
-        for edge in edges:
+        in_edges = self._backward_edges.pop(block)
+        out_edges = self._forward_edges.pop(block)
+        for edge in in_edges:
             self.disconnect(edge)
+        for edge in out_edges:
+            self.disconnect(edge)
+
+        ...
 
     def connect(self, edge: Edge, overwrite: bool = False, *, check: bool = True) -> None:
         """
@@ -328,8 +340,8 @@ class Graph:
         :param edge: The edge to remove.
         """
 
-        self._blocks.setdefault(edge.from_.label, edge.from_)
-        self._blocks.setdefault(edge.to.label, edge.to)
+        # self._blocks.setdefault(edge.from_.label, edge.from_)
+        # self._blocks.setdefault(edge.to.label, edge.to)
 
         forward = self._forward_edges.get(edge.from_)
 

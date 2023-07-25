@@ -1,5 +1,7 @@
-# Kirjava
+# kirjava
 A Java bytecode library for Python.  
+
+**Warning:** The README does not reflect the current state of the library nor is the library currently fully functional!
 
 ## Quickstart
 I might add documentation in the future, not sure yet lol. Anyway, here's the quickstart guide, for more usage, see [examples](examples/).
