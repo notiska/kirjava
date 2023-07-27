@@ -137,7 +137,7 @@ class Entry:
 
         :param type_: The type constraint.
         :param source: The source that constrained this entry's type.
-        :return: Was this type already a constraint?
+        :return: Was this constraint added?
         """
 
         if type_ is self.type:  # TODO: Profile, faster?
@@ -164,10 +164,10 @@ class Entry:
         # This can happen when for example, initialising an object. Uninitialised types are not mergeable with reference
         # types yet we still want to maintain a link to the original.
         if not self.type.mergeable(type_):
-            return Entry(type_, source, self)
+            return Entry(type_, source, self, definite=True)
         # Primitive types also adhere to this behaviour simply because they are immutable by nature.
         elif isinstance(self.type, Primitive):
-            return Entry(type_, source, self)
+            return Entry(type_, source, self, definite=True)
         # Otherwise, we know that this type is merely a constraint on the original type.
         self._constraints.add(Entry.Constraint(type_, source))
         return self
@@ -272,7 +272,7 @@ class Frame:
     A stack frame.
     """
 
-    __slots__ = ("stack", "locals", "untracked", "max_stack", "max_locals")
+    __slots__ = ("stack", "locals", "tracked", "max_stack", "max_locals")
 
     TOP      = Entry(types.top_t, definite=True)
     RESERVED = Entry(types.reserved_t, definite=True)
@@ -288,13 +288,16 @@ class Frame:
 
         if not method.is_static:
             if method.name == "<init>" and method.return_type == types.void_t:  # and method.class_.is_super:
-                frame.locals[index] = Entry(types.uninitialized_this_t)
+                entry = Entry(types.uninitialized_this_t)
             else:
-                frame.locals[0] = Entry(method.class_.get_type(), definite=True)
-            index += 1
+                entry = Entry(method.class_.get_type(), definite=True)
+            frame.locals[0] = entry
+            frame.tracked.add(entry)
+            index = 1
 
         for type_ in method.argument_types:
             frame.locals[index] = Entry(type_, definite=True)
+            frame.tracked.add(frame.locals[index])
             index += 1
             if type_.wide:
                 frame.locals[index] = cls.RESERVED
@@ -307,7 +310,7 @@ class Frame:
     def __init__(self) -> None:
         self.stack: List[Entry] = []
         self.locals: Dict[int, Entry] = {}
-        self.untracked: Set[Entry] = set()
+        self.tracked: Set[Entry] = set()
 
         self.max_stack = 0
         self.max_locals = 0
@@ -315,7 +318,7 @@ class Frame:
     def __repr__(self) -> str:
         return "<Frame(stack=[%s], locals={%s}) at %x>" % (
             ", ".join(map(str, self.stack)),
-            ", ".join("%i=%s" % (index, entry) for index, entry in sorted(self.locals.items(), key=operator.itemgetter(0))),
+            ", ".join("%i=%s" % local for local in sorted(self.locals.items(), key=operator.itemgetter(0))),
             id(self),
         )
 
@@ -350,13 +353,30 @@ class Frame:
         frame = Frame()
 
         if deep:
-            frame.stack.extend(Entry(entry.type, None, entry, definite=True) for entry in self.stack)
-            frame.locals.update({
-                index: Entry(entry.type, None, entry, definite=True) for index, entry in self.locals.items()
-            })
+            copied: Dict[Entry, Entry] = {}
+            for entry in self.tracked:
+                if entry is self.TOP or entry is self.RESERVED:
+                    copied[entry] = entry
+                    continue
+                copied[entry] = Entry(entry.type, None, entry, definite=True)
+
+            for entry in self.stack:
+                entry = copied[entry]
+                frame.stack.append(entry)
+                frame.tracked.add(entry)
+
+            for index, entry in self.locals.items():
+                entry = copied[entry]
+                frame.locals[index] = entry
+                frame.tracked.add(entry)
+
         else:
             frame.stack.extend(self.stack)
             frame.locals.update(self.locals)
+            frame.tracked.update(self.tracked)
+
+            frame.max_stack = self.max_stack
+            frame.max_locals = self.max_locals
 
         return frame
 
@@ -536,6 +556,7 @@ class Frame:
         """
 
         self.stack.append(entry)
+        self.tracked.add(entry)
         if len(self.stack) > self.max_stack:
             self.max_stack = len(self.stack)
 
@@ -547,6 +568,7 @@ class Frame:
         """
 
         popped = []
+        index = 0 
 
         try:
             for index in range(count):
@@ -555,7 +577,6 @@ class Frame:
             for index in range(count - len(popped)):
                 popped.append(self.TOP)
 
-        self.untracked.update(popped)
         return popped
 
     def dup(self, count: int = 1, displace: int = 0) -> None:
@@ -598,11 +619,12 @@ class Frame:
         :param entry: The entry to set it to.
         """
 
-        old = self.locals.get(index)
-        if old is not None:
-            self.untracked.add(old)
+        # old = self.locals.get(index)
+        # if old is not None:
+        #     self.untracked.add(old)
 
         self.locals[index] = entry
+        self.tracked.add(entry)
         index += 1
         if index > self.max_locals:
             self.max_locals = index

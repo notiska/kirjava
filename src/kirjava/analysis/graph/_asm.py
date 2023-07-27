@@ -61,7 +61,7 @@ def assemble(
 
     trace: Optional[Trace] = None
     if compute_maxes or compute_frames:
-        trace = Trace.from_graph(graph)
+        trace = Trace.from_graph(graph, do_raise=do_raise)
         code.max_stack = trace.max_stack
         code.max_locals = trace.max_locals
 

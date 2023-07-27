@@ -55,6 +55,7 @@ class Context:
         """
 
         self._frame = value
+        # Admittedly this doesn't seem to result in much of a performance difference.
         self.__push_direct = value.push
         self.__pop_direct = value.pop
         self.__set_direct = value.set
@@ -107,6 +108,7 @@ class Context:
         for index, entry in self._frame.locals.items():
             if entry is old:
                 self._frame.locals[index] = new
+        self._frame.tracked.add(new)
 
     # ------------------------------ Stack operations ------------------------------ #
 
@@ -130,14 +132,14 @@ class Context:
             if self.source is not None and entry is not Frame.TOP and entry is not Frame.RESERVED:
                 entry.producers.append(self.source)
 
-        self._frame.push(entry)
         if constraint is not None:
             entry.constrain(constraint, self.source)
             if not constraint.mergeable(entry.type):
                 entry = Entry(constraint, self.source, entry)
                 self.retrace = True  # Going to need to retrace the block just to get all necessary constraints.
+        self.__push_direct(entry)  # self._frame.push(entry)
         if entry.type.wide:
-            self._frame.push(Frame.RESERVED)
+            self.__push_direct(Frame.RESERVED)  # self._frame.push(Frame.RESERVED)
 
     def pop(self, count: int = 1, *, as_tuple: bool = False) -> Union[Tuple[Entry, ...], Entry]:
         """
@@ -148,7 +150,7 @@ class Context:
         :param as_tuple: Whether to return a tuple of entries or a single entry.
         """
 
-        entries = self._frame.pop(count)
+        entries = self.__pop_direct(count)  # self._frame.pop(count)
 
         if self.source is not None:
             for entry in entries:
@@ -186,9 +188,9 @@ class Context:
                 entry = Entry(constraint, self.source, entry)
                 self.retrace = True
 
-        self._frame.set(index, entry)
+        self.__set_direct(index, entry)  # self._frame.set(index, entry)
         if entry.type.wide:
-            self._frame.set(index + 1, Frame.RESERVED)
+            self.__set_direct(index + 1, Frame.RESERVED)  # self._frame.set(index + 1, Frame.RESERVED)
 
         self.local_defs.add(index)
 
@@ -199,7 +201,7 @@ class Context:
         :param index: The index of the local to get.
         """
 
-        entry = self._frame.get(index)
+        entry = self.__get_direct(index)  # self._frame.get(index)
         if self.source is not None and entry is not Frame.TOP and entry is not Frame.RESERVED:
             entry.consumers.append(self.source)
 
@@ -223,9 +225,9 @@ class Context:
             self.retrace = True  # TODO: Maybe do something else with this?
             return
 
-        retrace = entry.constrain(constraint, self.source)
-        if not constraint.mergeable(entry.type):
-            self.retrace |= retrace
+        added = entry.constrain(constraint, self.source)
+        if added and not constraint.mergeable(entry.type):
+            self.retrace = True
 
 
 class Trace:

@@ -382,14 +382,10 @@ class StackMapTable(AttributeInfo):
             max_local = max(frame.locals)
 
             for index in range(self.chopped):
-                # Removing locals from a frame isn't really possible but we'll handle it as if we're popping from the
-                # stack, which involves adding said entry to the untracked set.
                 entry = frame.locals.pop(max_local)
                 max_local -= 1
                 if entry.type is reserved_t:  # Category 2 type
-                    frame.untracked.add(frame.locals.pop(max_local))
                     max_local -= 1
-                frame.untracked.add(entry)
 
             return frame
 
@@ -525,8 +521,6 @@ class StackMapTable(AttributeInfo):
         def to_frame(self, previous: Frame, code: Optional["Code"] = None) -> Frame:
             frame = previous.copy()
             frame.pop(len(frame.stack))
-            # As stated before, you can't really "remove" a local so we'll add them all to untracked.
-            frame.untracked.update(frame.locals.values())
             frame.locals.clear()
 
             index = 0

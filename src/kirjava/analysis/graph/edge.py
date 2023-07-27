@@ -365,7 +365,7 @@ class ExceptionEdge(InsnEdge):
         context.source = self
 
         context.pop(len(context.frame.stack))
-        context.push(self.throwable, definite=True)
+        context.push(self.throwable, definite=True)  # TODO: Maybe downcast to Throwable (definite) and add constraints?
 
         # And we'll just return everything back to normal here.
         context.frame = old_frame

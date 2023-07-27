@@ -76,8 +76,6 @@ class InsnGraph(Graph):
         :return: The control flow graph.
         """
 
-        # TODO: Add a "generate source map" option
-
         self = cls(method)
         disassemble(self, method, do_raise, keep_lnt, keep_lvt, keep_lvtt, gen_source_map)
         return self
