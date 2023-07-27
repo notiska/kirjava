@@ -355,20 +355,19 @@ class Frame:
         if deep:
             copied: Dict[Entry, Entry] = {}
             for entry in self.tracked:
-                if entry is self.TOP or entry is self.RESERVED:
-                    copied[entry] = entry
-                    continue
                 copied[entry] = Entry(entry.type, None, entry, definite=True)
 
-            for entry in self.stack:
-                entry = copied[entry]
-                frame.stack.append(entry)
-                frame.tracked.add(entry)
+            # Just in case these are in the tracked entries, we'll make sure that they remain the exact same.
+            copied[self.TOP] = self.TOP
+            copied[self.RESERVED] = self.RESERVED
 
-            for index, entry in self.locals.items():
-                entry = copied[entry]
-                frame.locals[index] = entry
-                frame.tracked.add(entry)
+            frame.stack.extend(copied[entry] for entry in self.stack)
+            frame.locals.update({index: copied[entry] for index, entry in self.locals.items()})
+
+            # We'll only update the tracked entries of the new frame with ones that we know are still on the stack or in
+            # the locals, this acts to stop build up of unused entries.
+            frame.tracked.update(frame.stack)
+            frame.tracked.update(frame.locals.values())
 
         else:
             frame.stack.extend(self.stack)

@@ -79,7 +79,7 @@ class Type:
 
         # top_t.mergeable(int_t) -> True
         # int_t.mergeable(top_t) -> False
-        return self is other or (type(other) is not type(self) and isinstance(other, type(self)))
+        return self == other or (type(other) is not type(self) and isinstance(other, type(self)))
 
     def as_vtype(self) -> "Verification":
         """
@@ -292,7 +292,7 @@ class Uninitialized(Reference, OneWord):
         return "<Uninitialized(source=%r)>" % self.source
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, Uninitialized) and other.source == self.source
+        return isinstance(other, Uninitialized) and (self.source is None or self.source == other.source)
 
     def __hash__(self) -> int:
         return self._hash

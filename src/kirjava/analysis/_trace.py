@@ -268,6 +268,8 @@ def trace(
         if not can_merge:
             retraces.append((frame, block, edge))
 
-    if retraces:  # Yay!!! The code is valid up until this point (minus the type checking).
+    if retraces:
         logger.debug(" - (pass %i) %i branch(es) need to be retraced." % (retrace_pass, len(retraces)))
         trace(trace_, graph, do_raise, retraces, defs, retrace_pass + 1)
+
+    # Yay!!! The code is valid up until this point (minus the type checking).
