@@ -27,6 +27,7 @@ def trace(
         do_raise: bool,
         # This function will be recursive as I don't want to write the tracing code twice.
         retraces: Optional[List[Tuple[Frame, InsnBlock, InsnEdge]]] = None,
+        prev_defs: Optional[Dict[InsnBlock, Set[int]]] = None,
         retrace_pass: int = 0,
 ) -> None:
     if not retraces:
@@ -48,13 +49,14 @@ def trace(
     branches: Deque[Tuple[Frame, InsnBlock, InsnEdge]] = deque()
 
     # If we are retracing (recursive call), we already know the liveness (from the upper call) so we can substitute the
-    # local uses for the full liveness. This is safe to do as we know that the uses set is a subset of the pre liveness
-    # by definition.
+    # local uses for the full liveness. This is safe to do as we know that the uses set is a subset of the pre liveness.
+    # Defs on the other hand need to be passed down as I don't believe it's possible to efficiently work out defs from
+    # the liveness?
     # Additionally, the only purpose the use-def chains serve are to:
     #  1. compute liveness (already done if this is a retrace call)
     #  2. determine if a block retrace is required (which we will be doing if this is a retrace call)
     uses: Dict[InsnBlock, Set[int]] = pre_liveness.copy() if retraces else defaultdict(set)
-    defs: Dict[InsnBlock, Set[int]] = defaultdict(set)
+    defs: Dict[InsnBlock, Set[int]] = prev_defs if retraces else defaultdict(set)
 
     if not retraces:
         trace_stack.append((Frame.initial(graph.method), graph.entry_block, None))
@@ -124,11 +126,11 @@ def trace(
         context.retrace = False
         block.trace(context)
 
-        for edge in graph.out_edges(block):
-            frame, to = edge.trace(context)
+        for out_edge in graph.out_edges(block):
+            frame, to = out_edge.trace(context)
             if frame is None or to is None:
                 continue
-            trace_stack.append((frame, to, edge))
+            trace_stack.append((frame, to, out_edge))
 
             if frame.max_stack > trace_.max_stack:
                 trace_.max_stack = frame.max_stack
@@ -268,4 +270,4 @@ def trace(
 
     if retraces:  # Yay!!! The code is valid up until this point (minus the type checking).
         logger.debug(" - (pass %i) %i branch(es) need to be retraced." % (retrace_pass, len(retraces)))
-        trace(trace_, graph, do_raise, retraces, retrace_pass + 1)
+        trace(trace_, graph, do_raise, retraces, defs, retrace_pass + 1)
