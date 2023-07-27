@@ -38,7 +38,7 @@ class Context:
         "method", "graph", "type_checker",
         "do_raise",
         "_frame", "source",
-        "retrace",
+        "conflicts",
         "__push_direct", "__pop_direct",
         "__set_direct", "__get_direct",
         "local_uses", "local_defs",
@@ -74,7 +74,7 @@ class Context:
         self._frame: Optional[Frame] = None
         self.source: Optional[Source] = None  # The source of the current tracing instruction
 
-        self.retrace = False  # FIXME: More precise type error tracking? Could save on future computation.
+        self.conflicts: Set[Trace.Conflict] = set()
 
         self.__push_direct = lambda *args: None
         self.__pop_direct = lambda *args: None
@@ -130,13 +130,14 @@ class Context:
         else:
             entry = entry_or_type
             if self.source is not None and entry is not Frame.TOP and entry is not Frame.RESERVED:
-                entry.producers.append(self.source)
+                entry._producers.append(self.source)
 
         if constraint is not None:
-            entry.constrain(constraint, self.source)
-            if not constraint.mergeable(entry.type):
+            added = entry.constrain(constraint, self.source)
+            if added and not constraint.mergeable(entry.type):
+                self.conflicts.add(Trace.Conflict(entry, constraint, self.source))
                 entry = Entry(constraint, self.source, entry)
-                self.retrace = True  # Going to need to retrace the block just to get all necessary constraints.
+
         self.__push_direct(entry)  # self._frame.push(entry)
         if entry.type.wide:
             self.__push_direct(Frame.RESERVED)  # self._frame.push(Frame.RESERVED)
@@ -156,7 +157,8 @@ class Context:
             for entry in entries:
                 if entry is Frame.TOP:
                     break
-                entry.consumers.append(self.source)
+                elif entry is not Frame.RESERVED:
+                    entry._consumers.append(self.source)
 
         if count == 1 and not as_tuple:
             return entries[0]
@@ -180,13 +182,13 @@ class Context:
         else:
             entry = entry_or_type
             if self.source is not None and entry is not Frame.TOP and entry is not Frame.RESERVED:
-                entry_or_type.producers.append(self.source)
+                entry_or_type._producers.append(self.source)
 
         if constraint is not None:
-            entry.constrain(constraint, self.source)
-            if not constraint.mergeable(entry.type):
+            added = entry.constrain(constraint, self.source)
+            if added and not constraint.mergeable(entry.type):
+                self.constraint.add(Trace.Conflict(entry, constraint, self.source))
                 entry = Entry(constraint, self.source, entry)
-                self.retrace = True
 
         self.__set_direct(index, entry)  # self._frame.set(index, entry)
         if entry.type.wide:
@@ -203,7 +205,7 @@ class Context:
 
         entry = self.__get_direct(index)  # self._frame.get(index)
         if self.source is not None and entry is not Frame.TOP and entry is not Frame.RESERVED:
-            entry.consumers.append(self.source)
+            entry._consumers.append(self.source)
 
         # If the local has already been overwritten then don't add it to the reads. The better solution would be storing
         # an actual use-def chain, but using sets is much faster. My thinking behind this is that since we're working
@@ -222,12 +224,12 @@ class Context:
 
         # We don't want to add constraints to these as they are class fields.
         if entry is Frame.TOP or entry is Frame.RESERVED:
-            self.retrace = True  # TODO: Maybe do something else with this?
+            # TODO: Maybe do something else with this?
             return
 
         added = entry.constrain(constraint, self.source)
         if added and not constraint.mergeable(entry.type):
-            self.retrace = True
+            self.conflicts.add(Trace.Conflict(entry, constraint, self.source))
 
 
 class Trace:
@@ -236,7 +238,12 @@ class Trace:
     """
 
     __slots__ = (
-        "graph", "entries", "exits", "subroutines", "pre_liveness", "post_liveness", "max_stack", "max_locals",
+        "graph",
+        "entries", "exits",
+        "conflicts",
+        "subroutines",
+        "pre_liveness", "post_liveness",
+        "max_stack", "max_locals",
     )
 
     @classmethod
@@ -263,6 +270,7 @@ class Trace:
         self.entries: Dict["InsnBlock", List[Frame]] = defaultdict(list)
         self.exits: Dict["InsnBlock", List[Frame]] = defaultdict(list)
 
+        self.conflicts: Set[Trace.Conflict] = set()
         self.subroutines: List[Trace.Subroutine] = []
 
         self.pre_liveness: Dict["InsnBlock", Set[int]] = {}
@@ -272,9 +280,37 @@ class Trace:
         self.max_locals = 0
 
     def __repr__(self) -> str:
-        return "<Trace(entries=%i, exits=%i, subroutines=%i, max_stack=%i, max_locals=%i) at %x>" % (
-            len(self.entries), len(self.exits), len(self.subroutines), self.max_stack, self.max_locals, id(self),
+        return "<Trace(entries=%i, exits=%i, conflicts=%i, subroutines=%i, max_stack=%i, max_locals=%i) at %x>" % (
+            len(self.entries), len(self.exits), len(self.conflicts), len(self.subroutines), self.max_stack, self.max_locals, id(self),
         )
+
+    class Conflict:
+        """
+        A type conflict.
+        """
+
+        __slots__ = ("entry", "expected", "source", "_hash")
+
+        def __init__(self, entry: Entry, expected: Type, source: Optional[Source]) -> None:
+            self.entry = entry
+            self.expected = expected
+            self.source = source
+
+            self._hash = hash((entry, expected, source))
+
+        def __repr__(self) -> str:
+            return "<Trace.Conflict(entry=%s, expected=%s, source=%s)>" % (self.entry, self.expected, self.source)
+
+        def __eq__(self, other: Any) -> bool:
+            return (
+                type(other) is Trace.Conflict and
+                self.entry == other.entry and
+                self.expected == other.expected and
+                self.source == other.source
+            )
+
+        def __hash__(self) -> int:
+            return self._hash
 
     class Subroutine:
         """

@@ -59,7 +59,7 @@ class InstructionInBlock(Source):
         self._hash = hash((index, block.label, instruction.opcode))
 
     def __repr__(self) -> str:
-        return "<InstructionInBlock(index=%i, block=%r, instruction=%s)>" % (self.index, self.block, self.instruction)
+        return "<InstructionInBlock(index=%i, block=%s, instruction=%s)>" % (self.index, self.block, self.instruction)
 
     def __str__(self) -> str:
         return "%s @ %s[%i]" % (self.instruction, self.block, self.index)

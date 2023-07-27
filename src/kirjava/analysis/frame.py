@@ -26,20 +26,19 @@ class Entry:
     A type entry in a stack frame.
     """
 
-    __slots__ = ("type", "consumers", "producers", "parents", "_constraints", "_constraints_cache")
+    __slots__ = ("type", "parents", "_consumers", "_producers", "_constraints", "_constraints_cache")
 
     @property
-    def constraints(self) -> FrozenSet["Entry.Constraint"]:
-        """
-        An immutable copy of all the constraints for this entry (also included via its parents). Should only be used
-        after the trace has been computed.
-        """
+    def constraints(self) -> Set["Entry.Constraint"]:
+        return self._collect_constraints(set(), [])
 
-        if self._constraints_cache is not None:
-            return self._constraints_cache
+    @property
+    def producers(self) -> List[Source]:
+        return self._collect_producers([], [])
 
-        constraints = self._constraints
-        return self._collect_constraints(constraints, [])
+    @property
+    def consumers(self) -> List[Source]:
+        return self._collect_consumers([], [])
 
     # @property
     # def null(self) -> bool:
@@ -90,17 +89,16 @@ class Entry:
 
         self.type, constraints = self._generify(type_, definite)
 
-        self.consumers: List[Source] = []
-        self.producers: List[Source] = []
         self.parents: Set[Entry] = set()
+        self._consumers: List[Source] = []
+        self._producers: List[Source] = []
 
         if origin is not None:
-            self.producers.append(origin)
+            self._producers.append(origin)
         if parent is not None:
             self.parents.add(parent)
 
         self._constraints = set(Entry.Constraint(constraint, origin) for constraint in constraints)
-        self._constraints_cache: Optional[FrozenSet[Entry.Constraint]] = None
 
         # self._hash = hash((self.type, self.origin))
 
@@ -123,13 +121,32 @@ class Entry:
 
     def _collect_constraints(self, constraints: Set["Entry.Constraint"], stack: List["Entry"]) -> FrozenSet["Entry.Constraint"]:
         if self in stack:  # Can happen due to back edges.
-            return self._constraints_cache
+            return constraints
         stack.append(self)
         constraints.update(self._constraints)
         for parent in self.parents:
             parent._collect_constraints(constraints, stack)
-        self._constraints_cache = frozenset(constraints)
-        return self._constraints_cache
+        return constraints
+
+    def _collect_producers(self, producers: List[Source], stack: List["Entry"]) -> List[Source]:
+        if self in stack:
+            return producers
+        stack.append(self)
+        # Although we can't get this perfect, we add producers in post-order to at least try and conserve where the
+        # entry originally came from.
+        for parent in self.parents:
+            parent._collect_producers(producers, stack)
+        producers.extend(self._producers)
+        return producers
+
+    def _collect_consumers(self, consumers: List[Source], stack: List["Entry"]) -> List[Source]:
+        if self in stack:
+            return consumers
+        stack.append(self)
+        for parent in self.parents:
+            parent._collect_consumers(consumers, stack)
+        consumers.extend(self._consumers)
+        return consumers
 
     def constrain(self, type_: Type, source: Optional[Source] = None) -> bool:
         """
@@ -164,10 +181,10 @@ class Entry:
         # This can happen when for example, initialising an object. Uninitialised types are not mergeable with reference
         # types yet we still want to maintain a link to the original.
         if not self.type.mergeable(type_):
-            return Entry(type_, source, self, definite=True)
+            return Entry(type_, source, self)
         # Primitive types also adhere to this behaviour simply because they are immutable by nature.
         elif isinstance(self.type, Primitive):
-            return Entry(type_, source, self, definite=True)
+            return Entry(type_, source, self)
         # Otherwise, we know that this type is merely a constraint on the original type.
         self._constraints.add(Entry.Constraint(type_, source))
         return self

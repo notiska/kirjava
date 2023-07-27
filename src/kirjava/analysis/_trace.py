@@ -39,6 +39,7 @@ def trace(
     entries = trace_.entries
     exits = trace_.exits
 
+    conflicts = trace_.conflicts
     subroutines = trace_.subroutines
 
     pre_liveness = trace_.pre_liveness
@@ -121,9 +122,9 @@ def trace(
         entries[block].append(initial)
 
         context.frame = frame
+        context.conflicts.clear()
         context.local_uses.clear()
         context.local_defs.clear()
-        context.retrace = False
         block.trace(context)
 
         for out_edge in graph.out_edges(block):
@@ -137,8 +138,9 @@ def trace(
             if frame.max_locals > trace_.max_locals:
                 trace_.max_locals = frame.max_locals
 
-        if context.retrace:  # AKA a type conflict has occurred during the trace, we will add this to be retraced.
+        if context.conflicts:
             retraces.append((initial, block, edge))
+            conflicts.update(context.conflicts)
 
         uses[block].update(context.local_uses)
         defs[block].update(context.local_defs)
@@ -147,7 +149,7 @@ def trace(
     if not traced:  # Nothing more to do at this point.
         return
 
-    logger.debug(" - (pass %i) initial trace for %i block(s) (%i retraced)." % (retrace_pass, len(entries), retraced))
+    logger.debug(" - (pass %i) traced %i block(s) (%i retraced)." % (retrace_pass, traced, retraced))
     if branches:
         logger.debug(" - (pass %i) found %i branch(es) to check." % (retrace_pass, len(branches)))
     if subroutines:
