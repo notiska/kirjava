@@ -84,7 +84,7 @@ def trace(
 
             for in_edge in graph.out_edges(jsr_fallthrough.from_):
                 if type(in_edge) is JsrJumpEdge:
-                    subroutines.add(Trace.Subroutine(in_edge, edge, block, frame.copy(deep=False)))
+                    subroutines.append(Trace.Subroutine(in_edge, edge, block, frame.copy(deep=False)))
                     break
 
         if constraints:
@@ -166,8 +166,15 @@ def trace(
     liveness_stack.extendleft(graph.in_edges(graph.return_block))
     liveness_stack.extendleft(graph.in_edges(graph.rethrow_block))
 
-    # for subroutine in subroutines:
-    #     liveness_stack.append(subroutine.ret_edge.copy(to=subroutine.exit_block))
+    # The graph doesn't know about any resolved subroutines, and we need these for the liveness stack, so we'll record
+    # the exit blocks in a dictionary for fast lookup.
+    subroutine_exits: Dict[InsnBlock, Set[RetEdge]] = defaultdict(set)
+
+    for subroutine in subroutines:
+        ret_edge = subroutine.ret_edge.copy(to=subroutine.exit_block, deep=False)
+
+        subroutine_exits[subroutine.exit_block].add(ret_edge)
+        liveness_stack.append(ret_edge)
 
     # On top of having edges to the return and rethrow blocks on the liveness stack, we also need to account for things
     # like infinite loops, a contrived example:
@@ -196,9 +203,8 @@ def trace(
 
     while liveness_stack:
         edge = liveness_stack.popleft()
-
-        # if edge.to.label == 14:
-        #     breakpoint()
+        if edge.to is None:  # Opaque edge, ignore.
+            continue
 
         # Yes, the naming isn't the best but oh well.
         prev_pre = pre_liveness.get(edge.to) or set()
@@ -206,11 +212,8 @@ def trace(
         old_post = post_liveness.get(edge.from_)
         old_pre = pre_liveness.get(edge.from_)
 
-        new_post = (old_post or set()).copy()
-        new_post.update(prev_pre)
-
-        new_pre = (old_pre or set()).copy()
-        new_pre.update(uses[edge.from_])
+        new_post = (old_post or set()).union(prev_pre)
+        new_pre = (old_pre or set()).union(uses[edge.from_])
 
         # Exception edges assume that the exception could have been thrown from anywhere within the block, so we can't
         # assume that any redefinitions occurred and we'll instead just copy the liveness state at the handler's entry
@@ -223,13 +226,16 @@ def trace(
         post_changed = old_post != new_post
         pre_changed = old_pre != new_pre
 
-        if old_post != new_post:
+        if post_changed:
             post_liveness[edge.from_] = new_post
         if pre_changed:
             pre_liveness[edge.from_] = new_pre
 
         if post_changed or pre_changed:
             liveness_stack.extendleft(graph.in_edges(edge.from_))
+            ret_edges = subroutine_exits.get(edge.from_)
+            if ret_edges is not None:
+                liveness_stack.extendleft(ret_edges)
 
     # for block in graph:
     #     print(block, pre_liveness.get(block), post_liveness.get(block))
@@ -259,10 +265,6 @@ def trace(
 
         if not can_merge:
             retraces.append((frame, block, edge))
-
-    for frame, block, edge in retraces:
-        if block.label != 3:
-            continue
 
     if retraces:  # Yay!!! The code is valid up until this point (minus the type checking).
         logger.debug(" - (pass %i) %i branch(es) need to be retraced." % (retrace_pass, len(retraces)))

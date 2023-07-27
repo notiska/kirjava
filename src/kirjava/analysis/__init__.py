@@ -73,6 +73,8 @@ class Context:
         self._frame: Optional[Frame] = None
         self.source: Optional[Source] = None  # The source of the current tracing instruction
 
+        self.retrace = False  # FIXME: More precise type error tracking? Could save on future computation.
+
         self.__push_direct = lambda *args: None
         self.__pop_direct = lambda *args: None
         self.__set_direct = lambda *args: None
@@ -179,7 +181,7 @@ class Context:
                 entry_or_type.producers.append(self.source)
 
         if constraint is not None:
-            retrace = entry.constrain(constraint, self.source)
+            entry.constrain(constraint, self.source)
             if not constraint.mergeable(entry.type):
                 entry = Entry(constraint, self.source, entry)
                 self.retrace = True
@@ -198,10 +200,14 @@ class Context:
         """
 
         entry = self._frame.get(index)
-        if self.source is not None and entry is not Frame.TOP:
+        if self.source is not None and entry is not Frame.TOP and entry is not Frame.RESERVED:
             entry.consumers.append(self.source)
 
-        if not index in self.local_defs:  # If the local has already been overwritten then don't add it to the reads.
+        # If the local has already been overwritten then don't add it to the reads. The better solution would be storing
+        # an actual use-def chain, but using sets is much faster. My thinking behind this is that since we're working
+        # backwards, we don't care if the local is used in the same block it's overwritten as if it's not used in any
+        # subsequent blocks then it's not live again.
+        if not index in self.local_defs:
             self.local_uses.add(index)
 
         return entry
@@ -213,7 +219,7 @@ class Context:
         """
 
         # We don't want to add constraints to these as they are class fields.
-        if entry is self._frame.TOP or entry is self._frame.RESERVED:
+        if entry is Frame.TOP or entry is Frame.RESERVED:
             self.retrace = True  # TODO: Maybe do something else with this?
             return
 
@@ -255,7 +261,7 @@ class Trace:
         self.entries: Dict["InsnBlock", List[Frame]] = defaultdict(list)
         self.exits: Dict["InsnBlock", List[Frame]] = defaultdict(list)
 
-        self.subroutines: Set[Trace.Subroutine] = set()
+        self.subroutines: List[Trace.Subroutine] = []
 
         self.pre_liveness: Dict["InsnBlock", Set[int]] = {}
         self.post_liveness: Dict["InsnBlock", Set[int]] = {}
@@ -273,7 +279,7 @@ class Trace:
         Information about a subroutine.
         """
 
-        __slots__ = ("jsr_edge", "ret_edge", "exit_block", "frame", "_hash")
+        __slots__ = ("jsr_edge", "ret_edge", "exit_block", "frame")
 
         def __init__(self, jsr_edge: "JsrJumpEdge", ret_edge: "RetEdge", exit_block: "InsnBlock", frame: Frame) -> None:
             self.jsr_edge = jsr_edge
@@ -281,23 +287,10 @@ class Trace:
             self.exit_block = exit_block
             self.frame = frame
 
-            self._hash = hash((self.jsr_edge, self.ret_edge, self.exit_block))
-
         def __repr__(self) -> str:
             return "<Trace.Subroutine(jsr_edge=%r, ret_edge=%r, exit_block=%r, frame=%r) at %x>" % (
                 self.jsr_edge, self.ret_edge, self.exit_block, self.frame, id(self),
             )
-
-        def __eq__(self, other: Any) -> bool:
-            return (
-                type(other) is Trace.Subroutine and
-                self.jsr_edge == other.jsr_edge and
-                self.ret_edge == other.ret_edge and
-                self.exit_block == other.exit_block
-            )
-
-        def __hash__(self) -> int:
-            return self._hash
 
 
 from . import graph

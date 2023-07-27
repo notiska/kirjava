@@ -137,6 +137,7 @@ class Entry:
 
         :param type_: The type constraint.
         :param source: The source that constrained this entry's type.
+        :return: Was this type already a constraint?
         """
 
         if type_ is self.type:  # TODO: Profile, faster?
