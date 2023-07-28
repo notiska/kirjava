@@ -81,7 +81,7 @@ class MonitorEnterInstruction(Instruction):
     throws = (Class("java/lang/NullPointerException"),)
 
     def trace(self, context: "Context") -> None:
-        context.constrain(context.pop(), types.object_t)
+        context.constrain(context.pop(), types.reference_t)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> MonitorEnterStatement:
     #     return MonitorEnterStatement(associations[delta.pops[-1]])
@@ -100,7 +100,7 @@ class MonitorExitInstruction(Instruction):
     )
 
     def trace(self, context: "Context") -> None:
-        context.constrain(context.pop(), types.object_t)
+        context.constrain(context.pop(), types.reference_t)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> MonitorExitStatement:
     #     return MonitorExitStatement(associations[delta.pops[-1]])
