@@ -22,6 +22,7 @@ from ... import instructions
 from ...classfile import ConstantPool
 from ...classfile.attributes import Code, LineNumberTable, StackMapTable
 from ...constants import Class
+from ...error import TypeConflictError
 from ...instructions.jvm import (
     Instruction,
     ConditionalJumpInstruction, JumpInstruction, SwitchInstruction,
@@ -37,21 +38,25 @@ logger = logging.getLogger("kirjava.analysis.graph._asm")
 
 
 def assemble(
-        graph: "InsnGraph", method: "MethodInfo", classfile: "ClassFile", do_raise: bool,
+        graph: "InsnGraph", method: "MethodInfo", classfile: "ClassFile",
+        do_raise: bool, in_place: bool,
         adjust_wides: bool, adjust_ldcs: bool,
         adjust_jumps: bool, adjust_fallthroughs: bool,
         simplify_exception_ranges: bool,
         compute_maxes: bool, compute_frames: bool, compress_frames: bool,
         add_lnt: bool, add_lvt: bool, add_lvtt: bool,
         remove_dead_blocks: bool,
-) -> None:
+) -> Code:
     logger.debug("Assembling method %r:" % str(method))
+
+    if not in_place:
+        graph = graph.copy(deep=True)
 
     code = Code(method)
     code.max_locals = len(method.argument_types)
     if not method.is_static:
         code.max_locals += 1
-    method.code = code
+    # method.code = code
 
     has_max_locals = False
 
@@ -62,6 +67,8 @@ def assemble(
     trace: Optional[Trace] = None
     if compute_maxes or compute_frames:
         trace = Trace.from_graph(graph, do_raise=do_raise)
+        if do_raise and trace.conflicts:
+            raise TypeConflictError(trace.conflicts)
         code.max_stack = trace.max_stack
         code.max_locals = trace.max_locals
 
@@ -71,20 +78,21 @@ def assemble(
     #          Compute block order and remove dead blocks          #
     # ------------------------------------------------------------ #
 
-    blocks: Dict[int, InsnBlock] = {}
-    order:  List[InsnBlock] = []
+    blocks = graph._blocks  # Faster access
+    forward_edges = graph._forward_edges
+    backward_edges = graph._backward_edges
 
-    forward_edges:  Dict[InsnBlock, Set[InsnEdge]] = {}
-    backward_edges: Dict[InsnBlock, Set[InsnEdge]] = {}
-
+    order: List[InsnBlock] = []
     skipped: Set[InsnBlock] = set()
 
-    for label, block in sorted(graph._blocks.items(), key=operator.itemgetter(0)):
+    for label, block in sorted(blocks.items(), key=operator.itemgetter(0)):
         is_entry_block = block is graph.entry_block
         if remove_dead_blocks and not is_entry_block:
             # If we have computed a trace then we will already know if the block is dead or not. Otherwise, we'll need
             # to guess via how many in edges the block has.
-            is_dead_block = not graph._backward_edges[block] if trace is None else not block in trace.entries
+            # TODO: For dead blocks, a proper dominance-based approach, if there are no subroutines present? Though I'm 
+            #       guessing error verification will be on most of the time anyway.
+            is_dead_block = not backward_edges[block] if trace is None else not block in trace.entries
             if is_dead_block:
                 skipped.add(block)
                 continue
@@ -93,7 +101,7 @@ def assemble(
         # they would need to be ordered normally (otherwise, they are written as required).
         if not is_entry_block and block.inline:
             order_block = False
-            for edge in graph._backward_edges[block]:
+            for edge in backward_edges[block]:
                 if isinstance(edge, FallthroughEdge):
                     continue
                 elif isinstance(edge, JumpEdge) and edge.instruction in (instructions.goto, instructions.goto_w):
@@ -105,24 +113,8 @@ def assemble(
         else:
             order_block = True
 
-        block = block.copy()  # Copy the block as we may be modifying it in place, later
-        blocks[label] = block
         if order_block:
             order.append(block)
-        forward_edges[block] = set()
-        backward_edges[block] = set()
-
-    for label, block in graph._blocks.items():
-        if not label in blocks:
-            continue
-        for edge in graph._forward_edges[block]:
-            if edge.to is None:  # Opaque edges
-                edge = edge.copy(from_=blocks[label])
-                forward_edges[edge.from_].add(edge)
-                continue
-            edge = edge.copy(from_=blocks[label], to=blocks[edge.to.label])
-            forward_edges[edge.from_].add(edge)
-            backward_edges[edge.to].add(edge)
 
     # FIXME
     # if trace is None:
@@ -267,9 +259,13 @@ def assemble(
             target = fallthrough_edge.to
             in_edges = backward_edges[target]  # A slight misnomer, but whatever
 
+            # Fallthrough target is a dead block, can occur with jsr fallthroughs where a subroutine does not return.
+            if target in skipped:
+                continue
+
             # Check if the fallthrough target will be written immediately after this block. This occurs if either the
             # label is the next one, or the target can be inlined.
-            if target is not block and (target.inline or (index + 1 < len(order) and order[index + 1] is target)):
+            elif target is not block and (target.inline or (index + 1 < len(order) and order[index + 1] is target)):
                 continue
 
             elif isinstance(target, InsnReturnBlock) or isinstance(target, InsnRethrowBlock):
@@ -556,7 +552,7 @@ def assemble(
         if not simplify_exception_ranges:
             # Generate an exception handler for every exception edge we find, it's wasteful but faster to compute.
             for edge in in_edges:
-                if type(edge) is ExceptionEdge:
+                if type(edge) is ExceptionEdge and not edge.from_ in skipped:
                     handlers[edge.priority].append(Code.ExceptionHandler(
                         starting[edge.from_], ending[edge.from_], starting[edge.to], Class(edge.throwable.name),
                     ))
@@ -566,7 +562,7 @@ def assemble(
         exception_edges: Dict[Tuple[int, Optional[Reference]], Dict[int, Tuple[int, ExceptionEdge]]] = defaultdict(dict)
 
         for edge in in_edges:
-            if type(edge) is ExceptionEdge:
+            if type(edge) is ExceptionEdge and not edge.from_ in skipped:
                 handler = (edge.priority, edge.throwable)
                 # We might have written this block at multiple places, and if so, we will need to generate an exception
                 # handler for each.
@@ -653,3 +649,5 @@ def assemble(
 
         for offset, line_number in line_numbers.items():
             line_number_table.entries.append(LineNumberTable.LineNumberEntry(offset, line_number))
+
+    return code

@@ -127,24 +127,24 @@ class Dup2Instruction(Instruction):
 
 class Dup2X1Instruction(Dup2Instruction):
     """
-    Duplicates two values on the stack and places them three values down.
+    Duplicates two values on the stack and places them one value down.
+    """
+
+    __slots__ = ()
+
+    def trace(self, context: "Context") -> None:
+        context.frame.dup(2, 1)
+
+
+class Dup2X2Instruction(Dup2Instruction):
+    """
+    Duplicates two values on the stack and places them two values down.
     """
 
     __slots__ = ()
 
     def trace(self, context: "Context") -> None:
         context.frame.dup(2, 2)
-
-
-class Dup2X2Instruction(Dup2Instruction):
-    """
-    Duplicates two values on the stack and places them four values down.
-    """
-
-    __slots__ = ()
-
-    def trace(self, context: "Context") -> None:
-        context.frame.dup(2, 4)
 
 
 class SwapInstruction(Instruction):

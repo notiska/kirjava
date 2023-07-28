@@ -94,7 +94,17 @@ class PutFieldInstruction(FieldInstruction):
         *_, entry = context.pop(1 + self.reference.field_type.wide, as_tuple=True)
         context.constrain(entry, self.reference.field_type)
         if not self.static:
-            context.constrain(context.pop(), self.reference.class_.class_type)
+            entry = context.pop()
+
+            # The JVM allows you to set fields on an uninitializedThis type (but not get) and they cannot be fields on
+            # the super class.
+            if (
+                entry.type == types.uninitialized_this_t and
+                self.reference.class_.class_type == context.method.class_.get_type()
+            ):
+                return  # Don't add the constraint as it will create a type conflict.
+
+            context.constrain(entry, self.reference.class_.class_type)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> Union[SetFieldStatement, SetStaticFieldStatement]:
     #     if self.static:

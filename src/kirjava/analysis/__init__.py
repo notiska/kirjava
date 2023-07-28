@@ -301,6 +301,11 @@ class Trace:
         def __repr__(self) -> str:
             return "<Trace.Conflict(entry=%s, expected=%s, source=%s)>" % (self.entry, self.expected, self.source)
 
+        def __str__(self) -> str:
+            if self.source is not None:
+                return "%s expected type %s, got %s." % (self.source, self.expected, self.entry)
+            return "expected type %s, got %s." % (self.expected, self.entry)
+
         def __eq__(self, other: Any) -> bool:
             return (
                 type(other) is Trace.Conflict and

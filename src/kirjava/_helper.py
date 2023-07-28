@@ -97,4 +97,4 @@ def assemble(graph: InsnGraph, **kwargs: bool) -> None:
     :param kwargs: Any extra arguments to pass to the assemble method (see InsnGraph.assemble()).
     """
 
-    graph.assemble(**kwargs)
+    graph.method.code = graph.assemble(**kwargs)

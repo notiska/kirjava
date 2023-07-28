@@ -2,6 +2,7 @@
 
 __all__ = (
     "ClassFormatError",
+    "TypeConflictError",
     "MergeError",
     "MergeDepthError",
     "MergeMissingLocalError",
@@ -13,11 +14,11 @@ Various exceptions raised by kirjava.
 """
 
 import typing
-from typing import Optional
+from typing import Collection, Optional
 
 if typing.TYPE_CHECKING:
     from .abc import Edge
-    from .analysis import Entry, RetEdge
+    from .analysis import Entry, RetEdge, Trace
     from .types import Type
 
 
@@ -28,6 +29,17 @@ class ClassFormatError(Exception):
 
     def __init__(self, message: Optional[str] = None) -> None:
         super().__init__(message or "Malformed class file.")
+
+
+class TypeConflictError(Exception):
+    """
+    Raised when there are type conflicts in a trace.
+    """
+
+    def __init__(self, conflicts: Collection["Trace.Conflict"]) -> None:
+        super().__init__("%i type conflict(s):%s" % (len(conflicts), "\n - ".join(map(str, ("", *conflicts)))))
+
+        self.conflicts = conflicts
 
 
 # ---------------------------------------- Merge errors ---------------------------------------- #

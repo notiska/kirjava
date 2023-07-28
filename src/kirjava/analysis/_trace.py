@@ -98,10 +98,17 @@ def trace(
 
             can_merge = False
             live_locals = uses[block]
+            # We can return with multiple stack depths so we can ignore checking that.
+            # FIXME: Not too sure about the rethrow block though? Will need to test that.
+            check_depth = (
+                edge is not None and
+                edge.to is not graph.return_block and
+                edge.to is not graph.rethrow_block
+            )
 
             for constraint in constraints:
                 try:
-                    if frame.merge(constraint, edge, live_locals):
+                    if frame.merge(constraint, edge, live_locals, check_depth):
                         can_merge = True
                         # We'll break early for performance reasons. Any further entry merges will be done later in the
                         # recursive retrace stage.
@@ -255,13 +262,14 @@ def trace(
 
         can_merge = False
         live_locals = pre_liveness[block]
+        check_depth = edge.to is not graph.return_block and edge.to is not graph.rethrow_block
 
         # Here we're finding at least one constraint that does merge, we know that if this does exist, then we have
         # already traced said path and do not need to retrace. We'll continue through all constraints to make sure that
         # we merge all entries that can be merged.
         for constraint in constraints:
             try:
-                if frame.merge(constraint, edge, live_locals):
+                if frame.merge(constraint, edge, live_locals, check_depth):
                     can_merge = True
             except MergeError as error:
                 if do_raise:

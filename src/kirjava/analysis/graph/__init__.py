@@ -29,6 +29,7 @@ from ...source import *
 
 if typing.TYPE_CHECKING:
     from ...classfile import MethodInfo
+    from ...classfile.attributes import Code
 
 logger = logging.getLogger("kirjava.analysis.graph")
 
@@ -85,15 +86,58 @@ class InsnGraph(Graph):
 
         self.source_map: Dict[int, Union[InstructionInBlock, InsnEdge]] = {}
 
-    def new(self) -> InsnBlock:
-        block = InsnBlock(max(self._blocks, default=0) + 1)
-        self.add(block, check=False)
-        return block
+    def copy(self, *, deep: bool = True) -> "InsnGraph":
+        """
+        Creates a copy of this instruction graph.
+
+        :param deep: Should we copy the instructions?
+        :return: The copied graph.
+        """
+
+        graph = InsnGraph(self.method)
+
+        blocks = graph._blocks
+        forward_edges = graph._forward_edges
+        backward_edges = graph._backward_edges
+        opaque_edges = graph._opaque_edges
+
+        # We need to remove the entry, return and rethrow blocks as we'll just copy them later.
+        blocks.clear()
+
+        for label, block in self._blocks.items():
+            block = block.copy(deep=deep)
+            blocks[label] = block
+            forward_edges[block] = set()
+            backward_edges[block] = set()
+
+        graph.entry_block = blocks[self.entry_block.label]
+        graph.return_block = blocks[self.return_block.label]
+        graph.rethrow_block = blocks[self.rethrow_block.label]
+
+        for block, edges in self._forward_edges.items():
+            block = blocks[block.label]
+            new_edges = forward_edges[block]
+
+            for edge in edges:
+                if edge.to is None:
+                    edge = edge.copy(from_=block, deep=deep)
+                    new_edges.add(edge)
+                    opaque_edges.add(edge)
+                    continue
+
+                edge = edge.copy(from_=block, to=blocks[edge.to.label], deep=deep)
+                new_edges.add(edge)
+                backward_edges[edge.to].add(edge)
+
+        # TODO: Copy the source map too.
+
+        return graph
 
     def assemble(
             self,
             *,
             do_raise: bool = True,
+            in_place: bool = False,
             adjust_wides: bool = True,
             adjust_ldcs: bool = True,
             adjust_jumps: bool = True,
@@ -106,11 +150,12 @@ class InsnGraph(Graph):
             add_lvt: bool = True,
             add_lvtt: bool = True,
             remove_dead_blocks: bool = True,
-    ) -> None:
+    ) -> "Code":
         """
         Assembles this graph into the method's code attribute.
 
         :param do_raise: Raise an exception if any errors occurred during assembling.
+        :param in_place: Modifies this graph in-place while assembling, can be faster but might change the graph a little.
         :param adjust_wides: Should we add/remove wide instructions if necessary?
         :param adjust_ldcs: Should we transform ldc instructions to ldc_w if necessary?
         :param adjust_jumps: Should we adjust jumps by generating new blocks if necessary?
@@ -123,10 +168,12 @@ class InsnGraph(Graph):
         :param add_lvt: Should we add a local variable table?
         :param add_lvtt: Should we add a local variable type table?
         :param remove_dead_blocks: Should we remove dead blocks?
+        :return: The assembled Code attribute.
         """
 
-        assemble(
-            self, self.method, self.method.class_, do_raise,
+        return assemble(
+            self, self.method, self.method.class_,
+            do_raise, in_place,
             adjust_wides, adjust_ldcs,
             adjust_jumps, adjust_fallthroughs,
             simplify_exception_ranges,
@@ -147,6 +194,11 @@ class InsnGraph(Graph):
             block.strip(line_numbers, local_variables)
 
     # ------------------------------ Blocks ------------------------------ #
+
+    def new(self) -> InsnBlock:
+        block = InsnBlock(max(self._blocks, default=0) + 1)
+        self.add(block, check=False)
+        return block
 
     def instructions(self, block_or_label: Union[InsnBlock, int]) -> Tuple[Instruction, ...]:
         """

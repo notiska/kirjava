@@ -396,13 +396,16 @@ class Frame:
 
         return frame
 
-    def merge(self, other: "Frame", edge: "InsnEdge", live_locals: Optional[Set[int]] = None) -> bool:
+    def merge(
+            self, other: "Frame", edge: "InsnEdge", live_locals: Optional[Set[int]] = None, check_depth: bool = True,
+    ) -> bool:
         """
         Checks that this frame can merge with the other frame and if possible, merges it.
 
         :param other: The other frame to check against.
         :param edge: The edge causing the merge (for debug info).
         :param live_locals: Optional local liveness information. If not specified, all locals are checked.
+        :param check_depth: Should we check the stack to see if they're equal?
         :return: Is this a valid merge?
         """
 
@@ -412,7 +415,7 @@ class Frame:
             live_locals = self.locals.keys()
 
         # Basic preconditions checks to see if the frame merge is immediately invalid.
-        if len(self.stack) != len(other.stack):
+        if check_depth and len(self.stack) != len(other.stack):
             raise MergeDepthError(edge, len(other.stack), len(self.stack))
 
         for entry_a, entry_b in zip(self.stack, other.stack):
@@ -612,7 +615,7 @@ class Frame:
             self.stack.extend(entries)
             return
         for index, entry in enumerate(reversed(entries)):
-            self.stack.insert(-count - displace + index, entry)
+            self.stack.insert(-count - displace - index, entry)
 
     def swap(self) -> None:
         """
