@@ -15,7 +15,7 @@ from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
 from .. import types
 from ..abc import Method, Source
 from ..error import MergeDepthError, MergeMissingLocalError
-from ..types import null_t, object_t, Array, Class, Primitive, Type, Verification
+from ..types import array_t, null_t, object_t, primitive_t, reference_t, top_t, Array, Class, Primitive, Type, Verification
 
 if typing.TYPE_CHECKING:
     from .graph import InsnEdge
@@ -26,19 +26,131 @@ class Entry:
     A type entry in a stack frame.
     """
 
-    __slots__ = ("type", "parents", "_consumers", "_producers", "_constraints", "_constraints_cache")
+    __slots__ = ("type", "definite", "parents", "_consumers", "_producers", "_constraints")
+
+    @property
+    def inferred_types(self) -> Set[Type]:
+        """
+        :return: The set of inferred types that this entry could be.
+        """
+
+        # TODO: Separte cast parents from merge parents (siblings?).
+
+        visited = {self}
+        stack = [(self, iter(self.parents))]
+        constraints = {constraint.type for constraint in self._constraints}
+        types = {self.type}
+
+        while stack:
+            entry, parents = stack[-1]
+            try:
+                parent = next(parents)
+                if parent in visited:
+                    continue
+                visited.add(parent)
+            except StopIteration:
+                stack.pop()
+                continue
+            stack.append((parent, iter(parent.parents)))
+            constraints.update(constraint.type for constraint in parent._constraints)
+            types.add(parent.type)
+
+        for constraint in constraints.copy():
+            if not constraint.abstract:
+                types.add(constraint)
+                constraints.remove(constraint)
+
+        # Check if all the abstract type constraints are satisfied.
+        for constraint in constraints:
+            for type_ in types:
+                if not constraint.mergeable(type_):
+                    types.add(constraint)
+                    break
+
+        # for type_ in types.copy():
+        #     if not self.type.mergeable(type_):
+        #         types.remove(type_)
+
+        # if len(types) > 1 and object_t in types:  # Hardcoded removal of java/lang/Object to save on computation later.
+        #     types.remove(object_t)
+        return types
 
     @property
     def constraints(self) -> Set["Entry.Constraint"]:
-        return self._collect_constraints(set(), [])
+        """
+        :return: All type constraints for this entry. Note: this is not necessarily all the types this entry could be.
+        """
+
+        visited = {self}
+        stack = [(self, iter(self.parents))]
+        constraints = self._constraints.copy()
+
+        while stack:
+            entry, parents = stack[-1]
+            try:
+                parent = next(parents)
+                if parent in visited:
+                    continue
+                visited.add(parent)
+            except StopIteration:
+                stack.pop()
+                continue
+            stack.append((parent, iter(parent.parents)))
+            constraints.update(parent._constraints)
+
+        return constraints
 
     @property
     def producers(self) -> List[Source]:
-        return self._collect_producers([], [])
+        """
+        :return: All the sources that "produced" this entry.
+        """
+
+        visited = {self}
+        stack = [(self, iter(self.parents))]
+        producers = []
+
+        while stack:
+            entry, parents = stack[-1]
+            try:
+                parent = next(parents)
+                if parent in visited:
+                    continue
+                visited.add(parent)
+            except StopIteration:
+                stack.pop()
+                continue
+            stack.append((parent, iter(parent.parents)))
+            producers.extend(parent._producers)
+
+        producers.extend(self._producers)
+        return producers
 
     @property
     def consumers(self) -> List[Source]:
-        return self._collect_consumers([], [])
+        """
+        :return: All the sources that "consumed" this entry.
+        """
+
+        visited = {self}
+        stack = [(self, iter(self.parents))]
+        consumers = []
+
+        while stack:
+            entry, parents = stack[-1]
+            try:
+                parent = next(parents)
+                if parent in visited:
+                    continue
+                visited.add(parent)
+            except StopIteration:
+                stack.pop()
+                continue
+            stack.append((parent, iter(parent.parents)))
+            consumers.extend(parent._consumers)
+
+        consumers.extend(self._consumers)
+        return consumers
 
     # @property
     # def null(self) -> bool:
@@ -88,6 +200,7 @@ class Entry:
         """
 
         self.type, constraints = self._generify(type_, definite)
+        self.definite = definite
 
         self.parents: Set[Entry] = set()
         self._consumers: List[Source] = []
@@ -118,35 +231,6 @@ class Entry:
         #     for constraint in self.constraints:
         #         return str(constraint)
         return str(self.type)
-
-    def _collect_constraints(self, constraints: Set["Entry.Constraint"], stack: List["Entry"]) -> FrozenSet["Entry.Constraint"]:
-        if self in stack:  # Can happen due to back edges.
-            return constraints
-        stack.append(self)
-        constraints.update(self._constraints)
-        for parent in self.parents:
-            parent._collect_constraints(constraints, stack)
-        return constraints
-
-    def _collect_producers(self, producers: List[Source], stack: List["Entry"]) -> List[Source]:
-        if self in stack:
-            return producers
-        stack.append(self)
-        # Although we can't get this perfect, we add producers in post-order to at least try and conserve where the
-        # entry originally came from.
-        for parent in self.parents:
-            parent._collect_producers(producers, stack)
-        producers.extend(self._producers)
-        return producers
-
-    def _collect_consumers(self, consumers: List[Source], stack: List["Entry"]) -> List[Source]:
-        if self in stack:
-            return consumers
-        stack.append(self)
-        for parent in self.parents:
-            parent._collect_consumers(consumers, stack)
-        consumers.extend(self._consumers)
-        return consumers
 
     def constrain(self, type_: Type, source: Optional[Source] = None) -> bool:
         """

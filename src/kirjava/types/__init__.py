@@ -52,13 +52,14 @@ class Type:
     Base type class.
     """
 
-    __slots__ = ("__weakref__", "name", "wide", "_hash")
+    __slots__ = ("__weakref__", "name", "wide", "abstract", "_hash")
 
-    def __init__(self, name: str, *, wide: bool = False) -> None:
+    def __init__(self, name: str, *, wide: bool = False, abstract: bool = False) -> None:
         self.name = name
         self.wide = wide
+        self.abstract = abstract
 
-        self._hash = hash((self.name, self.wide))
+        self._hash = hash((name, wide, abstract))
 
     def __repr__(self) -> str:
         return "<%s(name=%r)>" % (type(self).__name__, self.name)
@@ -125,7 +126,7 @@ class Primitive(Verification):
 
     __slots__ = ("boxed",)
 
-    def __init__(self, name: str, boxed: Optional[Type] = None, *, wide: bool = False) -> None:
+    def __init__(self, name: str, boxed: Optional[Type] = None, *, wide: bool = False, abstract: bool = False) -> None:
         super().__init__(name, wide=wide)
         self.boxed = boxed
 
@@ -176,8 +177,8 @@ class OneWord(_Top):
 
     __slots__ = ()
 
-    def __init__(self, name: str = "oneWord", *, wide: bool = False) -> None:
-        super().__init__(name, wide=False)
+    def __init__(self, name: str = "oneWord", *, wide: bool = False, abstract: bool = False) -> None:
+        super().__init__(name, wide=False, abstract=abstract)
 
 
 class TwoWord(_Top):
@@ -187,8 +188,8 @@ class TwoWord(_Top):
 
     __slots__ = ()
 
-    def __init__(self, name: str = "twoWord", *, wide: bool = True) -> None:
-        super().__init__(name, wide=True)
+    def __init__(self, name: str = "twoWord", *, wide: bool = True, abstract: bool = False) -> None:
+        super().__init__(name, wide=True, abstract=abstract)
 
 
 class _Integer(Primitive, OneWord):
@@ -364,7 +365,7 @@ class Array(_JavaReference):
         return self
 
     def __init__(self, element: Type) -> None:
-        super().__init__(element.name + "[]")
+        super().__init__(element.name + "[]", abstract=element.abstract)
         self.element = element
 
         self._hash = hash((self._hash, self.element))
@@ -397,6 +398,9 @@ class Class(_JavaReference):
         cls._cached[name] = self
         return self
 
+    def as_interface(self) -> "Interface":
+        return Interface(self.name)
+
 
 # Although this is distinct from a class according to the spec, it's not always possible to distinguish between a class
 # and an interface if we have an incomplete class hierarchy, so in terms of types, we treat them almost the same.
@@ -406,6 +410,20 @@ class Interface(Class):
     """
 
     __slots__ = ()
+
+    _cached: WeakValueDictionary[str, "Interface"] = WeakValueDictionary()
+
+    def __new__(cls, name: str) -> "Interface":
+        cached = cls._cached.get(name)
+        if cached is not None:
+            return cached
+
+        self = super().__new__(cls, name)
+        cls._cached[name] = self
+        return self
+
+    def as_interface(self) -> "Interface":
+        return self
 
 
 # Another slight inaccuracy as this should really extend (Array, Class, Interface). That's not done here to avoid all
@@ -431,10 +449,10 @@ class _Null(_JavaReference):
         return self is other or isinstance(other, _JavaReference)
 
 
-primitive_t = Primitive("primitive")
-reference_t = Reference("reference")
+primitive_t = Primitive("primitive", abstract=True)
+reference_t = Reference("reference", abstract=True)
 
-top_t = _Top("top")
+top_t = _Top("top", abstract=True)
 
 void_t = Primitive("void")
 # The second half of a long or double. Not a Primitive as we want to be able to merge it into a top type in certain

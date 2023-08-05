@@ -20,6 +20,7 @@ if typing.TYPE_CHECKING:
     from .abc import Edge
     from .analysis import Entry, RetEdge, Trace
     from .types import Type
+    from .verifier import Error
 
 
 class ClassFormatError(Exception):
@@ -31,6 +32,16 @@ class ClassFormatError(Exception):
         super().__init__(message or "Malformed class file.")
 
 
+class VerifyError(Exception):
+    """
+    Raised when the verifier encounters one or more errors.
+    """
+
+    def __init__(self, errors: Collection["Error"]) -> None:
+        super().__init__("%i verification error(s):%s" % (len(self.errors), "\n - ".join(map(str, ("", *errors)))))
+        self.errors = errors
+
+
 class TypeConflictError(Exception):
     """
     Raised when there are type conflicts in a trace.
@@ -38,7 +49,6 @@ class TypeConflictError(Exception):
 
     def __init__(self, conflicts: Collection["Trace.Conflict"]) -> None:
         super().__init__("%i type conflict(s):%s" % (len(conflicts), "\n - ".join(map(str, ("", *conflicts)))))
-
         self.conflicts = conflicts
 
 
