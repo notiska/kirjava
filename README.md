@@ -1,95 +1,297 @@
 # kirjava
-A Java bytecode library for Python.  
 
-**Warning:** The README does not reflect the current state of the library nor is the library currently fully functional!
+A pure-Python Java bytecode manipulation library with decent obfuscation resilience.  
+
+It's excellent for inspecting Java classfiles in an interactive shell but it can also be used in actual programs, in fact, this was the original purpose of it.  
+Documentation is planned for in the future, but as of right now, a quickstart guide has been provided below.  
+For more usage, see [examples](examples/).
+
+Just as a note, this is *very much* a hobby project so my maintenance schedule will fluctuate a lot. If you have any bug fixes, PRs are welcome.
+
+**Warning: This is the development branch so not all information may always be up to date!**
 
 ## Quickstart
-I might add documentation in the future, not sure yet lol. Anyway, here's the quickstart guide, for more usage, see [examples](examples/).
 
 ### Installing
-You can either:
-1. Clone this repository and install via `python3 setup.py install`.
-2. Install this library via pip: `pip3 install git+https://github.com/node3112/kirjava.git`.
 
-**You will need `python>=3.8` for this library to work correctly, any other versions are untested.**
+`python>=3.10` is required, any other versions are untested.  
+
+You can install this library by either:
+ 1. Installing via pip: `pip3 install git+https://github.com/node3112/kirjava.git`.  
+   **Sidenote:** This library will not be published on [PyPI](https://pypi.org/project/kirjava/) as the name `kirjava` is already taken.
+ 2. Cloning this repository and installing it manually:  
+    - `git clone https://github.com/node3112/kirjava.git kirjava`
+    - `cd kirjava`
+    - `python3 setup.py install` or, if you lack permissions: `python3 setup.py install --user`
+
+*Additionally, [PyPy](https://www.pypy.org/) does appear to work and can result in significant performance gains.*
 
 ### Getting started
+
+Simply import kirjava, no extra steps are required once installed:
+
 ```python3
 In [1]: import kirjava
-   ...: kirjava.initialise(
-   ...:     load_skeletons=True,  # Load "skeleton classes" (info about classes in rt.jar).
-   ...:     skeletons_version=kirjava.version.Version.get("11"),  # Use skeleton classes from Java 11.
-   ...: )
 ```
-Kirjava bases all information (currently just classes) around the `kirjava.environment` module. Calling `kirjava.initialise` simply loads the skelton
-classes as of right now, it may do more in the future however.  
-**Note:** it is not always necessary to perform this step, if the assembler (or Java) gives errors though, you may want to.
 
 ### Reading classfiles
+
+kirjava contains quite a few shortcuts for various tedious tasks, an example:
+
 ```python3
 In [2]: cf = kirjava.load("Test.class")
-   ...: # This code is a shortcut, and is roughly equivalent to:
-   ...: # with open("Test.class", "rb") as stream:
-   ...: #     cf = kirjava.ClassFile.read(stream)
 
 In [3]: cf
-Out[3]: <ClassFile(name='Test') at 7ffab11a5740>
+Out[3]: <ClassFile(name='Test') at 7fc10a2245c0>
 ```
 
-We can view all the methods in the classfile:
+This is *roughly equivalent* to:
+
+```python3
+In [2]: with open("Test.class", "rb") as stream:
+   ...:     cf = kirjava.ClassFile.read(stream)
+   ...: 
+
+In [3]: cf
+Out[3]: <ClassFile(name='Test') at 7fc10a2245c0>
+```
+
+Whatever you choose to use is up to you.  
+The latter is likely more performant than the former, but if you just wish to inspect a classfile in an interactive shell, the shortcut is always available for use.
+
+### Inspecting the class
+
+Viewing all the methods in the class can be done via:
+
 ```python3
 In [4]: cf.methods
 Out[4]: 
-(<MethodInfo(name='main', argument_types=(java/lang/String[],), return_type=void) at 7ffab12251e0>,
- <MethodInfo(name='<init>', argument_types=(), return_type=void) at 7ffab11e0d60>,
- <MethodInfo(name='test', argument_types=(boolean,), return_type=void) at 7ffab11e0880>,
- <MethodInfo(name='test2', argument_types=(), return_type=void) at 7ffab11e0b80>)
+(<MethodInfo(name='main', argument_types=(java/lang/String[],), return_type=void) at 7fc10a069a80>,
+ <MethodInfo(name='<init>', argument_types=(), return_type=void) at 7fc10a0698a0>,
+ <MethodInfo(name='test', argument_types=(boolean,), return_type=void) at 7fc10a069ae0>,
+ <MethodInfo(name='test2', argument_types=(), return_type=void) at 7fc10a069ba0>)
 ```
 
-We can also view all the fields in the classfile:
+And similarly, the fields:
+
 ```python3
 In [5]: cf.fields
-Out[5]: (<FieldInfo(name='field', type=int) at 7ffab12254e0>,)
+Out[5]: (<FieldInfo(name='field', type=int) at 7fc10a069b40>,)
 ```
 
-### Editing methods  
-To abstract away some of the annoyances of creating valid bytecode, we can use `kirava.analysis.InsnGraph`:
-```python3
-In [6]: graph = kirjava.disassemble(cf.get_method("test"))
-   ...: # This is another shortcut, roughly equivalent to:
-   ...: # graph = kirjava.analysis.InsnGraph.disassemble(cf.get_method("test").code)
+The same goes for attributes, although this example file does not contain any:
 
-In [7]: graph.blocks  # The basic blocks that the disassembler created
-Out[7]: 
-(<InsnBlock(label=0, instructions=[iload_1, ifne]) at 7ffab128b6a0>,
- <InsnBlock(label=1, instructions=[aload_0, iconst_0, putfield Test#int field]) at 7ffab1138770>,
- <InsnBlock(label=2, instructions=[aload_0, getfield Test#int field, ifgt]) at 7ffab14d6ac0>,
- <InsnBlock(label=3, instructions=[iconst_0, ifeq]) at 7ffab128a7f0>,
- <InsnBlock(label=5, instructions=[iload_1, ifeq]) at 7ffab14d67a0>,
- <InsnBlock(label=7, instructions=[iinc 1 by 1]) at 7ffab14d66b0>)
+```python3
+In [6]: cf.attributes
+Out[6]: {}
 ```
 
-... transformations to the graph and blocks can be done here.
+### Editing bytecode
 
-To reassemble the method:
+Creating valid bytecode can be quite an annoyance, so kirjava provides functionality that allows you to edit methods with ease.  
+The main classes you'll be using for this are `InsnGraph`, `InsnBlock` and `InsnEdge`.
+
+#### Disassembly
+
+To disassemble a method, you can use the shortcut:
+
 ```python3
-In [8]: kirjava.assemble(graph)
-   ...: # This shortcut is roughly equivalent to:
-   ...: # graph.method.code = graph.assemble()
+In [7]: graph = kirjava.disassemble(cf.get_method("test"))
+
+In [8]: graph
+Out[8]: <InsnGraph(blocks=10, edges=12) at 7fc10abfed50>
+```
+
+Or more verbosely:
+
+```python3
+In [7]: graph = kirjava.analysis.InsnGraph.disassemble(cf.get_method("test"))
+
+In [8]: graph
+Out[8]: <InsnGraph(blocks=10, edges=12) at 7fc10abfed50>
+```
+
+You can then view the blocks and edges present in the graph:
+
+```python3
+In [9]: graph.blocks
+Out[9]: 
+(<InsnBlock(label=0, instructions=[iload_1]) at 7fc10a1ed340>,
+ <InsnReturnBlock() at 7fc10b60e5d0>,
+ <InsnRethrowBlock() at 7fc10ab8f5c0>,
+ <InsnBlock(label=1, instructions=[aload_0, iconst_0, putfield Test.field:I]) at 7fc10abc9f80>,
+ <InsnBlock(label=2, instructions=[aload_0, getfield Test.field:I]) at 7fc10abcac40>,
+ <InsnBlock(label=3, instructions=[iconst_0]) at 7fc10a2138c0>,
+ <InsnBlock(label=4, instructions=[]) at 7fc10a211f00>,
+ <InsnBlock(label=5, instructions=[iload_1]) at 7fc10a210340>,
+ <InsnBlock(label=6, instructions=[]) at 7fc10a2103c0>,
+ <InsnBlock(label=7, instructions=[iinc 1 by 1]) at 7fc10a213240>)
+
+In [10]: graph.edges
+Out[10]: 
+(<FallthroughEdge(from=block 0, to=block 1) at 7fc10b614a70>,
+ <JumpEdge(from=block 0, to=block 2, instruction=ifne) at 7fc10a069c10>,
+ <FallthroughEdge(from=block 1, to=block 2) at 7fc10a06b230>,
+ <FallthroughEdge(from=block 2, to=block 3) at 7fc10a06ae10>,
+ <JumpEdge(from=block 2, to=block 4, instruction=ifgt) at 7fc10a0cadb0>,
+ <JumpEdge(from=block 3, to=block 5, instruction=ifeq) at 7fc10a0caed0>,
+ <FallthroughEdge(from=block 3, to=block 4) at 7fc10a06b2f0>,
+ <JumpEdge(from=block 4, to=return block, instruction=return) at 7fc10a0cb230>,
+ <FallthroughEdge(from=block 5, to=block 6) at 7fc10a0caff0>,
+ <JumpEdge(from=block 5, to=block 7, instruction=ifeq) at 7fc10a0cb0b0>,
+ <JumpEdge(from=block 6, to=return block, instruction=return) at 7fc10a0c8ad0>,
+ <JumpEdge(from=block 7, to=return block, instruction=return) at 7fc10a0cb050>)
+```
+
+#### Editing blocks
+
+Say for example you wanted to change the value `Test.field` from `0` to `17`, you could do this:
+
+```python3
+In [11]: graph[1].remove(kirjava.instructions.iconst_0)
+    ...: graph[1].insert(1, kirjava.instructions.bipush(17))
+Out[11]: <ConstantInstruction(opcode=0x10, mnemonic=bipush, constant=<Integer(17)>) at 7fc10a213480>
+```
+
+And just to check that we have edited the block correctly:
+
+```python3
+In [12]: graph[1]
+Out[12]: <InsnBlock(label=1, instructions=[aload_0, bipush 17, putfield Test.field:I]) at 7fc10abc9f80>
+```
+
+#### Editing edges
+
+Now let's edit an edge. Firstly let's find one that we can edit easily for the sake of tutorial:
+
+```python3
+In [13]: graph.out_edges(graph[2])
+Out[13]: 
+(<FallthroughEdge(from=block 2, to=block 3) at 7fc10a06ae10>,
+ <JumpEdge(from=block 2, to=block 4, instruction=ifgt) at 7fc10a0cadb0>)
+```
+
+Let's change the `ifgt` instruction into an `iflt` for this example:
+
+```python3
+In [14]: graph.jump(graph[2], graph[4], kirjava.instructions.iflt)
+Out[14]: <JumpEdge(from=block 2, to=block 4, instruction=iflt) at 7fc10a1dcc50>
+```
+
+And, to check:
+
+```python3
+In [15]: graph.out_edges(graph[2])
+Out[15]: 
+(<FallthroughEdge(from=block 2, to=block 3) at 7fc10a06ae10>,
+ <JumpEdge(from=block 2, to=block 4, instruction=iflt) at 7fc10a1dcc50>)
+```
+
+As you can see we've managed to successfully edit the jump condition.  
+
+There's a lot more that can be done than just these simple tutorials though **(have a play around!)**.
+
+### Analysing bytecode
+
+Often editing a method goes hand-in-hand with analysing it, and kirjava provides tools that allow you to statically analyse the data on the stack and in the locals via the use of the class `Trace`.
+
+To create a trace for a method, you'll need to use the graph for said method. In this example, we'll use the graph from the previous examples:
+
+```python3
+In [16]: trace = kirjava.trace(graph)
+
+In [17]: trace
+Out[17]: <Trace(entries=9, exits=9, conflicts=0, subroutines=0, max_stack=2, max_locals=2) at 7fc10abff4c0>
+```
+
+And again, the more verbose method:
+
+```python3
+In [16]: trace = kirjava.analysis.Trace.from_graph(graph)
+
+In [17]: trace
+Out[17]: <Trace(entries=9, exits=9, conflicts=0, subroutines=0, max_stack=2, max_locals=2) at 7fc10abff4c0>
+```
+
+The `Trace` class provides pre/post liveness information (on a per-block basis) as well as information on subroutines, type conflicts and frames at block entries/exits.
+
+For example, we could look at the local pre-liveness for block 3:
+
+```python3
+In [18]: trace.pre_liveness[graph[3]]
+Out[18]: {1}
+```
+
+We could also view the state of the stack at the entry to it:
+
+```python3
+In [19]: trace.entries[graph[3]]
+Out[19]: [<Frame(stack=[], locals={0=Test, 1=boolean}) at 7fc109ee7f10>]
+```
+
+And we can even inspect individual locals further:
+
+```python3
+In [20]: trace.entries[graph[3]][0].locals
+Out[20]: 
+{0: <Entry(type=Test, constraints={Test, reference, java/lang/Object}) at 7fc109ee69d0>,
+ 1: <Entry(type=boolean, constraints={int, boolean}) at 7fc109ee7ce0>}
+
+In [21]: trace.entries[graph[3]][0].locals[0].constraints
+Out[21]: 
+(<Entry.Constraint(type=reference, source=aload_0 @ block 1[0], original=False)>,
+ <Entry.Constraint(type=Test, source=getfield Test.field:I @ block 2[1], original=False)>,
+ <Entry.Constraint(type=Test, source=putfield Test.field:I @ block 1[2], original=False)>,
+ <Entry.Constraint(type=Test, source=None, original=True)>,
+ <Entry.Constraint(type=java/lang/Object, source=None, original=True)>,
+ <Entry.Constraint(type=reference, source=aload_0 @ block 2[0], original=False)>)
+
+In [22]: trace.entries[graph[3]][0].locals[1].producers
+Out[22]: 
+(<InstructionInBlock(index=0, block=block 5, instruction=iload_1)>,
+ <InstructionInBlock(index=0, block=block 7, instruction=iinc 1 by 1)>,
+ <InstructionInBlock(index=0, block=block 0, instruction=iload_1)>)
+
+In [23]: trace.entries[graph[3]][0].locals[1].consumers
+Out[23]: 
+(<InstructionInBlock(index=0, block=block 5, instruction=iload_1)>,
+ <JumpEdge(from=block 5, to=block 7, instruction=ifeq) at 7fc10a0cb0b0>,
+ <InstructionInBlock(index=0, block=block 7, instruction=iinc 1 by 1)>,
+ <InstructionInBlock(index=0, block=block 0, instruction=iload_1)>,
+ <JumpEdge(from=block 0, to=block 2, instruction=ifne) at 7fc10a069c10>)
+```
+
+#### Assembly
+
+Reassembling the method after editing is as easy as:
+
+```python3
+In [24]: kirjava.assemble(graph)
+```
+
+Or:
+
+```python3
+In [24]: graph.method.code = graph.assemble()
 ```
 
 ### Writing classfiles
+
+Writing classfiles back out is also easy:
+
 ```python3
-In [9]: kirjava.dump(cf, "Test.class")
-   ...: # This shortcut is roughly equivalent to:
-   ...: # with open("Test.class", "wb") as stream:
-   ...: #     cf.write(stream)
+In [25]: kirjava.dump(cf, "Test-edited.class")
 ```
 
-## Limitations
-(Stuff I still need to do, there are also a lot of todos scattered throughout the source).
+Or for the more verbose method:
 
-1. Missing some less important attributes.
-2. No jar file reading yet, even though the package exists.
-3. Although there is generic signature parsing, writing generic signatures is not yet implemented.
-4. The assembler is slow and cannot handle certain edge cases.
+```python3
+n [25]: with open("Test-edited.class", "wb") as stream:
+    ...:     cf.write(stream)
+    ...: 
+```
+
+## Trivia
+
+It's honestly not super interesting, but if anyone was wondering, it IS named after a certain character from a certain book series.  
+The name is not a Java-related pun, but it does help that "java" is in the name.
