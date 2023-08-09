@@ -1,6 +1,6 @@
 # kirjava's Tests
 
-These were mainly used by me to perform tests on the library to check that it was functional in a manor that I could verify.  
+These were mainly used by me to perform tests on the library to check that it was functional in a manner that I could verify by hand.  
 
 ## Compiling
 
