@@ -138,8 +138,9 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction):
                     class_type = source.instruction.type
 
                 if class_type is None:
+                    if context.do_raise:
+                        ...  # TODO: Report some kind of error here?
                     class_type = self.reference.class_.class_type
-                    # TODO: Report some kind of error here?
 
                 context.replace(entry, class_type)
                 return
@@ -193,6 +194,12 @@ class InvokeInterfaceInstruction(InvokeVirtualInstruction):
 
     def copy(self) -> "InvokeInterfaceInstruction":
         return type(self)(self.reference, self.count)
+
+    def trace(self, context: "Context") -> None:
+        self._trace_arguments(context)
+        context.constrain(context.pop(), self.reference.class_.class_type.as_interface())
+        if self.reference.return_type is not types.void_t:
+            context.push(self.reference.return_type)
 
 
 class InvokeDynamicInstruction(InvokeStaticInstruction):

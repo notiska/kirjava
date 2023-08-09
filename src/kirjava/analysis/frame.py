@@ -10,12 +10,14 @@ Stack frames (and others).
 
 import operator
 import typing
-from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
+from typing import Any, Dict, FrozenSet, Iterator, List, Optional, Set, Tuple
 
 from .. import types
 from ..abc import Method, Source
 from ..error import MergeDepthError, MergeMissingLocalError
-from ..types import array_t, null_t, object_t, primitive_t, reference_t, top_t, Array, Class, Primitive, Type, Verification
+from ..types import (
+    array_t, null_t, object_t, reference_t, top_t, Array, Class, Reference, Type, Uninitialized, Verification,
+)
 
 if typing.TYPE_CHECKING:
     from .graph import InsnEdge
@@ -26,131 +28,83 @@ class Entry:
     A type entry in a stack frame.
     """
 
-    __slots__ = ("type", "definite", "parents", "_consumers", "_producers", "_constraints")
+    __slots__ = ("merges", "_type", "parent", "_consumers", "_producers", "_constraints")
 
     @property
-    def inferred_types(self) -> Set[Type]:
+    def type(self) -> Type:
         """
-        :return: The set of inferred types that this entry could be.
+        :return: The type of this local. May change over time.
         """
 
-        # TODO: Separte cast parents from merge parents (siblings?).
+        types = {self._type}
+        constraints = set()
 
-        visited = {self}
-        stack = [(self, iter(self.parents))]
-        constraints = {constraint.type for constraint in self._constraints}
-        types = {self.type}
-
-        while stack:
-            entry, parents = stack[-1]
-            try:
-                parent = next(parents)
-                if parent in visited:
-                    continue
-                visited.add(parent)
-            except StopIteration:
-                stack.pop()
-                continue
-            stack.append((parent, iter(parent.parents)))
-            constraints.update(constraint.type for constraint in parent._constraints)
-            types.add(parent.type)
-
-        for constraint in constraints.copy():
-            if not constraint.abstract:
-                types.add(constraint)
-                constraints.remove(constraint)
-
-        # Check if all the abstract type constraints are satisfied.
+        for entry in self._iter_merges():
+            constraints.update(entry._constraints)
         for constraint in constraints:
+            if constraint.original:
+                types.add(constraint.type)
+
+        types.remove(self._type)
+        if len(types) == 1:
             for type_ in types:
-                if not constraint.mergeable(type_):
-                    types.add(constraint)
-                    break
-
-        # for type_ in types.copy():
-        #     if not self.type.mergeable(type_):
-        #         types.remove(type_)
-
-        # if len(types) > 1 and object_t in types:  # Hardcoded removal of java/lang/Object to save on computation later.
-        #     types.remove(object_t)
-        return types
+                return type_
+        return self._type  # Can't narrow down the type without any extra information.
 
     @property
-    def constraints(self) -> Set["Entry.Constraint"]:
+    def parents(self) -> Tuple["Entry", ...]:
+        """
+        :return: All the parents of this entry.
+        """
+
+        parents = set(self._iter_parents())
+        for entry in self._iter_merges():
+            parents.update(entry._iter_parents())
+
+        # Although it is slower to copy this to a tuple, sets are more annoying to work with in an interactive shell.
+        # Tuples also indicate that the data provided is immutable.
+        return tuple(parents)
+
+    @property
+    def constraints(self) -> Tuple["Entry.Constraint", ...]:
         """
         :return: All type constraints for this entry. Note: this is not necessarily all the types this entry could be.
         """
 
-        visited = {self}
-        stack = [(self, iter(self.parents))]
         constraints = self._constraints.copy()
 
-        while stack:
-            entry, parents = stack[-1]
-            try:
-                parent = next(parents)
-                if parent in visited:
-                    continue
-                visited.add(parent)
-            except StopIteration:
-                stack.pop()
-                continue
-            stack.append((parent, iter(parent.parents)))
-            constraints.update(parent._constraints)
+        for entry in self._iter_merges_and_parents():
+            constraints.update(entry._constraints)
 
-        return constraints
+        return tuple(constraints)
 
     @property
-    def producers(self) -> List[Source]:
+    def producers(self) -> Tuple[Source, ...]:
         """
         :return: All the sources that "produced" this entry.
         """
 
-        visited = {self}
-        stack = [(self, iter(self.parents))]
         producers = []
 
-        while stack:
-            entry, parents = stack[-1]
-            try:
-                parent = next(parents)
-                if parent in visited:
-                    continue
-                visited.add(parent)
-            except StopIteration:
-                stack.pop()
-                continue
-            stack.append((parent, iter(parent.parents)))
-            producers.extend(parent._producers)
-
+        for entry in self._iter_merges_and_parents():
+            producers.extend(entry._producers)
         producers.extend(self._producers)
-        return producers
+
+        return tuple(producers)
 
     @property
-    def consumers(self) -> List[Source]:
+    def consumers(self) -> Tuple[Source, ...]:
         """
         :return: All the sources that "consumed" this entry.
         """
 
-        visited = {self}
-        stack = [(self, iter(self.parents))]
         consumers = []
 
-        while stack:
-            entry, parents = stack[-1]
-            try:
-                parent = next(parents)
-                if parent in visited:
-                    continue
-                visited.add(parent)
-            except StopIteration:
-                stack.pop()
-                continue
-            stack.append((parent, iter(parent.parents)))
-            consumers.extend(parent._consumers)
-
+        for entry in self._iter_merges_and_parents():
+            consumers.extend(entry._consumers)
         consumers.extend(self._consumers)
-        return consumers
+
+        return tuple(consumers)
 
     # @property
     # def null(self) -> bool:
@@ -173,51 +127,41 @@ class Entry:
     #     return any(parent.nullable for parent in self.parents)
 
     @classmethod
-    def _generify(cls, type_: Type, definite: bool) -> Tuple[Verification, Set[Type]]:
+    def _generify(cls, type_: Type) -> Tuple[Verification, Set[Type]]:
         vtype = type_.as_vtype()
         constraints = set()
-
-        if not definite and (vtype is null_t or isinstance(vtype, Array) or isinstance(vtype, Class)):
+        # We will hardcode uninitialized types as we don't want to turn those into java/lang/Objects.
+        if isinstance(vtype, Reference) and not isinstance(vtype, Uninitialized):
             vtype = object_t
-        if vtype != type_:
-            constraints.add(type_)
-
+        constraints.add(type_)
         return vtype, constraints
 
-    def __init__(
-            self,
-            type_: Type,
-            origin: Optional[Source] = None,
-            parent: Optional["Entry"] = None,
-            *,
-            definite: bool = False,
-    ) -> None:
+    def __init__(self, type_: Type, origin: Optional[Source] = None, parent: Optional["Entry"] = None) -> None:
         """
         :param type_: The type of this entry.
         :param origin: The source that created this entry.
         :param parent: The parent entry.
-        :param definite: If the provided type is a class, is it definitely that class?
         """
 
-        self.type, constraints = self._generify(type_, definite)
-        self.definite = definite
+        self._type, constraints = self._generify(type_)
 
-        self.parents: Set[Entry] = set()
+        self.merges: Set[Entry] = set()
+
+        self.parent = parent
         self._consumers: List[Source] = []
         self._producers: List[Source] = []
 
         if origin is not None:
             self._producers.append(origin)
-        if parent is not None:
-            self.parents.add(parent)
 
-        self._constraints = set(Entry.Constraint(constraint, origin) for constraint in constraints)
+        self._constraints = set(Entry.Constraint(constraint, origin, original=True) for constraint in constraints)
 
         # self._hash = hash((self.type, self.origin))
 
     def __repr__(self) -> str:
+        constraints = set(constraint.type for constraint in self.constraints)
         return "<Entry(type=%s, constraints={%s}) at %x>" % (
-            self.type, ", ".join(set(map(str, self.constraints))), id(self),
+            self.type, ", ".join(map(str, constraints)), id(self),
         )
 
     # def __eq__(self, other: Any) -> bool:
@@ -227,10 +171,69 @@ class Entry:
     #     return self._hash
 
     def __str__(self) -> str:
-        # if len(self.constraints) == 1:
-        #     for constraint in self.constraints:
-        #         return str(constraint)
         return str(self.type)
+
+    def _iter_merges(self) -> Iterator["Entry"]:
+        """
+        Non-recursive iterator for all merges of this entry.
+        """
+
+        visited = {self}
+        stack = [(self, iter(self.merges))]
+
+        while stack:
+            entry, merges = stack[-1]
+            try:
+                entry = next(merges)
+                if entry in visited:
+                    continue
+                visited.add(entry)
+            except StopIteration:
+                stack.pop()
+                continue
+            stack.append((entry, iter(entry.merges)))
+            yield entry
+
+    def _iter_parents(self) -> Iterator["Entry"]:
+        """
+        A non-recursive iterator for all parents of this entry.
+        """
+
+        entry = self
+        while entry.parent is not None:
+            entry = entry.parent
+            yield entry
+
+    def _iter_merges_and_parents(self) -> Iterator["Entry"]:
+        """
+        A non-recursive iterator for all merges, parents and parents of merges.
+        """
+
+        visited = {self}
+        stack = [(self, iter(self.merges))]
+
+        # Too lazy to copy-paste code from right above :p. How much slower can it really be?
+        yield from self._iter_parents()
+
+        while stack:
+            entry, merges = stack[-1]
+            try:
+                entry = next(merges)
+                if entry in visited:
+                    continue
+                visited.add(entry)
+            except StopIteration:
+                stack.pop()
+                continue
+
+            stack.append((entry, iter(entry.merges)))
+            yield entry
+
+            while entry.parent is not None:
+                entry = entry.parent
+                if entry in visited:
+                    break
+                yield entry
 
     def constrain(self, type_: Type, source: Optional[Source] = None) -> bool:
         """
@@ -241,7 +244,7 @@ class Entry:
         :return: Was this constraint added?
         """
 
-        if type_ is self.type:  # TODO: Profile, faster?
+        if type_ is self._type:  # TODO: Profile, faster?
             return True
         # https://stackoverflow.com/questions/27427067/python-how-to-check-if-an-item-was-added-to-a-set-without-2x-hash-lookup
         # Honestly not sure how much faster this is, but I'll give it a shot since I've been doing a similar thing with
@@ -259,41 +262,50 @@ class Entry:
         :param source: The source creating the new entry.
         """
 
-        if type_ == self.type:
+        if type_ == self._type:
             return self
+
+        entry = Entry(type_, source, self)
 
         # This can happen when for example, initialising an object. Uninitialised types are not mergeable with reference
         # types yet we still want to maintain a link to the original.
-        if not self.type.mergeable(type_):
-            return Entry(type_, source, self)
-        # Primitive types also adhere to this behaviour simply because they are immutable by nature.
-        elif isinstance(self.type, Primitive):
-            return Entry(type_, source, self)
-        # Otherwise, we know that this type is merely a constraint on the original type.
-        self._constraints.add(Entry.Constraint(type_, source))
-        return self
+        if not self._type.mergeable(type_):
+            return entry
+        elif isinstance(self._type, Reference):
+            # A note with checkcast instructions: we can't actually confirm that the class we're trying to cast to is a
+            # valid subtype nor can we verify if the class exists, so we'll add it as a constraint (which are meant to
+            # be taken with a grain of salt).
+            self._constraints.add(Entry.Constraint(type_, source))
+
+        return entry
 
     class Constraint:
         """
         A type constraint with an optional source.
         """
 
-        __slots__ = ("type", "source", "_hash")
+        __slots__ = ("type", "source", "original", "_hash")
 
-        def __init__(self, type_: Type, source: Optional[Source] = None) -> None:
+        def __init__(self, type_: Type, source: Optional[Source] = None, *, original: bool = False) -> None:
             self.type = type_
             self.source = source
+            self.original = original
 
-            self._hash = hash((self.type, self.source))
+            self._hash = hash((self.type, self.source, original))
 
         def __repr__(self) -> str:
-            return "<Entry.Constraint(type=%s, source=%s)>" % (self.type, self.source)
+            return "<Entry.Constraint(type=%s, source=%s, original=%s)>" % (self.type, self.source, self.original)
 
         def __str__(self) -> str:
             return str(self.type)
 
         def __eq__(self, other: Any) -> bool:
-            return type(other) is Entry.Constraint and self.type == other.type and self.source == other.source
+            return (
+                type(other) is Entry.Constraint and
+                self.type == other.type and
+                self.source == other.source and
+                self.original == other.original
+            )
 
         def __hash__(self) -> int:
             return self._hash
@@ -375,8 +387,8 @@ class Frame:
 
     __slots__ = ("stack", "locals", "tracked", "max_stack", "max_locals")
 
-    TOP      = Entry(types.top_t, definite=True)
-    RESERVED = Entry(types.reserved_t, definite=True)
+    TOP      = Entry(types.top_t)
+    RESERVED = Entry(types.reserved_t)  # FIXME: Remove, creates issues.
 
     @classmethod
     def initial(cls, method: Method) -> "Frame":
@@ -391,13 +403,13 @@ class Frame:
             if method.name == "<init>" and method.return_type == types.void_t:  # and method.class_.is_super:
                 entry = Entry(types.uninitialized_this_t)
             else:
-                entry = Entry(method.class_.get_type(), definite=True)
+                entry = Entry(method.class_.get_type())
             frame.locals[0] = entry
             frame.tracked.add(entry)
             index = 1
 
         for type_ in method.argument_types:
-            frame.locals[index] = Entry(type_, definite=True)
+            frame.locals[index] = Entry(type_)
             frame.tracked.add(frame.locals[index])
             index += 1
             if type_.wide:
@@ -455,8 +467,10 @@ class Frame:
 
         if deep:
             copied: Dict[Entry, Entry] = {}
-            for entry in self.tracked:
-                copied[entry] = Entry(entry.type, None, entry, definite=True)
+            for old_entry in self.tracked:
+                copied[old_entry] = new_entry = Entry(old_entry._type, None)
+                new_entry.merges.add(old_entry)
+                old_entry.merges.add(new_entry)
 
             # Just in case these are in the tracked entries, we'll make sure that they remain the exact same.
             copied[self.TOP] = self.TOP
@@ -493,7 +507,7 @@ class Frame:
         :return: Is this a valid merge?
         """
 
-        invalid = False
+        valid = True
 
         if live_locals is None:
             live_locals = self.locals.keys()
@@ -503,29 +517,29 @@ class Frame:
             raise MergeDepthError(edge, len(other.stack), len(self.stack))
 
         for entry_a, entry_b in zip(self.stack, other.stack):
-            if not entry_a.type.mergeable(entry_b.type):
-                invalid = True
+            if not entry_a._type.mergeable(entry_b._type):
+                valid = False
                 break
 
         for index in live_locals:
             entry_a, entry_b = self.locals[index], other.locals.get(index)
             if entry_b is None:
                 raise MergeMissingLocalError(edge, index, entry_a.type)
-            elif not entry_a.type.mergeable(entry_b.type):
-                invalid = True
+            elif not entry_a._type.mergeable(entry_b._type):
+                valid = False
 
-        if not invalid:
+        if valid:
             for entry_a, entry_b in zip(self.stack, other.stack):
                 # They are in a way, the same entry, which is why we're doing this.
-                entry_a.parents.add(entry_b)
-                entry_b.parents.add(entry_a)
+                entry_a.merges.add(entry_b)
+                entry_b.merges.add(entry_a)
 
             for index in live_locals:
                 entry_a, entry_b = self.locals[index], other.locals[index]
-                entry_a.parents.add(entry_b)
-                entry_b.parents.add(entry_a)
+                entry_a.merges.add(entry_b)
+                entry_b.merges.add(entry_a)
 
-        return not invalid
+        return valid
 
     # def add(self, delta: Delta) -> None:
     #     """
@@ -673,12 +687,14 @@ class Frame:
         popped = []
         index = 0 
 
-        try:
-            for index in range(count):
-                popped.append(self.stack.pop())
-        except IndexError:
-            for index in range(count - len(popped)):
-                popped.append(self.TOP)
+        if count >= len(self.stack):  # Optimisations?
+            popped.extend(reversed(self.stack))
+            popped.extend(self.TOP for index in range(count - len(popped)))
+            self.stack.clear()
+            return popped
+
+        for index in range(count):
+            popped.append(self.stack.pop())
 
         return popped
 
@@ -691,9 +707,7 @@ class Frame:
         """
 
         entries = self.stack[-count:]
-        # Fill in any missing entries with tops
-        for index in range(count - len(entries)):
-            entries.append(self.TOP)
+        entries.extend(self.TOP for index in range(count - len(entries)))
 
         if not displace:
             self.stack.extend(entries)

@@ -200,9 +200,9 @@ class _Integer(Primitive, OneWord):
     __slots__ = ()
 
     def mergeable(self, other: "Type") -> bool:
-        # byte_t.mergeable(int_t) -> True
-        # int_t.mergeable(byte_t) -> False
-        return other is int_t  # and isinstance(other, _Integer)
+        # int_t.mergeable(byte_t) -> True
+        # byte_t.mergeable(int_t) -> False
+        return self is int_t  # and isinstance(other, _Integer)
 
     def as_vtype(self) -> "_Integer":
         return int_t

@@ -17,7 +17,7 @@ import typing
 from typing import Collection, Optional
 
 if typing.TYPE_CHECKING:
-    from .abc import Edge
+    from .abc import Constant, Edge
     from .analysis import Entry, RetEdge, Trace
     from .types import Type
     from .verifier import Error
@@ -42,6 +42,8 @@ class VerifyError(Exception):
         self.errors = errors
 
 
+# ---------------------------------------- Trace errors ---------------------------------------- #
+
 class TypeConflictError(Exception):
     """
     Raised when there are type conflicts in a trace.
@@ -50,6 +52,27 @@ class TypeConflictError(Exception):
     def __init__(self, conflicts: Collection["Trace.Conflict"]) -> None:
         super().__init__("%i type conflict(s):%s" % (len(conflicts), "\n - ".join(map(str, ("", *conflicts)))))
         self.conflicts = conflicts
+
+
+class InvalidConstantError(Exception):
+    """
+    Raised when a referenced constant is invalid.
+    """
+
+    def __init__(self, constant: "Constant", message: Optional[str] = None) -> None:
+        super().__init__(message or ("The constant %r is invalid." % constant))
+        self.constant = constant
+
+
+class ConstantWidthError(InvalidConstantError):
+    """
+    Raised when a constant is either of the wrong width.
+    """
+
+    def __init__(self, constant: "Constant", wide: bool) -> None:
+        super().__init__(
+            constant, message="The constant %r was expected to be %swide." % (constant, "" if wide else "not "),
+        )
 
 
 # ---------------------------------------- Merge errors ---------------------------------------- #

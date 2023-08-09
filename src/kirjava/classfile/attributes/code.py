@@ -212,7 +212,7 @@ class StackMapTable(AttributeInfo):
                     type_.source.offset, code.instructions.get(type_.source.offset),
                 ))
 
-            return Entry(type_, definite=True)
+            return Entry(type_)
 
         # @abstractmethod
         def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:

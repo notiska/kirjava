@@ -288,9 +288,9 @@ dconst_1 = new_instruction(0x0f, "dconst_1", FixedConstantInstruction, constant=
 # Other constants
 bipush = new_instruction(0x10, "bipush", IntegerConstantInstruction, {"_value": ">B"})
 sipush = new_instruction(0x11, "sipush", IntegerConstantInstruction, {"_value": ">H"})
-ldc = new_instruction(0x12, "ldc", LoadConstantInstruction, {"_index": ">B"}, category=1)
-ldc_w = new_instruction(0x13, "ldc_w", ldc, {"_index": ">H"}, category=1)
-ldc2_w = new_instruction(0x14, "ldc2_w", ldc, {"_index": ">H"}, category=2)
+ldc = new_instruction(0x12, "ldc", LoadConstantInstruction, {"_index": ">B"})
+ldc_w = new_instruction(0x13, "ldc_w", ldc, {"_index": ">H"})
+ldc2_w = new_instruction(0x14, "ldc2_w", ldc, {"_index": ">H"}, wide=True)
 
 # ------------------------------ Local loads ------------------------------ #
 

@@ -7,11 +7,13 @@ __all__ = (
 import typing
 from typing import Any, Optional
 
+from . import Source
+
 if typing.TYPE_CHECKING:
     from ..types import Type
 
 
-class Constant:
+class Constant(Source):
     """
     A Java constant (some piece of information that is constant).
     """

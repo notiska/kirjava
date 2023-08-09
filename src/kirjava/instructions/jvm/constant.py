@@ -16,6 +16,7 @@ from ..ir.value import ConstantValue
 from ... import types
 from ...abc import Value
 from ...constants import ConstantInfo, Integer
+from ...error import ConstantWidthError, InvalidConstantError
 
 if typing.TYPE_CHECKING:
     from ...analysis import Context
@@ -126,16 +127,16 @@ class LoadConstantInstruction(ConstantInstruction):
         super().write(class_file, buffer, wide)
 
     def trace(self, context: "Context") -> None:
-        try:
-            type_ = self.constant.type
-            if type_.wide != self.wide and context.do_raise:
-                ...  # TODO: Report error
-            context.push(type_)
-        except TypeError as error:
-            # frame.verifier.report(Error(
-            #     Error.Type.INVALID_CONSTANT, frame.source, "can't convert constant %s to Java type" % self.constant,
-            # ))
+        type_ = self.constant.type
+        if type_ is None:
             if context.do_raise:
-                raise error
-            context.push(context.frame.TOP)
+                raise InvalidConstantError(self.constant)
+            context.push(context.frame.TOP)  # Best we can do.
+            if self.wide:
+                context.push(context.frame.TOP)
+            return
+
+        if type_.wide != self.wide and context.do_raise:
+            raise ConstantWidthError(self.constant, self.wide)
+        context.push(type_)
 

@@ -17,7 +17,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from .block import *
 from .debug import *
 from .edge import *
-from .. import Trace
+from .. import Frame, Trace
 from ... import instructions
 from ...classfile import ConstantPool
 from ...classfile.attributes import Code, LineNumberTable, StackMapTable
@@ -230,8 +230,6 @@ def assemble(
     #                Adjust impossible fallthroughs                #
     # ------------------------------------------------------------ #
 
-    max_label = max(blocks, default=0)  # For generating new blocks
-
     transformed_fallthroughs = 0
     generated_blocks = 0
 
@@ -293,8 +291,7 @@ def assemble(
                 out_edges.remove(fallthrough_edge)
                 in_edges.remove(fallthrough_edge)
 
-                max_label += 1
-                intermediary_block = InsnBlock(max_label)
+                intermediary_block = graph.new()
                 intermediary_block.inline = True
 
                 new_fallthrough_edge = FallthroughEdge(block, intermediary_block)
@@ -329,6 +326,7 @@ def assemble(
     for pass_ in range(5):
         code.instructions.clear()
 
+        written:  List[Tuple[InsnBlock, int]] = []  # The order and offset of written blocks.
         starting: Dict[InsnBlock, int] = {}
         ending:   Dict[InsnBlock, int] = {}
         inlined:  Dict[InsnBlock, Tuple[List[int], List[int]]] = defaultdict(lambda: ([], []))
@@ -346,7 +344,7 @@ def assemble(
         offset = 0
         wide = False
 
-        while index < len(order):
+        while index < len(order):  # Not a for loop as order can change during iteration.
             block = order[index]
             index += 1
 
@@ -356,6 +354,8 @@ def assemble(
                 inline_stack.clear()
             else:
                 inlined[block][0].append(offset)
+
+            written.append((block, offset))
 
             for instruction in block:
                 if type(instruction) is LineNumber:
@@ -503,8 +503,7 @@ def assemble(
             forward_edges[edge.from_].remove(edge)
             backward_edges[edge.to].remove(edge)
 
-            max_label += 1
-            intermediary_block = InsnBlock(max_label)
+            intermediary_block = graph.new()
             # block.inline = True
             order.insert(order.index(edge.to) + 1, intermediary_block)  # We want to write it immediately after
 
@@ -637,7 +636,27 @@ def assemble(
         stackmap_table = StackMapTable(code)
         code.stackmap_table = stackmap_table
 
-        ...  # TODO: Trace information lol
+        dead_blocks: Set[InsnBlock] = set()
+
+        prev_offset = -1
+        # There should only be one frame for the entry block, if not, something has gone pretty wrong.
+        prev_frame, = trace.entries[graph.entry_block]
+
+        # FIXME: Only write frames that were jumped to.
+        for block, offset in written:
+            offset_delta = offset - (prev_offset + 1)
+            if not offset_delta:  # A block with no instructions, or the entry block (the first frame is implicit).
+                continue
+
+            entries = trace.entries.get(block)
+            if not entries:
+                dead_blocks.add(block)
+                continue
+
+            # print(offset_delta, block)
+            # for frame in entries:
+            #     print("[", ", ".join(str(set(map(repr, entry.inferred_types))) for entry in frame.stack), "]")
+            #     print("{", ", ".join("%i=%s" % (index, set(map(repr, entry.inferred_types))) for index, entry in frame.locals.items()), "}")
 
     # ------------------------------------------------------------ #
     #                        Add debug info                        #

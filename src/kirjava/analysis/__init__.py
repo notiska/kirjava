@@ -22,8 +22,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from . import frame
 from .frame import *
 from ..abc import Method, Source
-from ..types import Type
-from ..verifier import TypeChecker
+from ..types import Type, Verification
 
 if typing.TYPE_CHECKING:
     from .graph import InsnBlock, InsnGraph, JsrJumpEdge, RetEdge
@@ -35,7 +34,7 @@ class Context:
     """
 
     __slots__ = (
-        "method", "graph", "type_checker",
+        "method", "graph",
         "do_raise",
         "_frame", "source",
         "conflicts",
@@ -64,10 +63,9 @@ class Context:
         # self.local_uses = set()
         # self.local_defs = set()
 
-    def __init__(self, method: Method, graph: "InsnGraph", type_checker: TypeChecker, do_raise: bool = True) -> None:
+    def __init__(self, method: Method, graph: "InsnGraph", do_raise: bool = True) -> None:
         self.method = method
         self.graph = graph
-        self.type_checker = type_checker
 
         self.do_raise = do_raise
 
@@ -112,9 +110,7 @@ class Context:
 
     # ------------------------------ Stack operations ------------------------------ #
 
-    def push(
-            self, entry_or_type: Union[Entry, Type], constraint: Optional[Type] = None, *, definite: bool = False,
-    ) -> None:
+    def push(self, entry_or_type: Union[Entry, Type], constraint: Optional[Type] = None) -> None:
         """
         Pushes an entry or type onto the top of the stack.
         This also handles wide types automatically.
@@ -122,11 +118,10 @@ class Context:
         :param entry_or_type: An entry to push or a type used to create an entry.
         :param constraint: A type to constrain the entry to. Different from using Entry.constrain as it will create a
                            child entry if the types cannot be merged.
-        :param definite: For use if a type is pushed, creates the entry as definite.
         """
 
         if type(entry_or_type) is not Entry:
-            entry = Entry(entry_or_type, self.source, definite=definite)
+            entry = Entry(entry_or_type, self.source)
         else:
             entry = entry_or_type
             if self.source is not None and entry is not Frame.TOP and entry is not Frame.RESERVED:
@@ -134,12 +129,12 @@ class Context:
 
         if constraint is not None:
             added = entry.constrain(constraint, self.source)
-            if added and not constraint.mergeable(entry.type):
+            if added and not constraint.as_vtype().mergeable(entry._type):
                 self.conflicts.add(Trace.Conflict(entry, constraint, self.source))
                 entry = Entry(constraint, self.source, entry)
 
         self.__push_direct(entry)  # self._frame.push(entry)
-        if entry.type.wide:
+        if entry._type.wide:
             self.__push_direct(Frame.RESERVED)  # self._frame.push(Frame.RESERVED)
 
     def pop(self, count: int = 1, *, as_tuple: bool = False) -> Union[Tuple[Entry, ...], Entry]:
@@ -186,12 +181,12 @@ class Context:
 
         if constraint is not None:
             added = entry.constrain(constraint, self.source)
-            if added and not constraint.mergeable(entry.type):
+            if added and not constraint.mergeable(entry._type):
                 self.constraint.add(Trace.Conflict(entry, constraint, self.source))
                 entry = Entry(constraint, self.source, entry)
 
         self.__set_direct(index, entry)  # self._frame.set(index, entry)
-        if entry.type.wide:
+        if entry._type.wide:
             self.__set_direct(index + 1, Frame.RESERVED)  # self._frame.set(index + 1, Frame.RESERVED)
 
         self.local_defs.add(index)
@@ -228,7 +223,7 @@ class Context:
             return
 
         added = entry.constrain(constraint, self.source)
-        if added and not constraint.mergeable(entry.type):
+        if added and not constraint.as_vtype().mergeable(entry._type):
             self.conflicts.add(Trace.Conflict(entry, constraint, self.source))
 
 
@@ -334,6 +329,9 @@ class Trace:
             return "<Trace.Subroutine(jsr_edge=%r, ret_edge=%r, exit_block=%r, frame=%r) at %x>" % (
                 self.jsr_edge, self.ret_edge, self.exit_block, self.frame, id(self),
             )
+
+        def __str__(self) -> str:
+            ...  # TODO
 
 
 from . import graph
