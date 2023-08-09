@@ -1,0 +1,20 @@
+version 11;
+public class InfiniteLoop extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            aload_0
+            arraylength
+            ifeq exit
+
+            iconst_0
+            istore_1
+
+        loop:
+            iinc 1 1
+            goto loop
+
+        exit:
+            return
+    }
+}

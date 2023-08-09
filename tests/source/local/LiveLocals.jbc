@@ -1,0 +1,37 @@
+version 11;
+public class LiveLocals extends java.lang.Object {
+    public static void main(java.lang.String[]) {
+        entry:
+            // Setting up relevant locals
+            iconst_0
+            istore_1
+            iconst_0
+            istore_2
+            iconst_0
+            istore_3
+            iconst_0
+            istore 4
+
+        loop:
+            iinc 1 1
+            bipush 10
+            iload_1
+            if_icmple loop
+
+        loop_end:
+            iload_2
+            iload_3
+            iadd
+            istore 5
+
+            iconst_0
+            ifeq exit
+
+            getstatic java.lang.System#java.io.PrintStream out
+            iload 5
+            invokevirtual java.io.PrintStream#void println(int)
+
+        exit:
+            return
+    }
+}

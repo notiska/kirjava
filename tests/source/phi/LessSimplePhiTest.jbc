@@ -1,0 +1,43 @@
+/**
+ * DEPRECATED! Was going to be used for my decompiler but that repo is currently private.
+ * Might still be of some use to kirjava, I'm not sure though.
+ */
+version 1.6;
+public class LessSimplePhiTest extends java.lang.Object {
+
+    public static void main(java.lang.String[] args) {
+        entry:
+            iconst_0
+            iconst_1
+            if_icmpeq impossible
+            goto possible
+
+        impossible:
+            iconst_2
+            istore 1
+            goto intermediary
+
+        possible:
+            iconst_3
+            istore 1
+            goto intermediary
+
+        final_:
+            getstatic java.lang.System#java.io.PrintStream out
+            iload 1
+            invokevirtual java.io.PrintStream#void println(int)
+
+            goto exit
+
+        intermediary:
+            getstatic java.lang.System#java.io.PrintStream out
+            ldc "intermediary"
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+
+            goto final_
+
+        exit:
+            return
+    }
+}
+

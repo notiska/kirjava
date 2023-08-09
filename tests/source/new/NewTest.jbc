@@ -1,0 +1,30 @@
+version 11;
+public class NewTest extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            new NewTest
+            dup
+            astore_1
+            astore_2
+            goto next
+        next:
+            aload_1
+            dup
+            invokespecial NewTest#void <init>()
+            getstatic java.lang.System#java.io.PrintStream out
+            swap
+            invokevirtual java.io.PrintStream#void println(java.lang.Object)
+            goto exit
+        exit:
+            return
+    }
+
+    public void <init>() {
+        entry:
+            aload_0
+            invokespecial java.lang.Object#void <init>()
+        exit:
+            return
+    }
+}

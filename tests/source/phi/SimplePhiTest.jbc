@@ -1,0 +1,39 @@
+/**
+ * DEPRECATED! Was going to be used for my decompiler but that repo is currently private.
+ * Might still be of some use to kirjava, I'm not sure though.
+ */
+version 11;
+public class SimplePhiTest extends java.lang.Object {
+
+    public void <init>() {
+        entry:
+            aload_0
+            invokespecial java.lang.Object#void <init>()
+        exit:
+            return
+    }
+
+    public static void main(java.lang.String[]) {
+        entry:
+            iconst_0
+            iconst_1
+
+            if_icmpeq impossible
+
+            iconst_2
+            istore_1
+
+            goto exit
+
+        impossible:
+            iconst_3
+            istore_1
+
+        exit:
+            getstatic java.lang.System#java.io.PrintStream out
+            iload_1
+            invokevirtual java.io.PrintStream#void println(int)
+
+            return
+    }
+}

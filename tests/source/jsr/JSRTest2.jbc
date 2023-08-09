@@ -1,0 +1,40 @@
+// A test for simply using jsr instructions as gotos by popping the return address off the stack
+version 1.5;
+public class JSRTest2 extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            bipush 100
+            istore_1
+            jsr jsr_loop_entry
+
+        jsr_loop_entry:
+            pop // Pop the return address off the stack
+            iinc 1 -1 // Decrement the loop counter
+
+            getstatic java.lang.System#java.io.PrintStream out
+            iload_1
+            invokevirtual java.io.PrintStream#void println(int)
+
+            iload_1
+            bipush 0
+            if_icmple jsr_loop_continue
+            goto exit
+
+        jsr_loop_continue:
+            jsr jsr_loop_entry
+
+        exit:
+            return
+    }
+
+    public void <init>() {
+        entry:
+            aload_0
+            invokespecial java.lang.Object#void <init>()
+        exit:
+            return
+    }
+
+}
+

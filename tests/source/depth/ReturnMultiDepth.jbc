@@ -1,0 +1,20 @@
+version 11;
+
+/**
+ * You can return from a method with any size of stack (unless the return requires an item on it).
+ * Jumps directly to a return instruction can create issues with depth therefore, as kirjava's assembler verified that
+ * all paths to a block entry have the same depth, though in actuality this it is still perfectly valid to be jumping to
+ * the return instruction with different stack sizes.
+ */
+public class ReturnMultiDepth {
+    public static void main(java.lang.String[]) {
+        entry:
+            iconst_0
+            dup
+            ifeq exit
+            pop
+
+        exit:
+            return
+    }
+}

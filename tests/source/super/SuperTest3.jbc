@@ -1,0 +1,45 @@
+version 11;
+public class SuperTest3 extends SuperTest2 {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            new SuperTest3
+            dup
+            invokespecial SuperTest3#void <init>()
+            astore_1
+
+        exit:
+            return
+    }
+
+    public void <init>() {
+        entry:
+            aload_0
+            iconst_5
+            invokespecial SuperTest2#void <init>(int)
+
+            getstatic java.lang.System#java.io.PrintStream out
+            ldc "===== SuperTest3 ====="
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+
+            getstatic java.lang.System#java.io.PrintStream out
+            aload_0
+            invokespecial SuperTest3#java.lang.String test2()
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+
+            getstatic java.lang.System#java.io.PrintStream out
+            aload_0
+            invokespecial SuperTest1#java.lang.String test2()
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+
+        exit:
+            return
+    }
+
+    public java.lang.String test2() {
+        entry:
+            ldc "SuperTest3"
+        exit:
+            areturn
+    }
+}
