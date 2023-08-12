@@ -202,7 +202,7 @@ class _Integer(Primitive, OneWord):
     def mergeable(self, other: "Type") -> bool:
         # int_t.mergeable(byte_t) -> True
         # byte_t.mergeable(int_t) -> False
-        return self is int_t  # and isinstance(other, _Integer)
+        return self is int_t and isinstance(other, _Integer)
 
     def as_vtype(self) -> "_Integer":
         return int_t

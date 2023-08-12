@@ -28,7 +28,7 @@ class Entry:
     A type entry in a stack frame.
     """
 
-    __slots__ = ("merges", "_type", "parent", "_consumers", "_producers", "_constraints")
+    __slots__ = ("merges", "_type", "parent", "source", "_consumers", "_constraints")
 
     @property
     def type(self) -> Type:
@@ -37,12 +37,13 @@ class Entry:
         """
 
         types = {self._type}
-        constraints = set()
+        constraints = self._constraints.copy()
 
         for entry in self._iter_merges():
             constraints.update(entry._constraints)
         for constraint in constraints:
-            if constraint.original:
+            # Not sure how an abstract original type could occur, but better safe than sorry.
+            if constraint.original and not constraint.type.abstract:
                 types.add(constraint.type)
 
         types.remove(self._type)
@@ -86,9 +87,11 @@ class Entry:
 
         producers = []
 
-        for entry in self._iter_merges_and_parents():
-            producers.extend(entry._producers)
-        producers.extend(self._producers)
+        for entry in self._iter_merges():
+            if entry.source is not None:
+                producers.append(entry.source)
+        if self.source is not None:
+            producers.append(self.source)
 
         return tuple(producers)
 
@@ -136,10 +139,10 @@ class Entry:
         constraints.add(type_)
         return vtype, constraints
 
-    def __init__(self, type_: Type, origin: Optional[Source] = None, parent: Optional["Entry"] = None) -> None:
+    def __init__(self, type_: Type, source: Optional[Source] = None, parent: Optional["Entry"] = None) -> None:
         """
         :param type_: The type of this entry.
-        :param origin: The source that created this entry.
+        :param source: The source that created this entry.
         :param parent: The parent entry.
         """
 
@@ -148,13 +151,10 @@ class Entry:
         self.merges: Set[Entry] = set()
 
         self.parent = parent
+        self.source = source
         self._consumers: List[Source] = []
-        self._producers: List[Source] = []
 
-        if origin is not None:
-            self._producers.append(origin)
-
-        self._constraints = set(Entry.Constraint(constraint, origin, original=True) for constraint in constraints)
+        self._constraints = set(Entry.Constraint(constraint, source, original=True) for constraint in constraints)
 
         # self._hash = hash((self.type, self.origin))
 
@@ -235,7 +235,7 @@ class Entry:
                     break
                 yield entry
 
-    def constrain(self, type_: Type, source: Optional[Source] = None) -> bool:
+    def constrain(self, type_: Type, source: Optional[Source] = None, *, original: bool = False) -> bool:
         """
         Adds a type constraint to this entry.
 
@@ -249,7 +249,7 @@ class Entry:
         # https://stackoverflow.com/questions/27427067/python-how-to-check-if-an-item-was-added-to-a-set-without-2x-hash-lookup
         # Honestly not sure how much faster this is, but I'll give it a shot since I've been doing a similar thing with
         # dictionaries.
-        constraint = Entry.Constraint(type_, source)
+        constraint = Entry.Constraint(type_, source, original=original)
         length = len(self._constraints)
         self._constraints.add(constraint)
         return len(self._constraints) != length
@@ -286,7 +286,7 @@ class Entry:
 
         __slots__ = ("type", "source", "original", "_hash")
 
-        def __init__(self, type_: Type, source: Optional[Source] = None, *, original: bool = False) -> None:
+        def __init__(self, type_: Type, source: Optional[Source] = None, original: bool = False) -> None:
             self.type = type_
             self.source = source
             self.original = original
@@ -404,12 +404,13 @@ class Frame:
                 entry = Entry(types.uninitialized_this_t)
             else:
                 entry = Entry(method.class_.get_type())
+            entry.source = cls.Parameter(0, entry.type, method)
             frame.locals[0] = entry
             frame.tracked.add(entry)
             index = 1
 
         for type_ in method.argument_types:
-            frame.locals[index] = Entry(type_)
+            frame.locals[index] = Entry(type_, cls.Parameter(index, type_, method))
             frame.tracked.add(frame.locals[index])
             index += 1
             if type_.wide:
@@ -752,3 +753,36 @@ class Frame:
         """
 
         return self.locals.get(index, self.TOP)
+
+    # ------------------------------ Classes ------------------------------ #
+
+    class Parameter(Source):
+        """
+        Represents a parameter to a method.
+        """
+
+        __slots__ = ("index", "type", "method", "_hash")
+
+        def __init__(self, index: int, type_: Type, method: Method) -> None:
+            self.index = index
+            self.type = type_
+            self.method = method
+
+            self._hash = hash((self.index, self.type, self.method))
+
+        def __repr__(self) -> str:
+            return "<Frame.Parameter(index=%i, type=%s, method=%s)>" % (self.index, self.type, self.method)
+
+        def __str__(self) -> str:
+            return "param %i of %s" % (self.index, self.method)
+
+        def __eq__(self, other: Any) -> bool:
+            return (
+                type(other) is Frame.Parameter and
+                self.method == other.method and
+                self.index == other.index and
+                self.type == other.type
+            )
+
+        def __hash__(self) -> int:
+            return self._hash

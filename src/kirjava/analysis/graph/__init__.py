@@ -86,6 +86,9 @@ class InsnGraph(Graph):
 
         self.source_map: Dict[int, Union[InstructionInBlock, InsnEdge]] = {}
 
+    def __repr__(self) -> str:
+        return "<InsnGraph(blocks=%i, edges=%i)> at %x" % (len(self._blocks), len(self._forward_edges), id(self))
+
     def copy(self, *, deep: bool = True) -> "InsnGraph":
         """
         Creates a copy of this instruction graph.
@@ -294,7 +297,7 @@ class InsnGraph(Graph):
         self.connect(edge)
         return edge
 
-    def return_(self, from_: InsnBlock, overwrite: bool = False) -> FallthroughEdge:
+    def return_(self, from_: InsnBlock, overwrite: bool = False) -> JumpEdge:
         """
         Creates a fallthrough edge from the given block to the return block.
 
@@ -325,7 +328,7 @@ class InsnGraph(Graph):
         self.connect(edge, overwrite)
         return edge
 
-    def throw(self, from_: InsnBlock, overwrite: bool = False) -> FallthroughEdge:
+    def throw(self, from_: InsnBlock, overwrite: bool = False) -> JumpEdge:
         """
         Creates a fallthrough edge from the given block to the rethrow block.
 

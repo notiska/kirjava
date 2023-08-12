@@ -220,7 +220,8 @@ class IncrementLocalInstruction(Instruction):
 
     def trace(self, context: "Context") -> None:
         entry = context.get(self.index)
-        context.set(self.index, entry, types.int_t)
+        context.constrain(entry, types.int_t)
+        context.set(self.index, types.int_t)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> SetLocalStatement:
     #     old, new = delta.overwrites[self.index]

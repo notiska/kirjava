@@ -110,7 +110,7 @@ class Context:
 
     # ------------------------------ Stack operations ------------------------------ #
 
-    def push(self, entry_or_type: Union[Entry, Type], constraint: Optional[Type] = None) -> None:
+    def push(self, entry_or_type: Union[Entry, Type], constraint: Optional[Type] = None) -> Entry:
         """
         Pushes an entry or type onto the top of the stack.
         This also handles wide types automatically.
@@ -118,14 +118,13 @@ class Context:
         :param entry_or_type: An entry to push or a type used to create an entry.
         :param constraint: A type to constrain the entry to. Different from using Entry.constrain as it will create a
                            child entry if the types cannot be merged.
+        :return: The entry that was pushed to the stack.
         """
 
         if type(entry_or_type) is not Entry:
             entry = Entry(entry_or_type, self.source)
         else:
             entry = entry_or_type
-            if self.source is not None and entry is not Frame.TOP and entry is not Frame.RESERVED:
-                entry._producers.append(self.source)
 
         if constraint is not None:
             added = entry.constrain(constraint, self.source)
@@ -136,6 +135,8 @@ class Context:
         self.__push_direct(entry)  # self._frame.push(entry)
         if entry._type.wide:
             self.__push_direct(Frame.RESERVED)  # self._frame.push(Frame.RESERVED)
+
+        return entry
 
     def pop(self, count: int = 1, *, as_tuple: bool = False) -> Union[Tuple[Entry, ...], Entry]:
         """
@@ -176,8 +177,6 @@ class Context:
             entry = Entry(entry_or_type, self.source)
         else:
             entry = entry_or_type
-            if self.source is not None and entry is not Frame.TOP and entry is not Frame.RESERVED:
-                entry_or_type._producers.append(self.source)
 
         if constraint is not None:
             added = entry.constrain(constraint, self.source)
@@ -211,7 +210,7 @@ class Context:
 
         return entry
 
-    def constrain(self, entry: Entry, constraint: Type) -> None:
+    def constrain(self, entry: Entry, constraint: Type, *, original: bool = False) -> None:
         """
         Constrains an entry to a given type. This is only a "passive" constraint, and will only be checked after the
         has been completed fully.
@@ -222,7 +221,7 @@ class Context:
             # TODO: Maybe do something else with this?
             return
 
-        added = entry.constrain(constraint, self.source)
+        added = entry.constrain(constraint, self.source, original=original)
         if added and not constraint.as_vtype().mergeable(entry._type):
             self.conflicts.add(Trace.Conflict(entry, constraint, self.source))
 
@@ -331,7 +330,7 @@ class Trace:
             )
 
         def __str__(self) -> str:
-            ...  # TODO
+            return "%s (-> %s)" % (self.jsr_edge, self.ret_edge.copy(to=self.exit_block))
 
 
 from . import graph

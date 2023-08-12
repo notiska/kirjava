@@ -39,7 +39,8 @@ class ArrayLoadInstruction(Instruction):
         context.constrain(context.pop(), types.int_t)
         entry = context.pop()
         context.constrain(entry, self.type)
-        context.push(self.type.element)
+        entry = context.push(self.type.element.as_vtype())
+        context.constrain(entry, self.type.element, original=True)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
     #     offset = self.type_.internal_size if self.type_ is not None else 1
