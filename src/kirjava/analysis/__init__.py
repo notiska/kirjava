@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from . import frame
 from .frame import *
 from ..abc import Method, Source
-from ..types import Type, Verification
+from ..types import reserved_t, Type, Verification
 
 if typing.TYPE_CHECKING:
     from .graph import InsnBlock, InsnGraph, JsrJumpEdge, RetEdge
@@ -134,7 +134,7 @@ class Context:
 
         self.__push_direct(entry)  # self._frame.push(entry)
         if entry._type.wide:
-            self.__push_direct(Frame.RESERVED)  # self._frame.push(Frame.RESERVED)
+            self.__push_direct(Entry(reserved_t, self.source))  # self._frame.push(Frame.RESERVED)
 
         return entry
 
@@ -153,8 +153,7 @@ class Context:
             for entry in entries:
                 if entry is Frame.TOP:
                     break
-                elif entry is not Frame.RESERVED:
-                    entry._consumers.append(self.source)
+                entry._consumers.append(self.source)
 
         if count == 1 and not as_tuple:
             return entries[0]
@@ -186,7 +185,7 @@ class Context:
 
         self.__set_direct(index, entry)  # self._frame.set(index, entry)
         if entry._type.wide:
-            self.__set_direct(index + 1, Frame.RESERVED)  # self._frame.set(index + 1, Frame.RESERVED)
+            self.__set_direct(index + 1, Entry(reserved_t, self.source))  # self._frame.set(index + 1, Frame.RESERVED)
 
         self.local_defs.add(index)
 
@@ -198,7 +197,7 @@ class Context:
         """
 
         entry = self.__get_direct(index)  # self._frame.get(index)
-        if self.source is not None and entry is not Frame.TOP and entry is not Frame.RESERVED:
+        if self.source is not None and entry is not Frame.TOP:
             entry._consumers.append(self.source)
 
         # If the local has already been overwritten then don't add it to the reads. The better solution would be storing
@@ -217,7 +216,7 @@ class Context:
         """
 
         # We don't want to add constraints to these as they are class fields.
-        if entry is Frame.TOP or entry is Frame.RESERVED:
+        if entry is Frame.TOP:
             # TODO: Maybe do something else with this?
             return
 

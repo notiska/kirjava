@@ -16,7 +16,8 @@ from .. import types
 from ..abc import Method, Source
 from ..error import MergeDepthError, MergeMissingLocalError
 from ..types import (
-    array_t, null_t, object_t, reference_t, top_t, Array, Class, Reference, Type, Uninitialized, Verification,
+    array_t, null_t, object_t, reference_t, reserved_t, top_t, uninitialized_this_t, void_t,
+    Array, Class, Reference, Type, Uninitialized, Verification,
 )
 
 if typing.TYPE_CHECKING:
@@ -387,8 +388,7 @@ class Frame:
 
     __slots__ = ("stack", "locals", "tracked", "max_stack", "max_locals")
 
-    TOP      = Entry(types.top_t)
-    RESERVED = Entry(types.reserved_t)  # FIXME: Remove, creates issues.
+    TOP = Entry(top_t)
 
     @classmethod
     def initial(cls, method: Method) -> "Frame":
@@ -400,8 +400,8 @@ class Frame:
         index = 0
 
         if not method.is_static:
-            if method.name == "<init>" and method.return_type == types.void_t:  # and method.class_.is_super:
-                entry = Entry(types.uninitialized_this_t)
+            if method.name == "<init>" and method.return_type == void_t:  # and method.class_.is_super:
+                entry = Entry(uninitialized_this_t)
             else:
                 entry = Entry(method.class_.get_type())
             entry.source = cls.Parameter(0, entry.type, method)
@@ -410,11 +410,14 @@ class Frame:
             index = 1
 
         for type_ in method.argument_types:
-            frame.locals[index] = Entry(type_, cls.Parameter(index, type_, method))
+            source = cls.Parameter(index, type_, method)
+            frame.locals[index] = Entry(type_, source)
             frame.tracked.add(frame.locals[index])
             index += 1
+
             if type_.wide:
-                frame.locals[index] = cls.RESERVED
+                frame.locals[index] = Entry(reserved_t, source)
+                frame.tracked.add(frame.locals[index])
                 index += 1
 
         frame.max_locals = index
@@ -473,9 +476,8 @@ class Frame:
                 new_entry.merges.add(old_entry)
                 old_entry.merges.add(new_entry)
 
-            # Just in case these are in the tracked entries, we'll make sure that they remain the exact same.
+            # Just in case this is in the tracked entries, we'll make sure that it remains the exact same.
             copied[self.TOP] = self.TOP
-            copied[self.RESERVED] = self.RESERVED
 
             frame.stack.extend(copied[entry] for entry in self.stack)
             frame.locals.update({index: copied[entry] for index, entry in self.locals.items()})

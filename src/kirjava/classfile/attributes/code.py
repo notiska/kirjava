@@ -21,9 +21,6 @@ from ...constants import Class as ClassConstant, UTF8
 from ...source import InstructionAtOffset
 from ...types import (
     descriptor,
-    # I did a performance analysis and StackMapTable._read_verification_type had the most CPU time by far, most likely
-    # due to how many times it's called, so I've decided to import these directly instead of referencing them via
-    # types.<...> as it's faster, and any performance savings are welcome.
     double_t, float_t, int_t, long_t, null_t, reserved_t, top_t, uninitialized_this_t,
     Array, Class as ClassType, Uninitialized, Verification,
 )
@@ -203,8 +200,6 @@ class StackMapTable(AttributeInfo):
         def _make_entry(self, type_: Verification, code: Optional["Code"]) -> Entry:
             if type_ is top_t:
                 return Frame.TOP
-            elif type_ is reserved_t:
-                return Frame.RESERVED
 
             if code is not None and type(type_) is Uninitialized and type(type_.source) is Offset:
                 # We need to convert the Offsets to InstructionAtOffsets as those are used in the analyser.
@@ -296,7 +291,7 @@ class StackMapTable(AttributeInfo):
             frame.pop(len(frame.stack))
             frame.push(self._make_entry(self.stack_item, code))
             if self.stack_item.wide:
-                frame.push(frame.RESERVED)
+                frame.push(self._make_entry(reserved_t, code))
             return frame
 
     class SameLocals1StackItemFrameExtended(StackMapFrame):  # Uh, yeah lmao
@@ -341,7 +336,7 @@ class StackMapTable(AttributeInfo):
             frame.pop(len(frame.stack))
             frame.push(self._make_entry(self.stack_item, code))
             if self.stack_item.wide:
-                frame.push(frame.RESERVED)
+                frame.push(self._make_entry(reserved_t, code))
             return frame
 
     class ChopFrame(StackMapFrame):
@@ -460,7 +455,7 @@ class StackMapTable(AttributeInfo):
                 frame.set(index, self._make_entry(type_, code))
                 index += 1
                 if type_.wide:
-                    frame.set(index, frame.RESERVED)
+                    frame.set(index, self._make_entry(reserved_t, code))
                     index += 1
 
             return frame
@@ -528,13 +523,13 @@ class StackMapTable(AttributeInfo):
                 frame.set(index, self._make_entry(type_, code))
                 index += 1
                 if type_.wide:
-                    frame.set(index, frame.RESERVED)
+                    frame.set(index, self._make_entry(reserved_t, code))
                     index += 1
 
             for type_ in self.stack:
                 frame.push(self._make_entry(type_, code))
                 if type_.wide:
-                    frame.push(frame.RESERVED)
+                    frame.push(self._make_entry(reserved_t, code))
 
             return frame
 
