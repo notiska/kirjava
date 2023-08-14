@@ -28,7 +28,7 @@ from ...instructions.jvm import (
     ConditionalJumpInstruction, JumpInstruction, SwitchInstruction,
     LoadLocalInstruction, StoreLocalInstruction,
 )
-from ...types import Reference
+from ...types import reserved_t, top_t, uninitialized_this_t, Reference
 
 if typing.TYPE_CHECKING:
     from . import InsnGraph
@@ -111,7 +111,7 @@ def assemble(
                 order_block = True
                 break
         else:
-            order_block = True
+            order_block = block is not graph.return_block and block is not graph.rethrow_block
 
         if order_block:
             order.append(block)
@@ -632,31 +632,221 @@ def assemble(
     #                    Generate stackmap table                   #
     # ------------------------------------------------------------ #
 
-    if compute_frames:
+    if compute_frames and len(written) > 1:
         stackmap_table = StackMapTable(code)
         code.stackmap_table = stackmap_table
 
         dead_blocks: Set[InsnBlock] = set()
 
         prev_offset = -1
-        # There should only be one frame for the entry block, if not, something has gone pretty wrong.
-        prev_frame, = trace.entries[graph.entry_block]
+        prev_locals = None
 
-        # FIXME: Only write frames that were jumped to.
         for block, offset in written:
-            offset_delta = offset - (prev_offset + 1)
-            if not offset_delta:  # A block with no instructions, or the entry block (the first frame is implicit).
-                continue
+            offset_delta = offset - prev_offset
+
+            if block is not graph.entry_block:
+                # If this block is not jumped to then there's no need to write a stackmap frame for it. This is simply a
+                # measure to save space.
+                # FIXME: Test with inline blocks too?
+                for edge in graph.in_edges(block):
+                    if not isinstance(edge, FallthroughEdge):
+                        break
+                else:
+                    continue
+
+                # AKA a block with no instructions. We do have to be careful though as it may be the entry block, which we
+                # do want to have a frame for (though we don't need to write it as the first frame is implicit).
+                if not offset_delta:
+                    continue
+
+            prev_offset = offset
+            offset_delta -= 1  # Another space saving measure by the JVM.
 
             entries = trace.entries.get(block)
-            if not entries:
+            if not entries:  # FIXME: Determine entry constraints or nop instructions (probably will do the latter).
                 dead_blocks.add(block)
                 continue
 
-            # print(offset_delta, block)
-            # for frame in entries:
-            #     print("[", ", ".join(str(set(map(repr, entry.inferred_types))) for entry in frame.stack), "]")
-            #     print("{", ", ".join("%i=%s" % (index, set(map(repr, entry.inferred_types))) for index, entry in frame.locals.items()), "}")
+            skip = False
+            live = trace.pre_liveness[block]
+
+            frame, *_ = entries
+
+            # If there is an uninitialized this type in the locals, no matter if it's live, we still need to declare it.
+            # Info obtained from ProGuard so credit to them.
+            # https://github.com/Guardsquare/proguard-core/blob/master/base/src/main/java/proguard/preverify/CodePreverifier.java#L296C1-L300C80
+            for index, entry in frame.locals.items():
+                if entry._type is uninitialized_this_t:  # Use of ._type is for performance and accuracy.
+                    live.add(index)
+
+            stack_depth = len(frame.stack)
+            max_local = max(live) + 1 if live else 0  # TODO: uninit_this_t needs to be accounted for no matter what
+
+            stack = []
+            locals_ = []
+
+            for entry in frame.stack:
+                stack.append(entry.inference())
+            for index in range(max_local):
+                if not index in live:
+                    locals_.append({top_t})
+                    continue
+                entry = frame.locals.get(index)
+                # This is invalid yes, but if do_raise=True then the error will have been raised prior to this, so the
+                # best we can do at this point is guess.
+                if entry is None:
+                    locals_.append({top_t})
+                    continue
+                locals_.append(entry.inference())
+
+            for frame in entries[1:]:
+                if len(frame.stack) != stack_depth:
+                    # Again, another case where do_raise=True would've caught this earlier. We will have to skip over
+                    # this frame fully though if we encounter this.
+                    skip = True
+                    break
+
+                # FIXME: Are merges between uninitialized_this_ts actually valid? Might have to substitute for a top_t.
+                for index, entry in frame.locals.items():
+                    if entry._type is uninitialized_this_t:
+                        live.add(index)
+
+                for index, entry in enumerate(frame.stack):
+                    stack[index].update(entry.inference())
+
+                for index in range(max_local):
+                    if not index in live:
+                        continue
+                    entry = frame.locals.get(index)
+                    if entry is None:
+                        continue
+                    locals_[index].update(entry.inference())
+
+            if skip:
+                continue
+
+            for index, types in enumerate(stack):
+                valid = []
+                invalid = False
+
+                types = list(types)
+                while types:
+                    vtype = types.pop().as_vtype()
+                    for type_ in types:
+                        if not vtype.mergeable(type_) and not type_.mergeable(vtype):
+                            invalid = True
+                            break
+                    else:
+                        valid.append(vtype)
+
+                # This may appear to be a somewhat cheap way of handling these situations, but in actuality it's more
+                # nuanced. To demonstrate this, here's an example (this is based off information xxDark gave me, so
+                # credits to him):
+                #  entry:
+                #   aconst_null
+                #   ifnull push_ints
+                # push_double:
+                #  dconst_0
+                #  goto combine
+                # push_ints:
+                #  iconst_0
+                #  iconst_0
+                # combine:
+                #  pop2
+                #  return
+                # In this case, the merge conflict would be at the combine label, however note that the pop2 instruction
+                # does not care what type is on the stack, so you can somewhat trick the verifier into thinking that this
+                # is valid bytecode. If any other usage that didn't fit this criteria was used then we previously
+                # would've reported the error as a type conflict (if do_raise=True).
+                # As a sidenote: jdk11 doesn't seem to fall for this trick.
+                if invalid:
+                    stack[index] = top_t
+                    continue
+                elif len(valid) == 1:
+                    stack[index], = valid
+                    continue
+
+                ...  # TODO: Merge common supertypes?
+                raise NotImplementedError("Cannot merge common supertypes yet.")
+
+            for index, types in enumerate(locals_):
+                valid = []
+                invalid = False
+
+                types = list(types)
+                while types:
+                    vtype = types.pop().as_vtype()
+                    for type_ in types:
+                        if not vtype.mergeable(type_) and not type_.mergeable(vtype):
+                            invalid = True
+                            break
+                    else:
+                        valid.append(vtype)
+
+                # Unfortunately the same logic about invalid types on the stack cannot really be applied to the
+                # locals as they are read to and written from via typed instructions, but we'll still try our best.
+                if invalid:
+                    locals_[index] = top_t
+                    continue
+                elif len(valid) == 1:
+                    locals_[index], = valid
+                    continue
+
+                ...  # TODO: Merge common supertypes
+                raise NotImplementedError("Cannot merge common supertypes yet.")
+
+            # Reserved types are implicit when dealing with the stack map table, so we need to remove all of them.
+            stack = [type_ for type_ in stack if type_ is not reserved_t]
+            locals_ = [type_ for type_ in locals_ if type_ is not reserved_t]
+            # while reserved_t in stack:
+            #     stack.remove(reserved_t)
+            # while reserved_t in locals_:
+            #     locals_.remove(reserved_t)
+
+            if block is graph.entry_block:  # As stated above, no need to write this frame.
+                prev_offset = -1
+                prev_locals = locals_
+                continue
+
+            # print(offset, offset_delta, block)
+            # print("[", ", ".join(map(str, stack)), "]")
+            # print("[", ", ".join(map(str, locals_)), "]")
+
+            stackmap_frame = StackMapTable.FullFrame(offset_delta, locals_, stack)
+
+            if not compress_frames:
+                stackmap_table.frames.append(stackmap_frame)
+                continue
+
+            locals_delta = len(locals_) - len(prev_locals)
+            same_locals = not locals_delta and locals_ == prev_locals
+
+            if same_locals:
+                if not stack:
+                    stackmap_frame = (
+                        StackMapTable.SameFrame(offset_delta)
+                        if offset_delta < 64 else
+                        StackMapTable.SameFrameExtended(offset_delta)
+                    )
+                elif len(stack) == 1:
+                    stackmap_frame = (
+                        StackMapTable.SameLocals1StackItemFrame(offset_delta, stack[0])
+                        if offset_delta < 64 else
+                        StackMapTable.SameLocals1StackItemFrameExtended(offset_delta, stack[0])
+                    )
+
+            elif locals_delta in range(-3, 1) and locals_ == prev_locals[:locals_delta]:
+                stackmap_frame = StackMapTable.ChopFrame(offset_delta, -locals_delta)
+
+            elif locals_delta in range(0, 4) and locals_[:-locals_delta] == prev_locals:
+                stackmap_frame = StackMapTable.AppendFrame(offset_delta, tuple(locals_[-locals_delta:]))
+
+            prev_locals = locals_
+
+            stackmap_table.frames.append(stackmap_frame)
+
+        if not stackmap_table:
+            code.stackmap_table = None
 
     # ------------------------------------------------------------ #
     #                        Add debug info                        #
@@ -668,5 +858,7 @@ def assemble(
 
         for offset, line_number in line_numbers.items():
             line_number_table.entries.append(LineNumberTable.LineNumberEntry(offset, line_number))
+
+    # TODO: LVT and LVTT
 
     return code

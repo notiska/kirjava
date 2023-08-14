@@ -10,6 +10,7 @@ Abstract base classes for graph representations of methods.
 
 import logging
 import typing
+from collections import defaultdict
 from typing import Any, Dict, Iterator, Optional, Set, Tuple
 
 from .source import Source
@@ -187,14 +188,14 @@ class Graph:
         self.return_block = return_block
         self.rethrow_block = rethrow_block
 
-        self._blocks: Dict[int, Block] = {}
-        self._forward_edges: Dict[Block, Set[Edge]] = {}  # Blocks to their out edges (faster lookup)
-        self._backward_edges: Dict[Block, Set[Edge]] = {}  # Blocks to their in edges
+        self._blocks: Dict[int, Block] = {
+            entry_block.label: entry_block,
+            return_block.label: return_block,
+            rethrow_block.label: rethrow_block,
+        }
+        self._forward_edges: Dict[Block, Set[Edge]] = defaultdict(set)  # Blocks to their out edges (faster lookup)
+        self._backward_edges: Dict[Block, Set[Edge]] = defaultdict(set)  # Blocks to their in edges
         self._opaque_edges: Set[Edge] = set()  # Edges whose jump targets we don't know yet
-
-        self.add(entry_block, check=False)
-        self.add(return_block, check=False)
-        self.add(rethrow_block, check=False)
 
     def __iter__(self) -> Iterator[Block]:
         return iter(self._blocks.values())
@@ -252,8 +253,8 @@ class Graph:
                 raise ValueError("Cannot add rethrow block %r to this graph." % block)
 
         self._blocks[block.label] = block
-        self._forward_edges[block] = set()
-        self._backward_edges[block] = set()
+        # self._forward_edges[block] = set()
+        # self._backward_edges[block] = set()
 
     def remove(self, block: Block, *, check: bool = True) -> None:
         """
@@ -263,7 +264,7 @@ class Graph:
         """
 
         # These blocks cannot be removed, for obvious reasons.
-        if check and (block == self.return_block or block == self.rethrow_block):
+        if check and (block is self.return_block or block is self.rethrow_block):
             raise ValueError("Cannot remove block %r." % block)
 
         try:
@@ -271,17 +272,19 @@ class Graph:
         except KeyError:  # Not in the graph
             raise ValueError("Block %r is not in the graph." % block)
 
-        if block == self.entry_block:
+        if block is self.entry_block:
             self.entry_block = None
 
-        in_edges = self._backward_edges.pop(block)
-        out_edges = self._forward_edges.pop(block)
-        for edge in in_edges:
-            self.disconnect(edge)
-        for edge in out_edges:
-            self.disconnect(edge)
-
-        ...
+        try:
+            for edge in self._backward_edges.pop(block):
+                self.disconnect(edge)
+        except KeyError:
+            ...
+        try:
+            for edge in self._forward_edges.pop(block):
+                self.disconnect(edge)
+        except KeyError:
+            ...
 
     def connect(self, edge: Edge, overwrite: bool = False, *, check: bool = True) -> None:
         """
@@ -305,9 +308,8 @@ class Graph:
             if not edge.to.label in self._blocks:
                 self.add(edge.to)
 
-        forward = self._forward_edges[edge.from_]
-
         if check:
+            forward = self._forward_edges[edge.from_]
             conflicts = set()
 
             if edge.limit is None:
@@ -325,11 +327,10 @@ class Graph:
                         raise ValueError("Cannot add edge %r, limit of %i reached. Use overwrite=True." % (edge, edge.limit))
                 forward.add(edge)
         else:
-            forward.add(edge)
+            self._forward_edges[edge.from_].add(edge)
 
         if edge.to is not None:
-            backward = self._backward_edges[edge.to]
-            backward.add(edge)
+            self._backward_edges[edge.to].add(edge)
         else:
             self._opaque_edges.add(edge)
 
@@ -343,15 +344,16 @@ class Graph:
         # self._blocks.setdefault(edge.from_.label, edge.from_)
         # self._blocks.setdefault(edge.to.label, edge.to)
 
-        forward = self._forward_edges.get(edge.from_)
-
-        if forward is not None and edge in forward:
-            forward.remove(edge)
+        try:
+            self._forward_edges[edge.from_].remove(edge)
+        except KeyError:  # It's just faster lol
+            ...
 
         if edge.to is not None:
-            backward = self._backward_edges.get(edge.to)
-            if backward is not None and edge in backward:
-                backward.remove(edge)
+            try:
+                self._backward_edges[edge.to].remove(edge)
+            except KeyError:
+                ...
         else:
             self._opaque_edges.remove(edge)
 

@@ -80,7 +80,7 @@ class Type:
 
         # top_t.mergeable(int_t) -> True
         # int_t.mergeable(top_t) -> False
-        return self == other or (type(other) is not type(self) and isinstance(other, type(self)))
+        return self == other or (self.abstract and type(other) is not type(self) and isinstance(other, type(self)))
 
     def as_vtype(self) -> "Verification":
         """

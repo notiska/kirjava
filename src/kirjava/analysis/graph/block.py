@@ -98,17 +98,17 @@ class InsnBlock(Block):
         return bool(self._instructions)
 
     def copy(self, label: Optional[int] = None, deep: bool = True) -> "InsnBlock":
-        new_block = type(self).__new__(type(self))
-        new_block.label = self.label if label is None else label
-        new_block.inline = self.inline
-        new_block._instructions = []
+        block = InsnBlock.__new__(InsnBlock)
+        block.label = self.label if label is None else label
+        block.inline = self.inline
+        block._instructions = []
 
         if not deep:
-            new_block._instructions.extend(self._instructions)
+            block._instructions.extend(self._instructions)
         else:
-            new_block._instructions.extend([instruction.copy() for instruction in self._instructions])
+            block._instructions.extend([instruction.copy() for instruction in self._instructions])
 
-        return new_block
+        return block
 
     def trace(self, context: "Context") -> None:
         for index, instruction in enumerate(self._instructions):
@@ -234,6 +234,9 @@ class InsnReturnBlock(ReturnBlock, InsnBlock):
     def __repr__(self) -> str:
         return "<InsnReturnBlock() at %x>" % id(self)
 
+    def copy(self, label: Optional[int] = None, deep: bool = True) -> "InsnReturnBlock":
+        return InsnReturnBlock()
+
 
 class InsnRethrowBlock(RethrowBlock, InsnBlock):
     """
@@ -242,3 +245,6 @@ class InsnRethrowBlock(RethrowBlock, InsnBlock):
 
     def __repr__(self) -> str:
         return "<InsnRethrowBlock() at %x>" % id(self)
+
+    def copy(self, label: Optional[int] = None, deep: bool = True) -> "InsnRethrowBlock":
+        return InsnRethrowBlock()

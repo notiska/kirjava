@@ -37,21 +37,11 @@ class Entry:
         :return: The type of this local. May change over time.
         """
 
-        types = {self._type}
-        constraints = self._constraints.copy()
-
-        for entry in self._iter_merges():
-            constraints.update(entry._constraints)
-        for constraint in constraints:
-            # Not sure how an abstract original type could occur, but better safe than sorry.
-            if constraint.original and not constraint.type.abstract:
-                types.add(constraint.type)
-
-        types.remove(self._type)
-        if len(types) == 1:
-            for type_ in types:
-                return type_
-        return self._type  # Can't narrow down the type without any extra information.
+        types = self.inference()
+        if len(types) > 1:
+            return self._type  # Can't narrow down the type without any extra information.
+        for type_ in types:
+            return type_
 
     @property
     def parents(self) -> Tuple["Entry", ...]:
@@ -180,20 +170,19 @@ class Entry:
         """
 
         visited = {self}
-        stack = [(self, iter(self.merges))]
+        stack = [iter(self.merges)]
 
         while stack:
-            entry, merges = stack[-1]
-            try:
-                entry = next(merges)
+            merges = stack[-1]
+            for entry in merges:
                 if entry in visited:
                     continue
                 visited.add(entry)
-            except StopIteration:
+                stack.append(iter(entry.merges))
+                yield entry
+                break
+            else:
                 stack.pop()
-                continue
-            stack.append((entry, iter(entry.merges)))
-            yield entry
 
     def _iter_parents(self) -> Iterator["Entry"]:
         """
@@ -211,30 +200,53 @@ class Entry:
         """
 
         visited = {self}
-        stack = [(self, iter(self.merges))]
+        stack = [iter(self.merges)]
 
         # Too lazy to copy-paste code from right above :p. How much slower can it really be?
         yield from self._iter_parents()
 
         while stack:
-            entry, merges = stack[-1]
-            try:
-                entry = next(merges)
+            merges = stack[-1]
+            for entry in merges:
                 if entry in visited:
                     continue
                 visited.add(entry)
-            except StopIteration:
-                stack.pop()
-                continue
-
-            stack.append((entry, iter(entry.merges)))
-            yield entry
-
-            while entry.parent is not None:
-                entry = entry.parent
-                if entry in visited:
-                    break
+                stack.append(iter(entry.merges))
                 yield entry
+
+                while entry.parent is not None:
+                    entry = entry.parent
+                    if entry in visited:
+                        break
+                    # visited.add(entry)
+                    yield entry
+
+                break
+            else:
+                stack.pop()
+
+    # ------------------------------ Public API ------------------------------ #
+
+    def inference(self) -> Set[Type]:
+        """
+        :return: A set of types this entry could be.
+        """
+
+        types = {self._type}
+        constraints = self._constraints.copy()
+
+        for entry in self._iter_merges():
+            constraints.update(entry._constraints)
+        for constraint in constraints:
+            if constraint.original:  # and not constraint.type.abstract:
+                types.add(constraint.type)
+
+        if len(types) > 1 and self._type is object_t:
+            types.remove(self._type)
+
+        return types
+
+    # ------------------------------ Trace methods ------------------------------ #
 
     def constrain(self, type_: Type, source: Optional[Source] = None, *, original: bool = False) -> bool:
         """
@@ -247,13 +259,11 @@ class Entry:
 
         if type_ is self._type:  # TODO: Profile, faster?
             return True
-        # https://stackoverflow.com/questions/27427067/python-how-to-check-if-an-item-was-added-to-a-set-without-2x-hash-lookup
-        # Honestly not sure how much faster this is, but I'll give it a shot since I've been doing a similar thing with
-        # dictionaries.
         constraint = Entry.Constraint(type_, source, original=original)
-        length = len(self._constraints)
+        if constraint in self._constraints:
+            return False
         self._constraints.add(constraint)
-        return len(self._constraints) != length
+        return True
 
     def cast(self, type_: Type, source: Optional[Source] = None) -> "Entry":
         """
@@ -280,6 +290,8 @@ class Entry:
 
         return entry
 
+    # ------------------------------ Classes ------------------------------ #
+
     class Constraint:
         """
         A type constraint with an optional source.
@@ -303,8 +315,8 @@ class Entry:
         def __eq__(self, other: Any) -> bool:
             return (
                 type(other) is Entry.Constraint and
-                self.type == other.type and
                 self.source == other.source and
+                self.type == other.type and
                 self.original == other.original
             )
 
@@ -401,22 +413,21 @@ class Frame:
 
         if not method.is_static:
             if method.name == "<init>" and method.return_type == void_t:  # and method.class_.is_super:
-                entry = Entry(uninitialized_this_t)
+                entry = Entry(uninitialized_this_t, cls.Parameter(0, uninitialized_this_t, method))
             else:
-                entry = Entry(method.class_.get_type())
-            entry.source = cls.Parameter(0, entry.type, method)
+                type_ = method.class_.get_type()
+                entry = Entry(type_, cls.Parameter(0, type_, method))
             frame.locals[0] = entry
             frame.tracked.add(entry)
             index = 1
 
         for type_ in method.argument_types:
-            source = cls.Parameter(index, type_, method)
-            frame.locals[index] = Entry(type_, source)
+            frame.locals[index] = Entry(type_, cls.Parameter(index, type_, method))
             frame.tracked.add(frame.locals[index])
             index += 1
 
             if type_.wide:
-                frame.locals[index] = Entry(reserved_t, source)
+                frame.locals[index] = Entry(reserved_t, cls.Parameter(index - 1, type_, method))
                 frame.tracked.add(frame.locals[index])
                 index += 1
 
@@ -510,10 +521,10 @@ class Frame:
         :return: Is this a valid merge?
         """
 
-        valid = True
-
         if live_locals is None:
             live_locals = self.locals.keys()
+
+        valid = True
 
         # Basic preconditions checks to see if the frame merge is immediately invalid.
         if check_depth and len(self.stack) != len(other.stack):

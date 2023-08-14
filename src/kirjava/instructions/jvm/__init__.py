@@ -145,7 +145,7 @@ class _ReservedInstruction(Instruction):
     """
 
     opcode = -1
-    mnemonic = "_reserved_"
+    mnemonic = "__reserved"
 
     __slots__ = ()
 
@@ -162,10 +162,10 @@ class _ReservedInstruction(Instruction):
         return other is self or type(other) is type(self) or other is type(self)
 
     def __hash__(self) -> int:
-        return hash((self.opcode, self.mnemonic))
+        return self._hash
 
-    def copy(self) -> "Instruction":
-        return self
+    # def copy(self) -> "Instruction":
+    #     return self
 
     def read(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         ...

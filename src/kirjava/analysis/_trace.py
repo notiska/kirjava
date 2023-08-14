@@ -34,7 +34,7 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool) -> None:
     pre_liveness = trace.pre_liveness
     post_liveness = trace.post_liveness
 
-    trace_stack: Deque[Tuple[Frame, InsnBlock, InsnEdge]] = deque()
+    trace_stack: Deque[Tuple[Frame, InsnBlock, Optional[InsnEdge]]] = deque()
     liveness_stack: Deque[InsnEdge] = deque()
     branches: Deque[Tuple[Frame, InsnBlock, InsnEdge]] = deque()
     retraces: List[Tuple[Frame, InsnBlock, InsnEdge]] = []
@@ -42,7 +42,9 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool) -> None:
     uses: Dict[InsnBlock, Set[int]] = defaultdict(set)
     defs: Dict[InsnBlock, Set[int]] = defaultdict(set)
 
-    trace_stack.append((Frame.initial(graph.method), graph.entry_block, None))
+    initial = Frame.initial(graph.method)
+    trace.max_locals = initial.max_locals
+    trace_stack.append((initial, graph.entry_block, None))
 
     # Not actually sure how many passes are needed for some methods, most tend to be 1 to 2 and some cleverly crafted
     # methods (mainly using subroutines) cause up to 5 but I'll put this to a max of 100 to be on the safe side.
@@ -107,7 +109,16 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool) -> None:
 
             traced += 1
 
-            frame = frame.copy(deep=True)
+            # Small optimisation to avoid unnecessary copying of frames. We know that this path can only be taken once
+            # and therefore the entries don't need to be copied (as we won't be needing to merge others into them). This
+            # can save a lot of time on massive methods.
+            if edge is None or len(graph.in_edges(block)) == 1:
+                frame = frame.copy(deep=False)
+                frame.max_stack = 0
+                frame.max_locals = 0
+            else:
+                frame = frame.copy(deep=True)
+
             initial = frame.copy(deep=False)
             entries[block].append(initial)
 

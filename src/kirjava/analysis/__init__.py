@@ -54,11 +54,17 @@ class Context:
         """
 
         self._frame = value
-        # Admittedly this doesn't seem to result in much of a performance difference.
-        self.__push_direct = value.push
-        self.__pop_direct = value.pop
-        self.__set_direct = value.set
-        self.__get_direct = value.get
+
+        if value is not None:
+            self.__push_direct = value.push
+            self.__pop_direct = value.pop
+            self.__set_direct = value.set
+            self.__get_direct = value.get
+        else:
+            self.__push_direct = lambda *args: None
+            self.__pop_direct = lambda *args: None
+            self.__set_direct = lambda *args: None
+            self.__get_direct = lambda *args: None
 
         # self.local_uses = set()
         # self.local_defs = set()
@@ -180,14 +186,14 @@ class Context:
         if constraint is not None:
             added = entry.constrain(constraint, self.source)
             if added and not constraint.mergeable(entry._type):
-                self.constraint.add(Trace.Conflict(entry, constraint, self.source))
+                self.conflicts.add(Trace.Conflict(entry, constraint, self.source))
                 entry = Entry(constraint, self.source, entry)
 
         self.__set_direct(index, entry)  # self._frame.set(index, entry)
+        self.local_defs.add(index)
         if entry._type.wide:
             self.__set_direct(index + 1, Entry(reserved_t, self.source))  # self._frame.set(index + 1, Frame.RESERVED)
-
-        self.local_defs.add(index)
+            self.local_defs.add(index + 1)
 
     def get(self, index: int) -> Entry:
         """
@@ -206,6 +212,11 @@ class Context:
         # subsequent blocks then it's not live again.
         if not index in self.local_defs:
             self.local_uses.add(index)
+            if entry._type.wide:
+                # I wouldn't necessarily consider making the reserved half of the wide type live hacky per-se, it might
+                # seem somewhat unconventional but it does save us a lot of time (and code) when generating stackmap
+                # frames. And tbh, I'm not sure how other libraries handle this lol.
+                self.local_uses.add(index + 1)
 
         return entry
 

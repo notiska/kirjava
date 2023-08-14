@@ -97,40 +97,40 @@ class InsnGraph(Graph):
         :return: The copied graph.
         """
 
-        graph = InsnGraph(self.method)
+        # Ugly but performant.
+        graph = InsnGraph.__new__(InsnGraph)
+        Graph.__init__(
+            graph, self.method,
+            self.entry_block.copy(deep=deep),
+            InsnReturnBlock(),
+            InsnRethrowBlock(),
+        )
 
         blocks = graph._blocks
         forward_edges = graph._forward_edges
         backward_edges = graph._backward_edges
         opaque_edges = graph._opaque_edges
 
-        # We need to remove the entry, return and rethrow blocks as we'll just copy them later.
-        blocks.clear()
-
         for label, block in self._blocks.items():
+            if block is self.entry_block or block is self.return_block or block is self.rethrow_block:
+                continue
             block = block.copy(deep=deep)
             blocks[label] = block
-            forward_edges[block] = set()
-            backward_edges[block] = set()
-
-        graph.entry_block = blocks[self.entry_block.label]
-        graph.return_block = blocks[self.return_block.label]
-        graph.rethrow_block = blocks[self.rethrow_block.label]
 
         for block, edges in self._forward_edges.items():
             block = blocks[block.label]
             new_edges = forward_edges[block]
 
             for edge in edges:
-                if edge.to is None:
+                if edge.to is not None:
+                    edge = edge.copy(from_=block, to=blocks[edge.to.label], deep=deep)
+                    new_edges.add(edge)
+                    backward_edges[edge.to].add(edge)
+
+                else:
                     edge = edge.copy(from_=block, deep=deep)
                     new_edges.add(edge)
                     opaque_edges.add(edge)
-                    continue
-
-                edge = edge.copy(from_=block, to=blocks[edge.to.label], deep=deep)
-                new_edges.add(edge)
-                backward_edges[edge.to].add(edge)
 
         # TODO: Copy the source map too.
 
