@@ -181,19 +181,16 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool) -> None:
         # On top of having edges to the return and rethrow blocks on the liveness stack, we also need to account for things
         # like infinite loops, a contrived example:
         # entry:
-        #  aload_0
-        #  arraylength
-        #  ifeq exit
-        #
-        #  iconst_0
-        #  istore_1
-        #
+        #   aload_0
+        #   arraylength
+        #   ifeq exit
+        #   iconst_0
+        #   istore_1
         # loop:
-        #  iinc 1 1
-        #  goto loop
-        #
+        #   iinc 1 1
+        #   goto loop
         # exit:
-        #  return
+        #   return
         # In this case we won't trace backwards from the loop block as it never reaches the return or rethrow block,
         # as it is itself still a leaf node. The solution to this is adding the "to-visit" branches to the liveness
         # stack. This works as the DFS will visit the loop entry, but not the cyclic edge, which is excellent as we

@@ -742,18 +742,18 @@ def assemble(
                 # This may appear to be a somewhat cheap way of handling these situations, but in actuality it's more
                 # nuanced. To demonstrate this, here's an example (this is based off information xxDark gave me, so
                 # credits to him):
-                #  entry:
+                # entry:
                 #   aconst_null
                 #   ifnull push_ints
                 # push_double:
-                #  dconst_0
-                #  goto combine
+                #   dconst_0
+                #   goto combine
                 # push_ints:
-                #  iconst_0
-                #  iconst_0
+                #   iconst_0
+                #   iconst_0
                 # combine:
-                #  pop2
-                #  return
+                #   pop2
+                #   return
                 # In this case, the merge conflict would be at the combine label, however note that the pop2 instruction
                 # does not care what type is on the stack, so you can somewhat trick the verifier into thinking that this
                 # is valid bytecode. If any other usage that didn't fit this criteria was used then we previously
@@ -835,11 +835,11 @@ def assemble(
                         StackMapTable.SameLocals1StackItemFrameExtended(offset_delta, stack[0])
                     )
 
-            elif locals_delta in range(-3, 1) and locals_ == prev_locals[:locals_delta]:
-                stackmap_frame = StackMapTable.ChopFrame(offset_delta, -locals_delta)
-
-            elif locals_delta in range(0, 4) and locals_[:-locals_delta] == prev_locals:
-                stackmap_frame = StackMapTable.AppendFrame(offset_delta, tuple(locals_[-locals_delta:]))
+            elif not stack and locals_delta:
+                if locals_delta in range(-3, 1) and locals_ == prev_locals[:locals_delta]:
+                    stackmap_frame = StackMapTable.ChopFrame(offset_delta, -locals_delta)
+                elif locals_delta in range(0, 4) and locals_[:-locals_delta] == prev_locals:
+                    stackmap_frame = StackMapTable.AppendFrame(offset_delta, tuple(locals_[-locals_delta:]))
 
             prev_locals = locals_
 

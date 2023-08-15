@@ -87,7 +87,7 @@ class FallthroughEdge(InsnEdge):
     limit = 1
 
     def __repr__(self) -> str:
-        return "<FallthroughEdge(from=%s, to=%s) at %x>" % (self.from_, self.to, id(self))
+        return "<FallthroughEdge(from=%s, to=%s)>" % (self.from_, self.to)
 
     def __str__(self) -> str:
         if self.instruction is None:
@@ -115,7 +115,7 @@ class JumpEdge(InsnEdge):
         super().__init__(from_, to, instruction)
 
     def __repr__(self) -> str:
-        return "<JumpEdge(from=%s, to=%s, instruction=%s) at %x>" % (self.from_, self.to, self.instruction, id(self))
+        return "<JumpEdge(from=%s, to=%s, instruction=%s)>" % (self.from_, self.to, self.instruction)
 
     def __str__(self) -> str:
         return "%s %s -> %s" % (self.instruction, self.from_, self.to)
@@ -131,7 +131,7 @@ class JsrJumpEdge(JumpEdge):
         super().__init__(from_, to, instruction)
 
     def __repr__(self) -> str:
-        return "<JsrJumpEdge(from=%s, to=%s, jump=%s) at %x>" % (self.from_, self.to, self.instruction, id(self))
+        return "<JsrJumpEdge(from=%s, to=%s, jump=%s)>" % (self.from_, self.to, self.instruction)
 
     def __str__(self) -> str:
         return "%s %s -> %s" % (self.instruction, self.from_, self.to)
@@ -147,9 +147,7 @@ class JsrFallthroughEdge(FallthroughEdge):
         super().__init__(from_, to, instruction)
 
     def __repr__(self) -> str:
-        return "<JsrFallthroughEdge(from=%r, to=%r, instruction=%s) at %x>" % (
-            self.from_, self.to, self.instruction, id(self),
-        )
+        return "<JsrFallthroughEdge(from=%r, to=%r, instruction=%s)>" % (self.from_, self.to, self.instruction)
 
     def __str__(self) -> str:
         return "fallthrough %s %s (-> %s)" % (self.instruction, self.from_, self.to)
@@ -167,7 +165,7 @@ class RetEdge(JumpEdge):
         super().__init__(from_, to, instruction)
 
     def __repr__(self) -> str:
-        return "<RetEdge(from=%s, to=%s, instruction=%s) at %x>" % (self.from_, self.to, self.instruction, id(self))
+        return "<RetEdge(from=%s, to=%s, instruction=%s)>" % (self.from_, self.to, self.instruction)
 
     def __str__(self) -> str:
         if self.to is not None:
@@ -253,8 +251,8 @@ class SwitchEdge(JumpEdge):
         self._hash = hash((from_, to, instruction.opcode, value))
 
     def __repr__(self) -> str:
-        return "<SwitchEdge(from=%s, to=%s, instruction=%s, value=%s) at %x>" % (
-            self.from_, self.to, self.instruction, self.value, id(self),
+        return "<SwitchEdge(from=%s, to=%s, instruction=%s, value=%s)>" % (
+            self.from_, self.to, self.instruction, self.value,
         )
 
     def __str__(self) -> str:
@@ -326,8 +324,8 @@ class ExceptionEdge(InsnEdge):
         self._hash = hash((from_, to, priority, throwable))
 
     def __repr__(self) -> str:
-        return "<ExceptionEdge(from=%s, to=%s, priority=%i, throwable=%s, inline_coverage=%s) at %x>" % (
-            self.from_, self.to, self.priority, self.throwable, self.inline_coverage, id(self),
+        return "<ExceptionEdge(from=%s, to=%s, priority=%i, throwable=%s, inline_coverage=%s)>" % (
+            self.from_, self.to, self.priority, self.throwable, self.inline_coverage,
         )
 
     def __str__(self) -> str:

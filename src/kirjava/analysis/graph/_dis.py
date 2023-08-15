@@ -277,8 +277,8 @@ def disassemble(
                 # not an accurate representation of what would happen, instead we want to maintain the correctness of
                 # the actual instructions.
                 # An example:
-                #  goto +32767
-                #  return
+                #   goto +32767
+                #   return
                 # In this case, we want to maintain that the return instruction comes directly after the invalid goto.
 
                 to = graph._blocks.get(edge.from_.label + 1)

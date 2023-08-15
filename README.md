@@ -129,23 +129,23 @@ Out[9]:
 
 In [10]: graph.edges
 Out[10]: 
-(<FallthroughEdge(from=block 0, to=block 1) at 7fc10b614a70>,
- <JumpEdge(from=block 0, to=block 2, instruction=ifne) at 7fc10a069c10>,
- <FallthroughEdge(from=block 1, to=block 2) at 7fc10a06b230>,
- <FallthroughEdge(from=block 2, to=block 3) at 7fc10a06ae10>,
- <JumpEdge(from=block 2, to=block 4, instruction=ifgt) at 7fc10a0cadb0>,
- <JumpEdge(from=block 3, to=block 5, instruction=ifeq) at 7fc10a0caed0>,
- <FallthroughEdge(from=block 3, to=block 4) at 7fc10a06b2f0>,
- <JumpEdge(from=block 4, to=return block, instruction=return) at 7fc10a0cb230>,
- <FallthroughEdge(from=block 5, to=block 6) at 7fc10a0caff0>,
- <JumpEdge(from=block 5, to=block 7, instruction=ifeq) at 7fc10a0cb0b0>,
- <JumpEdge(from=block 6, to=return block, instruction=return) at 7fc10a0c8ad0>,
- <JumpEdge(from=block 7, to=return block, instruction=return) at 7fc10a0cb050>)
+(<FallthroughEdge(from=block 0, to=block 1)>,
+ <JumpEdge(from=block 0, to=block 2, instruction=ifne)>,
+ <FallthroughEdge(from=block 1, to=block 2)>,
+ <FallthroughEdge(from=block 2, to=block 3)>,
+ <JumpEdge(from=block 2, to=block 4, instruction=ifgt)>,
+ <JumpEdge(from=block 3, to=block 5, instruction=ifeq)>,
+ <FallthroughEdge(from=block 3, to=block 4)>,
+ <JumpEdge(from=block 4, to=return block, instruction=return)>,
+ <FallthroughEdge(from=block 5, to=block 6)>,
+ <JumpEdge(from=block 5, to=block 7, instruction=ifeq)>,
+ <JumpEdge(from=block 6, to=return block, instruction=return)>,
+ <JumpEdge(from=block 7, to=return block, instruction=return)>)
 ```
 
 #### Editing blocks
 
-Say for example you wanted to change the value `Test.field` from `0` to `17`, you could do this:
+Say for example you wanted to change the value of `Test.field` from `0` to `17`, you could do this:
 
 ```python3
 In [11]: graph[1].remove(kirjava.instructions.iconst_0)
@@ -167,15 +167,15 @@ Now let's edit an edge. Firstly let's find one that we can edit easily for the s
 ```python3
 In [13]: graph.out_edges(graph[2])
 Out[13]: 
-(<FallthroughEdge(from=block 2, to=block 3) at 7fc10a06ae10>,
- <JumpEdge(from=block 2, to=block 4, instruction=ifgt) at 7fc10a0cadb0>)
+(<FallthroughEdge(from=block 2, to=block 3)>,
+ <JumpEdge(from=block 2, to=block 4, instruction=ifgt)>)
 ```
 
 Let's change the `ifgt` instruction into an `iflt` for this example:
 
 ```python3
 In [14]: graph.jump(graph[2], graph[4], kirjava.instructions.iflt)
-Out[14]: <JumpEdge(from=block 2, to=block 4, instruction=iflt) at 7fc10a1dcc50>
+Out[14]: <JumpEdge(from=block 2, to=block 4, instruction=iflt)>
 ```
 
 And, to check:
@@ -183,8 +183,8 @@ And, to check:
 ```python3
 In [15]: graph.out_edges(graph[2])
 Out[15]: 
-(<FallthroughEdge(from=block 2, to=block 3) at 7fc10a06ae10>,
- <JumpEdge(from=block 2, to=block 4, instruction=iflt) at 7fc10a1dcc50>)
+(<FallthroughEdge(from=block 2, to=block 3)>,
+ <JumpEdge(from=block 2, to=block 4, instruction=iflt)>)
 ```
 
 As you can see we've managed to successfully edit the jump condition.  
@@ -229,7 +229,8 @@ In [19]: trace.entries[graph[3]]
 Out[19]: [<Frame(stack=[], locals={0=Test, 1=boolean}) at 7fc109ee7f10>]
 ```
 
-And we can even inspect individual locals further:
+And we can even inspect individual locals further:  
+**Note: Current example of consumers and producers is not accurate.**
 
 ```python3
 In [20]: trace.entries[graph[3]][0].locals

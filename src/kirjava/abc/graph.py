@@ -119,7 +119,7 @@ class Edge(Source):
         self._hash = hash((self.from_, self.to))
 
     def __repr__(self) -> str:
-        return "<%s(from=%s, to=%s) at %x>" % (type(self).__name__, self.from_, self.to, id(self))
+        return "<%s(from=%s, to=%s)>" % (type(self).__name__, self.from_, self.to)
 
     def __str__(self) -> str:
         return "%s -> %s" % (self.from_, self.to)
