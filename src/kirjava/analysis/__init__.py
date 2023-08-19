@@ -8,7 +8,7 @@ __all__ = (
     "JsrJumpEdge", "JsrFallthroughEdge", "RetEdge",
     "ExceptionEdge",
     "InsnGraph",
-    "Context", "Trace",
+    "Trace", "Context",
 )
 
 """
@@ -28,6 +28,115 @@ if typing.TYPE_CHECKING:
     from .graph import InsnBlock, InsnGraph, JsrJumpEdge, RetEdge
 
 
+class Trace:
+    """
+    Trace information for a given method.
+    """
+
+    __slots__ = (
+        "graph",
+        "entries", "exits",
+        "conflicts",
+        "returned",
+        "subroutines",
+        "pre_liveness", "post_liveness",
+        "max_stack", "max_locals",
+    )
+
+    @classmethod
+    def from_graph(cls, graph: "InsnGraph", *, do_raise: bool = True) -> "Trace":
+        """
+        Creates a trace from an instruction graph.
+
+        :param graph: The instruction graph.
+        :param do_raise: Raise an exception if part of the graph is invalid.
+        :return: The trace.
+        """
+
+        self = cls(graph)
+        trace(self, graph, do_raise)
+        return self
+
+    def __init__(self, graph: "InsnGraph") -> None:
+        """
+        :param graph: The graph that was traced.
+        """
+
+        self.graph = graph
+
+        self.entries: Dict["InsnBlock", List[Frame]] = defaultdict(list)
+        self.exits: Dict["InsnBlock", List[Frame]] = defaultdict(list)
+
+        self.conflicts: Set[Trace.Conflict] = set()
+        self.returned: Set[Entry] = set()
+        self.subroutines: List[Trace.Subroutine] = []
+
+        self.pre_liveness: Dict["InsnBlock", Set[int]] = {}
+        self.post_liveness: Dict["InsnBlock", Set[int]] = {}
+
+        self.max_stack = 0
+        self.max_locals = 0
+
+    def __repr__(self) -> str:
+        return "<Trace(entries=%i, exits=%i, conflicts=%i, subroutines=%i, max_stack=%i, max_locals=%i) at %x>" % (
+            len(self.entries), len(self.exits), len(self.conflicts), len(self.subroutines), self.max_stack, self.max_locals, id(self),
+        )
+
+    class Conflict:
+        """
+        A type conflict.
+        """
+
+        __slots__ = ("entry", "expected", "source", "_hash")
+
+        def __init__(self, entry: Entry, expected: Type, source: Optional[Source]) -> None:
+            self.entry = entry
+            self.expected = expected
+            self.source = source
+
+            self._hash = hash((entry, expected, source))
+
+        def __repr__(self) -> str:
+            return "<Trace.Conflict(entry=%s, expected=%s, source=%s)>" % (self.entry, self.expected, self.source)
+
+        def __str__(self) -> str:
+            if self.source is not None:
+                return "%s expected type %s, got %s." % (self.source, self.expected, self.entry)
+            return "expected type %s, got %s." % (self.expected, self.entry)
+
+        def __eq__(self, other: Any) -> bool:
+            return (
+                type(other) is Trace.Conflict and
+                self.entry == other.entry and
+                self.expected == other.expected and
+                self.source == other.source
+            )
+
+        def __hash__(self) -> int:
+            return self._hash
+
+    class Subroutine:
+        """
+        Information about a subroutine.
+        """
+
+        __slots__ = ("jsr_edge", "ret_edge", "exit_block", "frame")
+
+        def __init__(self, jsr_edge: "JsrJumpEdge", ret_edge: "RetEdge", exit_block: "InsnBlock", frame: Frame) -> None:
+            self.jsr_edge = jsr_edge
+            self.ret_edge = ret_edge
+            self.exit_block = exit_block
+            self.frame = frame
+
+        def __repr__(self) -> str:
+            return "<Trace.Subroutine(jsr_edge=%r, ret_edge=%r, exit_block=%r, frame=%r) at %x>" % (
+                self.jsr_edge, self.ret_edge, self.exit_block, self.frame, id(self),
+            )
+
+        def __str__(self) -> str:
+            return "%s (-> %s)" % (self.jsr_edge, self.ret_edge.copy(to=self.exit_block))
+
+
 class Context:
     """
     Used while computing the trace so that instructions have context.
@@ -37,6 +146,7 @@ class Context:
         "method", "graph",
         "do_raise",
         "_frame", "source",
+        "returned",
         "conflicts",
         "__push_direct", "__pop_direct",
         "__set_direct", "__get_direct",
@@ -78,6 +188,7 @@ class Context:
         self._frame: Optional[Frame] = None
         self.source: Optional[Source] = None  # The source of the current tracing instruction
 
+        self.returned: Set[Entry] = set()
         self.conflicts: Set[Trace.Conflict] = set()
 
         self.__push_direct = lambda *args: None
@@ -234,113 +345,6 @@ class Context:
         added = entry.constrain(constraint, self.source, original=original)
         if added and not constraint.as_vtype().mergeable(entry._type):
             self.conflicts.add(Trace.Conflict(entry, constraint, self.source))
-
-
-class Trace:
-    """
-    Trace information for a given method.
-    """
-
-    __slots__ = (
-        "graph",
-        "entries", "exits",
-        "conflicts",
-        "subroutines",
-        "pre_liveness", "post_liveness",
-        "max_stack", "max_locals",
-    )
-
-    @classmethod
-    def from_graph(cls, graph: "InsnGraph", *, do_raise: bool = True) -> "Trace":
-        """
-        Creates a trace from an instruction graph.
-
-        :param graph: The instruction graph.
-        :param do_raise: Raise an exception if part of the graph is invalid.
-        :return: The trace.
-        """
-
-        self = cls(graph)
-        trace(self, graph, do_raise)
-        return self
-
-    def __init__(self, graph: "InsnGraph") -> None:
-        """
-        :param graph: The graph that was traced.
-        """
-
-        self.graph = graph
-
-        self.entries: Dict["InsnBlock", List[Frame]] = defaultdict(list)
-        self.exits: Dict["InsnBlock", List[Frame]] = defaultdict(list)
-
-        self.conflicts: Set[Trace.Conflict] = set()
-        self.subroutines: List[Trace.Subroutine] = []
-
-        self.pre_liveness: Dict["InsnBlock", Set[int]] = {}
-        self.post_liveness: Dict["InsnBlock", Set[int]] = {}
-
-        self.max_stack = 0
-        self.max_locals = 0
-
-    def __repr__(self) -> str:
-        return "<Trace(entries=%i, exits=%i, conflicts=%i, subroutines=%i, max_stack=%i, max_locals=%i) at %x>" % (
-            len(self.entries), len(self.exits), len(self.conflicts), len(self.subroutines), self.max_stack, self.max_locals, id(self),
-        )
-
-    class Conflict:
-        """
-        A type conflict.
-        """
-
-        __slots__ = ("entry", "expected", "source", "_hash")
-
-        def __init__(self, entry: Entry, expected: Type, source: Optional[Source]) -> None:
-            self.entry = entry
-            self.expected = expected
-            self.source = source
-
-            self._hash = hash((entry, expected, source))
-
-        def __repr__(self) -> str:
-            return "<Trace.Conflict(entry=%s, expected=%s, source=%s)>" % (self.entry, self.expected, self.source)
-
-        def __str__(self) -> str:
-            if self.source is not None:
-                return "%s expected type %s, got %s." % (self.source, self.expected, self.entry)
-            return "expected type %s, got %s." % (self.expected, self.entry)
-
-        def __eq__(self, other: Any) -> bool:
-            return (
-                type(other) is Trace.Conflict and
-                self.entry == other.entry and
-                self.expected == other.expected and
-                self.source == other.source
-            )
-
-        def __hash__(self) -> int:
-            return self._hash
-
-    class Subroutine:
-        """
-        Information about a subroutine.
-        """
-
-        __slots__ = ("jsr_edge", "ret_edge", "exit_block", "frame")
-
-        def __init__(self, jsr_edge: "JsrJumpEdge", ret_edge: "RetEdge", exit_block: "InsnBlock", frame: Frame) -> None:
-            self.jsr_edge = jsr_edge
-            self.ret_edge = ret_edge
-            self.exit_block = exit_block
-            self.frame = frame
-
-        def __repr__(self) -> str:
-            return "<Trace.Subroutine(jsr_edge=%r, ret_edge=%r, exit_block=%r, frame=%r) at %x>" % (
-                self.jsr_edge, self.ret_edge, self.exit_block, self.frame, id(self),
-            )
-
-        def __str__(self) -> str:
-            return "%s (-> %s)" % (self.jsr_edge, self.ret_edge.copy(to=self.exit_block))
 
 
 from . import graph

@@ -38,6 +38,8 @@ class ReturnInstruction(Instruction):
         if self.type is not types.void_t:
             *_, entry = context.pop(1 + self.type.wide, as_tuple=True)
             context.constrain(entry, self.type)
+            context.constrain(entry, context.method.return_type)
+            context.returned.add(entry)
 
         # if state.stack:
         #     raise ValueError("Stack is not empty after return.")

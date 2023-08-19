@@ -151,6 +151,8 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool) -> None:
         if not traced:  # Nothing more to do at this point.
             return
 
+        trace.returned.update(context.returned)
+
         logger.debug(" - (pass %i) traced %i block(s), %i were retraced." % (pass_ + 1, traced, retraced))
         if branches:
             logger.debug("    - found %i branch(es) to check." % len(branches))
