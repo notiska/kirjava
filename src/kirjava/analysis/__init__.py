@@ -242,15 +242,16 @@ class Context:
             entry = Entry(entry_or_type, self.source)
         else:
             entry = entry_or_type
+        type_ = entry._type
 
         if constraint is not None:
             added = entry.constrain(constraint, self.source)
-            if added and not constraint.as_vtype().mergeable(entry._type):
+            if added and not constraint.as_vtype().mergeable(type_):
                 self.conflicts.add(Trace.Conflict(entry, constraint, self.source))
                 entry = Entry(constraint, self.source, entry)
 
         self.__push_direct(entry)  # self._frame.push(entry)
-        if entry._type.wide:
+        if type_.wide:
             self.__push_direct(Entry(reserved_t, self.source))  # self._frame.push(Frame.RESERVED)
 
         return entry
@@ -293,16 +294,17 @@ class Context:
             entry = Entry(entry_or_type, self.source)
         else:
             entry = entry_or_type
+        type_ = entry._type
 
         if constraint is not None:
             added = entry.constrain(constraint, self.source)
-            if added and not constraint.mergeable(entry._type):
+            if added and not constraint.mergeable(type_):
                 self.conflicts.add(Trace.Conflict(entry, constraint, self.source))
                 entry = Entry(constraint, self.source, entry)
 
         self.__set_direct(index, entry)  # self._frame.set(index, entry)
         self.local_defs.add(index)
-        if entry._type.wide:
+        if type_.wide:
             self.__set_direct(index + 1, Entry(reserved_t, self.source))  # self._frame.set(index + 1, Frame.RESERVED)
             self.local_defs.add(index + 1)
 
@@ -314,7 +316,7 @@ class Context:
         """
 
         entry = self.__get_direct(index)  # self._frame.get(index)
-        if self.source is not None and entry is not Frame.TOP:
+        if entry is not Frame.TOP and self.source is not None:
             entry._consumers.append(self.source)
 
         # If the local has already been overwritten then don't add it to the reads. The better solution would be storing

@@ -22,7 +22,7 @@ class InsnBlock(Block):
     A block containing Java instructions.
     """
 
-    __slots__ = ("_instructions", "inline")
+    __slots__ = ("_instructions", "inline", "_hash")
 
     @property
     def instructions(self) -> Tuple[Instruction, ...]:
@@ -46,6 +46,8 @@ class InsnBlock(Block):
         if instructions_ is not None:
             self._instructions.extend(instructions_)
 
+        self._hash = id(self)
+
     def __repr__(self) -> str:
         # TODO: Pretty printing compatibility?
         return "<InsnBlock(label=%s, instructions=[%s]) at %x>" % (
@@ -53,24 +55,19 @@ class InsnBlock(Block):
         )
 
     def __eq__(self, other: Any) -> bool:
-        if other is self:
-            return True
-        return (
-            isinstance(other, InsnBlock) and
-            other.label == self.label and
-            other._instructions == self._instructions
-        )
+        return other is self
 
     def __hash__(self) -> int:
-        return id(self)
+        # 42.9ns -> 14.5ns
+        # 209ms (5.8%) -> 71ms (2.1%)
+        # Funnily enough this is faster than the default behaviour, lol. I'll take an extra 2.7%.
+        return self._hash  # id(self)
 
     def __iter__(self) -> Iterator[Instruction]:
         return iter(self._instructions)
 
     def __getitem__(self, item: Any) -> Union[Tuple[Instruction, ...], Instruction]:
-        if type(item) is int or type(item) is slice:
-            return self._instructions[item]
-        raise TypeError("Expected int or slice, got %r." % type(item))
+        return self._instructions[item]
 
     def __setitem__(self, key: Any, value: Any) -> None:
         if type(key) is int:
@@ -98,10 +95,8 @@ class InsnBlock(Block):
         return bool(self._instructions)
 
     def copy(self, label: Optional[int] = None, deep: bool = True) -> "InsnBlock":
-        block = InsnBlock.__new__(InsnBlock)
-        block.label = self.label if label is None else label
+        block = InsnBlock(label or self.label)
         block.inline = self.inline
-        block._instructions = []
 
         if not deep:
             block._instructions.extend(self._instructions)

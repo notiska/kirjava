@@ -84,7 +84,6 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool) -> None:
                 can_merge = False
                 live_locals = uses[block]
                 # We can return with multiple stack depths so we can ignore checking that.
-                # FIXME: Not too sure about the rethrow block though? Will need to test that.
                 check_depth = (
                     edge is not None and
                     edge.to is not graph.return_block and
@@ -109,20 +108,21 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool) -> None:
 
             traced += 1
 
+            initial = frame
+
             # Small optimisation to avoid unnecessary copying of frames. We know that this path can only be taken once
             # and therefore the entries don't need to be copied (as we won't be needing to merge others into them). This
             # can save a lot of time on massive methods.
             if edge is None or len(graph.in_edges(block)) == 1:
                 frame = frame.copy(deep=False)
-                frame.max_stack = 0
+                frame.max_stack = 0  # These are copied with shallow copies, so we need to reset them.
                 frame.max_locals = 0
             else:
                 frame = frame.copy(deep=True)
 
-            initial = frame.copy(deep=False)
-            entries[block].append(initial)
-
+            entries[block].append(frame.copy(deep=False))
             context.frame = frame
+            # Note: performance is similar to ` = set()`.
             context.conflicts.clear()
             context.local_uses.clear()
             context.local_defs.clear()

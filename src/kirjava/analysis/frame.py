@@ -10,13 +10,12 @@ Stack frames (and others).
 
 import operator
 import typing
-from typing import Any, Dict, FrozenSet, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
-from .. import types
 from ..abc import Method, Source
 from ..error import MergeDepthError, MergeMissingLocalError
 from ..types import (
-    array_t, null_t, object_t, reference_t, reserved_t, top_t, uninitialized_this_t, void_t,
+    array_t, null_t, object_t, reserved_t, top_t, uninitialized_this_t, void_t,
     Array, Class, Reference, Type, Uninitialized, Verification,
 )
 
@@ -122,13 +121,16 @@ class Entry:
 
     @classmethod
     def _generify(cls, type_: Type) -> Tuple[Verification, Set[Type]]:
+        # We can generify all reference types (except uninitialized types) to java/lang/Object. The idea is that the
+        # type will be inferred from constraints, later on.
+        if isinstance(type_, Reference) and not isinstance(type_, Uninitialized):
+            return object_t, {type_}
+
         vtype = type_.as_vtype()
-        constraints = set()
-        # We will hardcode uninitialized types as we don't want to turn those into java/lang/Objects.
-        if isinstance(vtype, Reference) and not isinstance(vtype, Uninitialized):
-            vtype = object_t
-        constraints.add(type_)
-        return vtype, constraints
+        if type_ is not vtype:
+            return vtype, {type_}
+
+        return vtype, set()
 
     def __init__(self, type_: Type, source: Optional[Source] = None, parent: Optional["Entry"] = None) -> None:
         """
@@ -542,18 +544,20 @@ class Frame:
             elif not entry_a._type.mergeable(entry_b._type):
                 valid = False
 
-        if valid:
-            for entry_a, entry_b in zip(self.stack, other.stack):
-                # They are in a way, the same entry, which is why we're doing this.
-                entry_a.merges.add(entry_b)
-                entry_b.merges.add(entry_a)
+        if not valid:
+            return False
 
-            for index in live_locals:
-                entry_a, entry_b = self.locals[index], other.locals[index]
-                entry_a.merges.add(entry_b)
-                entry_b.merges.add(entry_a)
+        for entry_a, entry_b in zip(self.stack, other.stack):
+            # They are in a way, the same entry, which is why we're doing this.
+            entry_a.merges.add(entry_b)
+            entry_b.merges.add(entry_a)
 
-        return valid
+        for index in live_locals:
+            entry_a, entry_b = self.locals[index], other.locals[index]
+            entry_a.merges.add(entry_b)
+            entry_b.merges.add(entry_a)
+
+        return True
 
     # def add(self, delta: Delta) -> None:
     #     """
@@ -699,7 +703,6 @@ class Frame:
         """
 
         popped = []
-        index = 0 
 
         if count >= len(self.stack):  # Optimisations?
             popped.extend(reversed(self.stack))
