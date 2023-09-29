@@ -1,5 +1,8 @@
 # kirjava
 
+![](kirjava.png)
+Artwork by [Lou](https://www.instagram.com/devils_destination/).
+
 A pure-Python Java bytecode manipulation library with decent obfuscation resilience.  
 
 It's excellent for inspecting Java classfiles in an interactive shell but it can also be used in actual programs, in fact, this was the original purpose of it.  
