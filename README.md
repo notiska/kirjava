@@ -5,13 +5,12 @@ Artwork by [Lou](https://www.instagram.com/devils_destination/).
 
 A pure-Python Java bytecode manipulation library with decent obfuscation resilience.  
 
-It's excellent for inspecting Java classfiles in an interactive shell but it can also be used in actual programs, in fact, this was the original purpose of it.  
+**Warning: This is the development branch so not all information may always be up to date!**
+
 Documentation is planned for in the future, but as of right now, a quickstart guide has been provided below.  
 For more usage, see [examples](examples/).
 
 Just as a note, this is *very much* a hobby project so my maintenance schedule will fluctuate a lot. If you have any bug fixes, PRs are welcome.
-
-**Warning: This is the development branch so not all information may always be up to date!**
 
 ## Quickstart
 
@@ -233,7 +232,6 @@ Out[19]: [<Frame(stack=[], locals={0=Test, 1=boolean}) at 7fc109ee7f10>]
 ```
 
 And we can even inspect individual locals further:  
-**Note: Current example of consumers and producers is not accurate.**
 
 ```python3
 In [20]: trace.entries[graph[3]][0].locals
@@ -246,23 +244,22 @@ Out[21]:
 (<Entry.Constraint(type=reference, source=aload_0 @ block 1[0], original=False)>,
  <Entry.Constraint(type=Test, source=getfield Test.field:I @ block 2[1], original=False)>,
  <Entry.Constraint(type=Test, source=putfield Test.field:I @ block 1[2], original=False)>,
- <Entry.Constraint(type=Test, source=None, original=True)>,
  <Entry.Constraint(type=java/lang/Object, source=None, original=True)>,
+ <Entry.Constraint(type=Test, source=param 0 of Test#void test(boolean), original=True)>,
  <Entry.Constraint(type=reference, source=aload_0 @ block 2[0], original=False)>)
 
 In [22]: trace.entries[graph[3]][0].locals[1].producers
 Out[22]: 
-(<InstructionInBlock(index=0, block=block 5, instruction=iload_1)>,
- <InstructionInBlock(index=0, block=block 7, instruction=iinc 1 by 1)>,
- <InstructionInBlock(index=0, block=block 0, instruction=iload_1)>)
+(<InstructionInBlock(index=0, block=block 7, instruction=iinc 1 by 1)>,
+ <Frame.Parameter(index=1, type=boolean, method=Test#void test(boolean))>)
 
 In [23]: trace.entries[graph[3]][0].locals[1].consumers
 Out[23]: 
-(<InstructionInBlock(index=0, block=block 5, instruction=iload_1)>,
- <JumpEdge(from=block 5, to=block 7, instruction=ifeq) at 7fc10a0cb0b0>,
- <InstructionInBlock(index=0, block=block 7, instruction=iinc 1 by 1)>,
- <InstructionInBlock(index=0, block=block 0, instruction=iload_1)>,
- <JumpEdge(from=block 0, to=block 2, instruction=ifne) at 7fc10a069c10>)
+(<InstructionInBlock(index=0, block=block 0, instruction=iload_1)>,
+ <JumpEdge(from=block 0, to=block 2, instruction=ifne)>,
+ <InstructionInBlock(index=0, block=block 5, instruction=iload_1)>,
+ <JumpEdge(from=block 5, to=block 7, instruction=ifeq)>,
+ <InstructionInBlock(index=0, block=block 7, instruction=iinc 1 by 1)>)
 ```
 
 #### Assembly
@@ -290,12 +287,12 @@ In [25]: kirjava.dump(cf, "Test-edited.class")
 Or for the more verbose method:
 
 ```python3
-n [25]: with open("Test-edited.class", "wb") as stream:
+In [25]: with open("Test-edited.class", "wb") as stream:
     ...:     cf.write(stream)
     ...: 
 ```
 
-## Trivia
+## "Trivia"
 
 It's honestly not super interesting, but if anyone was wondering, it IS named after a certain character from a certain book series.  
 The name is not a Java-related pun, but it does help that "java" is in the name.
