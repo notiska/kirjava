@@ -22,7 +22,7 @@ from ...version import Version
 
 if typing.TYPE_CHECKING:
     from .. import ClassFile, MethodInfo
-    from ...instructions.jvm import Instruction
+    from ...instructions import Instruction
 
 logger = logging.getLogger("kirjava.classfile.attributes.method")
 

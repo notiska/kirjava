@@ -4,6 +4,7 @@ __all__ = (
     "attributes", "members",
     "ClassFile", "FieldInfo", "MethodInfo",
     "ConstantPool", "Index",
+    "DirectoryProvider", "ZipProvider",
 )
 
 """
@@ -17,7 +18,7 @@ from typing import Dict, IO, Iterable, List, Optional, Tuple, Union
 
 from ._constant import *
 from .attributes import *
-from .. import _argument, constants, types
+from .. import _argument, constants, environment, types
 from .._struct import *
 from ..abc import Class
 from ..environment import Environment
@@ -404,7 +405,7 @@ class ClassFile(Class):
             super_: _argument.ClassConstant = types.object_t,
             interfaces: Optional[List[_argument.ClassConstant]] = None,
             version: Version = Version(52, 0),
-            environment: Optional[Environment] = None,
+            environment: Optional[Environment] = environment.DEFAULT,
             *,
             is_public: bool = False,
             is_final: bool = False,
@@ -422,8 +423,6 @@ class ClassFile(Class):
         :param interfaces: A list of interfaces this class implements.
         """
 
-        super().__init__(environment)
-
         self._this = constants.Class(name)
         if super_ is None:
             self._super = None
@@ -433,6 +432,8 @@ class ClassFile(Class):
         self._interfaces = []
         if interfaces is not None:
             self._interfaces.extend([_argument.get_class_constant(interface.name) for interface in interfaces])
+
+        super().__init__(environment)
 
         self.access_flags = 0
         self.version = version
@@ -590,4 +591,5 @@ class ClassFile(Class):
 
 
 from . import attributes, members
+from ._provider import *
 from .members import FieldInfo, MethodInfo

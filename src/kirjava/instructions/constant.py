@@ -12,15 +12,13 @@ import typing
 from typing import Any, Dict, IO, Union
 
 from . import Instruction
-from ..ir.value import ConstantValue
-from ... import types
-from ...abc import Value
-from ...constants import ConstantInfo, Integer
-from ...error import ConstantWidthError, InvalidConstantError
+from ..abc import Value
+from ..constants import ConstantInfo, Integer
+from ..error import ConstantWidthError, InvalidConstantError
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Context
-    from ...classfile import ClassFile
+    from ..analysis import Context
+    from ..classfile import ClassFile
 
 
 class ConstantInstruction(Instruction):
@@ -53,8 +51,15 @@ class ConstantInstruction(Instruction):
         return type(self)(self.constant)
 
     def trace(self, context: "Context") -> None:
-        context.push(self.constant.type or context.frame.TOP)
-        # TODO: Report error if not valid type
+        type_ = self.constant.type
+        if type_ is None:
+            if context.do_raise:
+                raise InvalidConstantError(self.constant)
+            context.push(context.frame.TOP)
+            return
+
+        entry = context.push(type_.as_vtype())
+        context.constrain(entry, type_, original=True)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
     #     associations[delta.pushes[0]] = ConstantValue(self.constant)
@@ -138,5 +143,7 @@ class LoadConstantInstruction(ConstantInstruction):
 
         if type_.wide != self.wide and context.do_raise:
             raise ConstantWidthError(self.constant, self.wide)
-        context.push(type_)
+
+        entry = context.push(type_.as_vtype())
+        context.constrain(entry, type_, original=True)
 

@@ -28,7 +28,7 @@ class Entry:
     A type entry in a stack frame.
     """
 
-    __slots__ = ("merges", "_type", "parent", "source", "_consumers", "_constraints")
+    __slots__ = ("generic", "merges", "parent", "source", "_consumers", "_constraints")
 
     @property
     def type(self) -> Type:
@@ -36,9 +36,9 @@ class Entry:
         :return: The type of this local. May change over time.
         """
 
-        types = self.inference()
+        types = self.inference(as_vtypes=False)
         if len(types) > 1:
-            return self._type  # Can't narrow down the type without any extra information.
+            return self.generic  # Can't narrow down the type without any extra information.
         for type_ in types:
             return type_
 
@@ -127,7 +127,7 @@ class Entry:
             return object_t, {type_}
 
         vtype = type_.as_vtype()
-        if type_ is not vtype:
+        if type_ != vtype:
             return vtype, {type_}
 
         return vtype, set()
@@ -139,7 +139,7 @@ class Entry:
         :param parent: The parent entry.
         """
 
-        self._type, constraints = self._generify(type_)
+        self.generic, constraints = self._generify(type_)
 
         self.merges: Set[Entry] = set()
 
@@ -229,22 +229,45 @@ class Entry:
 
     # ------------------------------ Public API ------------------------------ #
 
-    def inference(self) -> Set[Type]:
+    def inference(self, *, as_vtypes: bool = True, no_nullable: bool = False) -> Set[Type]:
         """
+        :param as_vtypes: Turns all constraints into verification types.
+        :param no_nullable: Removes the null_t in nullable types.
         :return: A set of types this entry could be.
         """
 
-        types = {self._type}
-        constraints = self._constraints.copy()
+        types = {self.generic}
 
-        for entry in self._iter_merges():
-            constraints.update(entry._constraints)
-        for constraint in constraints:
-            if constraint.original:  # and not constraint.type.abstract:
+        # Apparently generators are slower, or is it set.update that's slower? Either way, using a for loop is faster,
+        # which is why I'm using it here.
+        # types.update(constraint.type for constraint in self._constraints if constraint.original)
+        for constraint in self._constraints:
+            if constraint.original:
                 types.add(constraint.type)
+        for entry in self._iter_merges():
+            # types.update(constraint.type for constraint in entry._constraints if constraint.original)
+            for constraint in entry._constraints:
+                if constraint.original:
+                    types.add(constraint.type)
 
-        if len(types) > 1 and self._type is object_t:
-            types.remove(self._type)
+        if as_vtypes:
+            types = {type_.as_vtype() for type_ in types}
+
+        all_refs = False
+
+        if len(types) > 1 and self.generic is object_t:
+            all_refs = True
+            for type_ in types:
+                # If there isn't a reference type in the types (for some reason), don't remove as we want to maintain
+                # the information that this should be a reference type.
+                if not isinstance(type_, Reference):
+                    all_refs = False
+                    break
+            else:
+                types.remove(self.generic)
+
+        if all_refs and no_nullable and len(types) > 1:
+            types.discard(null_t)
 
         return types
 
@@ -259,8 +282,8 @@ class Entry:
         :return: Was this constraint added?
         """
 
-        if type_ is self._type:  # TODO: Profile, faster?
-            return True
+        if type_ == self.generic:
+            return False
         constraint = Entry.Constraint(type_, source, original=original)
         if constraint in self._constraints:
             return False
@@ -275,16 +298,16 @@ class Entry:
         :param source: The source creating the new entry.
         """
 
-        if type_ == self._type:
+        if type_ == self.generic:
             return self
 
         entry = Entry(type_, source, self)
 
         # This can happen when for example, initialising an object. Uninitialised types are not mergeable with reference
         # types yet we still want to maintain a link to the original.
-        if not self._type.mergeable(type_):
+        if not self.generic.mergeable(type_):
             return entry
-        elif isinstance(self._type, Reference):
+        elif isinstance(self.generic, Reference):
             # A note with checkcast instructions: we can't actually confirm that the class we're trying to cast to is a
             # valid subtype nor can we verify if the class exists, so we'll add it as a constraint (which are meant to
             # be taken with a grain of salt).
@@ -485,7 +508,7 @@ class Frame:
         if deep:
             copied: Dict[Entry, Entry] = {}
             for old_entry in self.tracked:
-                copied[old_entry] = new_entry = Entry(old_entry._type, None)
+                copied[old_entry] = new_entry = Entry(old_entry.generic, None)
                 new_entry.merges.add(old_entry)
                 old_entry.merges.add(new_entry)
 
@@ -511,7 +534,12 @@ class Frame:
         return frame
 
     def merge(
-            self, other: "Frame", edge: "InsnEdge", live_locals: Optional[Set[int]] = None, check_depth: bool = True,
+            self,
+            other: "Frame",
+            edge: "InsnEdge",
+            live_locals: Optional[Set[int]] = None,
+            check_depth: bool = True,
+            merge_non_live: bool = True,
     ) -> bool:
         """
         Checks that this frame can merge with the other frame and if possible, merges it.
@@ -520,6 +548,7 @@ class Frame:
         :param edge: The edge causing the merge (for debug info).
         :param live_locals: Optional local liveness information. If not specified, all locals are checked.
         :param check_depth: Should we check the stack to see if they're equal?
+        :param merge_non_live: Attempts to merge non-live locals anyway, may provide some extra insight.
         :return: Is this a valid merge?
         """
 
@@ -533,7 +562,7 @@ class Frame:
             raise MergeDepthError(edge, len(other.stack), len(self.stack))
 
         for entry_a, entry_b in zip(self.stack, other.stack):
-            if not entry_a._type.mergeable(entry_b._type):
+            if not entry_a.generic.mergeable(entry_b.generic):
                 valid = False
                 break
 
@@ -541,7 +570,7 @@ class Frame:
             entry_a, entry_b = self.locals[index], other.locals.get(index)
             if entry_b is None:
                 raise MergeMissingLocalError(edge, index, entry_a.type)
-            elif not entry_a._type.mergeable(entry_b._type):
+            elif not entry_a.generic.mergeable(entry_b.generic):
                 valid = False
 
         if not valid:
@@ -552,10 +581,21 @@ class Frame:
             entry_a.merges.add(entry_b)
             entry_b.merges.add(entry_a)
 
-        for index in live_locals:
-            entry_a, entry_b = self.locals[index], other.locals[index]
-            entry_a.merges.add(entry_b)
-            entry_b.merges.add(entry_a)
+        # It's useful to try this because it can actually provide extra insight into entries that would otherwise be
+        # deemed "incorrect". When assembling, we don't really care about non-live locals as those will be written as 
+        # tops anyway, but for more in-depth analysis this may be useful.
+        if merge_non_live:
+            for index in self.locals.keys() - live_locals:
+                entry_a, entry_b = self.locals[index], other.locals.get(index)
+                if entry_b is None or not entry_a.generic.mergeable(entry_b.generic):
+                    continue
+                entry_a.merges.add(entry_b)
+                entry_b.merges.add(entry_a)
+        else:
+            for index in live_locals:
+                entry_a, entry_b = self.locals[index], other.locals[index]
+                entry_a.merges.add(entry_b)
+                entry_b.merges.add(entry_a)
 
         return True
 
@@ -704,15 +744,14 @@ class Frame:
 
         popped = []
 
-        if count >= len(self.stack):  # Optimisations?
-            popped.extend(reversed(self.stack))
-            popped.extend(self.TOP for index in range(count - len(popped)))
-            self.stack.clear()
+        if count < len(self.stack):  # Optimisations?
+            for index in range(count):
+                popped.append(self.stack.pop())
             return popped
 
-        for index in range(count):
-            popped.append(self.stack.pop())
-
+        popped.extend(reversed(self.stack))
+        popped.extend(self.TOP for index in range(count - len(popped)))
+        self.stack.clear()
         return popped
 
     def dup(self, count: int = 1, displace: int = 0) -> None:

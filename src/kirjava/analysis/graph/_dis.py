@@ -17,7 +17,7 @@ from .block import InsnBlock
 from .debug import *
 from .edge import *
 from ... import instructions
-from ...instructions.jvm import (
+from ...instructions import (
     AThrowInstruction, ConditionalJumpInstruction, JsrInstruction, JumpInstruction, RetInstruction, ReturnInstruction, SwitchInstruction,
 )
 from ...source import *

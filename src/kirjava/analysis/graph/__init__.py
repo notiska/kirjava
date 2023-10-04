@@ -24,7 +24,7 @@ from .block import *
 from .edge import *
 from ... import _argument, instructions, types
 from ...abc import Graph
-from ...instructions.jvm import Instruction, JsrInstruction
+from ...instructions import Instruction, JsrInstruction
 from ...source import *
 
 if typing.TYPE_CHECKING:
@@ -149,6 +149,7 @@ class InsnGraph(Graph):
             compute_maxes: bool = True,
             compute_frames: bool = True,
             compress_frames: bool = True,
+            add_checkcasts: bool = False,
             add_lnt: bool = True,
             add_lvt: bool = True,
             add_lvtt: bool = True,
@@ -158,19 +159,20 @@ class InsnGraph(Graph):
         Assembles this graph into the method's code attribute.
 
         :param do_raise: Raise an exception if any errors occurred during assembling.
-        :param in_place: Modifies this graph in-place while assembling, can be faster but might change the graph a little.
-        :param adjust_wides: Should we add/remove wide instructions if necessary?
-        :param adjust_ldcs: Should we transform ldc instructions to ldc_w if necessary?
-        :param adjust_jumps: Should we adjust jumps by generating new blocks if necessary?
-        :param adjust_fallthroughs: Should we generate gotos if certain fallthroughs are impossible?
-        :param simplify_exception_ranges: Should we merge same priority exception edges in the exception table?
-        :param compute_maxes: Should we compute max stack and locals?
-        :param compute_frames: Should we compute stack map frames?
-        :param compress_frames: Should we compress stack map frames?
-        :param add_lnt: Should we add a line number table?
-        :param add_lvt: Should we add a local variable table?
-        :param add_lvtt: Should we add a local variable type table?
-        :param remove_dead_blocks: Should we remove dead blocks?
+        :param in_place: Modifies this graph in-place while assembling. Can improve performance.
+        :param adjust_wides: Adds/removes wide instructions if necessary.
+        :param adjust_ldcs: Substitutes ldc instructions for ldc_w instructions if necessary.
+        :param adjust_jumps: Adjusts certain impossible jumps by generating new blocks if necessary.
+        :param adjust_fallthroughs: Generates gotos if certain fallthroughs are impossible.
+        :param simplify_exception_ranges: Merges exception edges with the same priority in the exception table.
+        :param compute_maxes: Computes the maximum stack size and maximum local.
+        :param compute_frames: Computes stack map frames and adds the attribute to the code.
+        :param compress_frames: Compresses the stack map frames. Only for compute_frames.
+        :param add_checkcasts: Adds checkcasts where necessary if supertypes cannot be resolved. Only for compute_frames.
+        :param add_lnt: Adds the line number table debug attribute.
+        :param add_lvt: Adds the local variable table debug attribute.
+        :param add_lvtt: Adds the local variable type table debug attribute.
+        :param remove_dead_blocks: Removes blocks that will never be reached in execution.
         :return: The assembled Code attribute.
         """
 
@@ -180,7 +182,7 @@ class InsnGraph(Graph):
             adjust_wides, adjust_ldcs,
             adjust_jumps, adjust_fallthroughs,
             simplify_exception_ranges,
-            compute_maxes, compute_frames, compress_frames,
+            compute_maxes, compute_frames, compress_frames, add_checkcasts,
             add_lnt, add_lvt, add_lvtt,
             remove_dead_blocks,
         )

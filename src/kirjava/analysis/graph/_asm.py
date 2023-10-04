@@ -8,6 +8,7 @@ __all__ = (
 The assembler.
 """
 
+import itertools
 import logging
 import operator
 import typing
@@ -17,18 +18,24 @@ from typing import Dict, List, Optional, Set, Tuple
 from .block import *
 from .debug import *
 from .edge import *
-from .. import Frame, Trace
+from .. import Entry, Trace
 from ... import instructions
+from ...abc import Class, Offset
 from ...classfile import ConstantPool
 from ...classfile.attributes import Code, LineNumberTable, StackMapTable
-from ...constants import Class
-from ...error import TypeConflictError
-from ...instructions.jvm import (
+from ...constants import Class as ClassConstant
+from ...environment import DEFAULT
+from ...error import ClassNotFoundError, TypeConflictError
+from ...instructions import (
     Instruction,
     ConditionalJumpInstruction, JumpInstruction, SwitchInstruction,
     LoadLocalInstruction, StoreLocalInstruction,
 )
-from ...types import reserved_t, top_t, uninitialized_this_t, Reference
+from ...source import InstructionInBlock
+from ...types import (
+    object_t, reserved_t, top_t, uninitialized_this_t,
+    Array, Class as ClassType, Primitive, Reference, Type, Uninitialized,
+)
 
 if typing.TYPE_CHECKING:
     from . import InsnGraph
@@ -43,7 +50,7 @@ def assemble(
         adjust_wides: bool, adjust_ldcs: bool,
         adjust_jumps: bool, adjust_fallthroughs: bool,
         simplify_exception_ranges: bool,
-        compute_maxes: bool, compute_frames: bool, compress_frames: bool,
+        compute_maxes: bool, compute_frames: bool, compress_frames: bool, add_checkcasts: bool,
         add_lnt: bool, add_lvt: bool, add_lvtt: bool,
         remove_dead_blocks: bool,
 ) -> Code:
@@ -65,8 +72,11 @@ def assemble(
         compute_frames = False
 
     trace: Optional[Trace] = None
+
     if compute_maxes or compute_frames:
-        trace = Trace.from_graph(graph, do_raise=do_raise)
+        # As pointed out in comments in the trace code, we don't need to merge non-live locals for this as we're going
+        # to replace those with `top`s so we can skip quite a bit of computation there.
+        trace = Trace.from_graph(graph, do_raise=do_raise, merge_non_live=False)
         if do_raise and trace.conflicts:
             raise TypeConflictError(trace.conflicts)
         code.max_stack = trace.max_stack
@@ -317,6 +327,277 @@ def assemble(
         logger.debug(" - generated %i intermediary block(s)." % generated_blocks)
 
     # ------------------------------------------------------------ #
+    #           Stackmap pre-generation (type inference)           #
+    # ------------------------------------------------------------ #
+
+    environment = classfile.environment or DEFAULT
+    frame_precalc: Dict[InsnBlock, Tuple[List[Type], List[Type]]] = {}
+
+    # Type hints... type hints... type hints...
+    uninit_offset_blocks: Dict[InsnBlock, Dict[int, List[Tuple[List[Type], int]]]] = {}
+    uninit_offset_edges:  Dict[InsnEdge, List[Tuple[List[Type], int]]] = {}
+
+    if compute_frames:
+        # Caches the type inference for entries as it can be very expensive to compute, especially for larger methods
+        # with exception handlers.
+        inference_cache: Dict[Entry, Set[Type]] = {}
+        supertype_cache: Dict[Tuple[ClassType, ClassType], Class] = {}  # :p
+
+        for block in blocks.values():
+            if block in skipped:
+                continue
+            entries = trace.entries.get(block)
+            if not entries:  # FIXME: Determine entry constraints or nop instructions (probably will do the latter).
+                if block in (graph.entry_block, graph.return_block, graph.rethrow_block):
+                    continue
+                raise NotImplementedError("Can't yet deal with dead blocks.")  # continue
+
+            skip = False
+            live = trace.pre_liveness[block].copy()
+
+            stack_depth = len(entries[0].stack)  # As a sidenote, this is an arbitrary choice of frame to use.
+
+            # Initial pass through to determine if we need to skip this block and also to add any uninitialized_this_ts
+            # to the live locals (explanation below).
+            for frame in entries:
+                if len(frame.stack) != stack_depth:
+                    # Again, another case where do_raise=True would've caught this earlier. We will have to skip over
+                    # this frame fully though if we encounter this.
+                    skip = True
+                    break
+
+                # If there is an uninitialized_this_t in the locals, no matter if it's live, we still need to declare
+                # it. Info obtained from ProGuard so credit to them.
+                # https://github.com/Guardsquare/proguard-core/blob/master/base/src/main/java/proguard/preverify/CodePreverifier.java#L296C1-L300C80
+                for index, entry in frame.locals.items():
+                    # Use of .generic (over .type) is for performance and accuracy. It's not possible for the type to be
+                    # uninitialized_this_t and the generic to be something else, as far as I know.
+                    if entry.generic is uninitialized_this_t:
+                        live.add(index)
+
+            if skip:
+                continue
+
+            max_local = max(live, default=-1) + 1
+            stack = [{top_t} for index in range(stack_depth)]
+            locals_ = [{top_t} for index in range(max_local)]
+
+            for frame in entries:
+                for index, entry in enumerate(frame.stack):
+                    inference = inference_cache.get(entry)
+                    if inference is None:
+                        inference = inference_cache.setdefault(entry, entry.inference(no_nullable=True))
+                    stack[index].update(inference)
+
+                for index in range(max_local):
+                    if not index in live:
+                        continue
+                    entry = frame.locals.get(index)
+                    # This is invalid yes, but if do_raise=True then the error will have been raised prior to this, so
+                    # this is the best we can do at this point is guess.
+                    if entry is None:
+                        continue
+                    inference = inference_cache.get(entry)
+                    if inference is None:
+                        inference = inference_cache.setdefault(entry, entry.inference(no_nullable=True))
+                    locals_[index].update(inference)
+
+    # ------------------------------------------------------------ #
+    #                      Type generification                     #
+    # ------------------------------------------------------------ #
+
+            # We also need to keep track of any uninitialised types, as we need to give them the correct offset later on
+            # in the code generation stage.
+            uninitialised: Dict[Entry, List[Tuple[List[Type], int]]] = defaultdict(list)
+
+            for array in (stack, locals_):
+                for index, types in enumerate(array):
+                    valid = []
+                    invalid = False
+
+                    if top_t in types and len(types) > 1:  # Lowest bound, can be removed.
+                        types.remove(top_t)
+
+                    for type_a, type_b in itertools.combinations(types, 2):
+                        if not type_a.mergeable(type_b) and not type_b.mergeable(type_a):
+                            invalid = True
+                            break
+                    else:
+                        # Same logic, as above, except we can do this as we know that the types are all mergeable and if
+                        # object_t is in there, then they are all reference types.
+                        if object_t in types and len(types) > 1:
+                            types.remove(object_t)
+                        valid.extend(types)
+
+                    # This may appear to be a somewhat cheap way of handling these situations, but in actuality it's
+                    # more nuanced. To demonstrate this, here's an example (this is based off information xxDark gave
+                    # me, so credits to them):
+                    # entry:
+                    #   aconst_null
+                    #   ifnull push_ints
+                    # push_double:
+                    #   dconst_0
+                    #   goto combine
+                    # push_ints:
+                    #   iconst_0
+                    #   iconst_0
+                    # combine:
+                    #   pop2
+                    #   return
+                    # In this case, the merge conflict would be at the combine label, however note that the pop2
+                    # instruction does not care what type is on the stack, so you can somewhat trick the verifier into
+                    # thinking that this is valid bytecode. If any other usage that didn't fit this criteria was used
+                    # then we previously would've reported the error as a type conflict (if do_raise=True).
+                    # Unfortunately the same logic about invalid types on the stack cannot really be applied to the
+                    # locals as they are read to and written from via typed instructions, but we'll still try our best.
+                    # As a sidenote: jdk11 (only other version I tested) doesn't seem to fall for this trick.
+                    if invalid:
+                        array[index] = top_t
+                        continue
+                    elif len(valid) == 1:
+                        type_, = valid
+                        array[index] = type_
+                        if type(type_) is Uninitialized:
+                            uninitialised[entries[0].stack[index]].append((array, index))
+                        continue
+
+                    # TODO: Check, is Uninitialized mergeable with Class?
+
+                    lowest = valid.pop()
+                    while valid:
+                        higher = valid.pop()
+                        if higher == lowest:  # higher is lowest:
+                            continue
+
+                        common = supertype_cache.get((lowest, higher))
+                        if common is not None:
+                            lowest = common.get_type()
+                            continue
+
+                        # These are used if there's an array type and we need to merge the element classes.
+                        old_higher: Optional[Array] = None
+                        old_lowest: Optional[Array] = None
+
+                        error: Optional[Exception] = None  # Might throw this later if needs be.
+                        supertypes: Set[Class] = set()
+
+                        # Special handling for arrays. We need to try and merge their element types, this gets a little
+                        # more difficult with primitive and multi-dimensional arrays.
+                        if type(higher) is Array:
+                            if type(lowest) is not Array:
+                                lowest = object_t
+                                continue
+
+                            higher_dim = higher.dimensions
+                            lowest_dim = lowest.dimensions
+
+                            # FIXME: Need to test the validity of all these combinations. I'm not sure if the verifier
+                            #        would allow all of them.
+                            if higher_dim != lowest_dim:
+                                lowest = Array.from_dimension(object_t, min(higher_dim, lowest_dim))
+                                continue
+
+                            old_higher = higher
+                            old_lowest = lowest
+                            higher = higher.lowest_element
+                            lowest = lowest.lowest_element
+
+                            # FIXME: Does the assembler get to this point? Array.mergeable() might handle this.
+                            # Handling primitive arrays here, we can try to merge them and if that's not possible then
+                            # we'll set the lowest to object_t (or an array with a lower dimension).
+                            # TODO: Profile, is this even faster?
+                            higher_primitive = isinstance(higher, Primitive)
+                            if (
+                                higher_primitive != isinstance(lowest, Primitive) or
+                                (higher_primitive and higher != lowest)
+                            ):
+                                higher_dim -= 1
+                                if not higher_dim:
+                                    lowest = object_t
+                                else:
+                                    lowest = Array.from_dimension(object_t, higher_dim - 1)  # Kinda a hack?
+                                continue
+
+                        # Try and get the type hierarchy for the higher type first. We'll check if we can find the lower
+                        # type directly. If not, we'll then go through the lower type's hierarchy.
+                        found = True
+                        try:
+                            class_ = environment.find_class(higher.name)
+                            # .super_name is a safer way of checking if the class has a superclass for classfiles
+                            # because .super can throw (great design, Iska!!).
+                            while class_.super_name is not None:
+                                class_ = class_.super
+                                class_type = class_.get_type()
+                                if lowest == class_type:  # lowest is class_type:
+                                    lowest = class_type
+                                    supertype_cache[lowest, higher] = class_
+                                    supertype_cache[higher, lowest] = class_  # Have to be careful here, lol.
+                                    break
+                                supertypes.add(class_)
+                            else:
+                                found = False
+
+                        except ClassNotFoundError as error_:
+                            # FIXME: I don't think we can assign directly to error, afaik there's an implicit `del error`?
+                            error = error_
+
+                        if found:
+                            if old_higher is not None and old_lowest is not None:
+                                lowest = Array.from_dimension(lowest, old_higher.dimensions)
+                            continue
+
+                        # Going through the lower type's hierarchy now, as mentioned above.
+                        # TODO: Cache type hierarchies perhaps?
+                        found = True
+                        try:
+                            class_ = environment.find_class(lowest.name)
+                            while class_.super_name is not None:
+                                class_ = class_.super
+                                class_type = class_.get_type()
+                                if higher == class_type or class_ in supertypes:
+                                    lowest = class_type
+                                    supertype_cache[lowest, higher] = class_
+                                    supertype_cache[higher, lowest] = class_
+                                    break
+                            else:
+                                found = False
+
+                        except ClassNotFoundError as error_:
+                            error = error or error_  # Mhm, not sure which to raise but I guess this is fine, for now.
+
+                        if found:
+                            if old_higher is not None and old_lowest is not None:
+                                lowest = Array.from_dimension(lowest, old_higher.dimensions)
+                            continue
+                        elif do_raise and error is not None:
+                            raise error
+
+                        # Best we can do, this will still cause issues though (unless add_checkcasts=True).
+                        lowest = object_t
+
+                        if not add_checkcasts:
+                            continue
+
+                        ...  # TODO: Add checkcasts.
+
+                    array[index] = lowest
+
+            for entry, positions in uninitialised.items():
+                source = entry.generic.source
+                if source is None:  # May be able to find the source of the type via the entry.
+                    source = entry.source
+                    if source is None and do_raise:
+                        # FIXME: Something better than a RuntimeError.
+                        raise RuntimeError("Unable to determine source of Uninitialized type %r." % entry)
+
+                if type(source) is InstructionInBlock:
+                    uninit_offset_blocks.setdefault(source.block, {}).setdefault(source.index, []).extend(positions)
+                elif isinstance(source, InsnEdge):
+                    uninit_offset_edges.setdefault(source, []).extend(positions)
+
+            frame_precalc[block] = (stack, locals_)
+
+    # ------------------------------------------------------------ #
     #                        Code generation                       #
     # ------------------------------------------------------------ #
 
@@ -331,7 +612,7 @@ def assemble(
         ending:   Dict[InsnBlock, int] = {}
         inlined:  Dict[InsnBlock, Tuple[List[int], List[int]]] = defaultdict(lambda: ([], []))
 
-        # This will save us time at the jump adjustment stage
+        # This will save us time at the jump adjustment stage.
         switches:            Dict[int, List[SwitchEdge]] = {}
         unconditional_jumps: Dict[int, JumpEdge] = {}
         conditional_jumps:   Dict[int, JumpEdge] = {}
@@ -348,8 +629,8 @@ def assemble(
             block = order[index]
             index += 1
 
-            record_offsets = not inline_stack or not block.inline   # Don't record offsets of inlined blocks
-            if record_offsets:
+            dont_inline = not inline_stack or not block.inline   # Don't record offsets of inlined blocks
+            if dont_inline:
                 starting[block] = offset
                 inline_stack.clear()
             else:
@@ -357,10 +638,21 @@ def assemble(
 
             written.append((block, offset))
 
-            for instruction in block:
+            uninit_offset_indices = uninit_offset_blocks.get(block)
+            record_uninit_offsets = uninit_offset_indices is not None
+
+            for index_, instruction in enumerate(block):
                 if type(instruction) is LineNumber:
                     line_numbers[offset] = instruction.line_number
                     continue
+                if record_uninit_offsets:
+                    positions = uninit_offset_indices.get(index_)
+                    if positions is not None:
+                        for position in positions:
+                            # We'll replace the old Uninitialized type with a new one, with the source being the offset
+                            # of the instruction.
+                            position[0][position[1]] = Uninitialized(Offset(offset))
+
                 code.instructions[offset] = instruction
                 offset += instruction.get_size(offset, wide)
                 wide = instruction == instructions.wide
@@ -368,11 +660,14 @@ def assemble(
             switch_edges: List[SwitchEdge] = []
             inline_edges: List[InsnEdge] = []
 
+            positions: Optional[List[Tuple[List[Type], int]]] = None
+
             jump_edge:        Optional[JumpEdge] = None
             jump_instruction: Optional[Instruction] = None
 
             for edge in forward_edges[block]:
                 if type(edge) is SwitchEdge:
+                    positions = uninit_offset_edges.get(edge, positions)
                     switch_edges.append(edge)
                 elif type(edge) is not ExceptionEdge and edge.to is not None and edge.to.inline:
                     inline_edges.append(edge)
@@ -383,6 +678,7 @@ def assemble(
                 # We'll only write the first instruction we find in the edges. Obviously, having multiple jump
                 # instructions is invalid, and should've been caught by the verifier.
                 if jump_instruction is None and edge.instruction is not None:
+                    positions = uninit_offset_edges.get(edge, positions)
                     jump_instruction = edge.instruction
 
             if switch_edges:
@@ -435,12 +731,16 @@ def assemble(
                 elif isinstance(jump_instruction, JumpInstruction) and jump_instruction != instructions.ret:
                     unconditional_jumps[offset] = jump_edge
 
+                if positions is not None:
+                    for position in positions:
+                        position[0][position[1]] = Uninitialized(Offset(offset))
+
                 # Need to copy as inline blocks might be written multiple times, meaning the offsets would all be weird.
                 code.instructions[offset] = jump_instruction.copy()
                 offset += jump_instruction.get_size(offset, wide)
                 wide = False
 
-            if record_offsets:
+            if dont_inline:
                 ending[block] = offset
             else:
                 inlined[block][1].append(offset)
@@ -553,7 +853,7 @@ def assemble(
             for edge in in_edges:
                 if type(edge) is ExceptionEdge and not edge.from_ in skipped:
                     handlers[edge.priority].append(Code.ExceptionHandler(
-                        starting[edge.from_], ending[edge.from_], starting[edge.to], Class(edge.throwable.name),
+                        starting[edge.from_], ending[edge.from_], starting[edge.to], ClassConstant(edge.throwable.name),
                     ))
             continue
 
@@ -591,7 +891,9 @@ def assemble(
                     in_range = True
 
                 if not in_range:
-                    current_handlers.append(Code.ExceptionHandler(*current_range, starting[edge.to], Class(throwable.name)))
+                    current_handlers.append(Code.ExceptionHandler(
+                        *current_range, starting[edge.to], ClassConstant(throwable.name),
+                    ))
                     current_range = (start, end)
                     split_handlers += 1
                     continue
@@ -613,7 +915,9 @@ def assemble(
                 merged_edges += 1
 
             if current_range is not None:
-                current_handlers.append(Code.ExceptionHandler(*current_range, starting[edge.to], Class(throwable.name)))
+                current_handlers.append(Code.ExceptionHandler(
+                    *current_range, starting[edge.to], ClassConstant(throwable.name),
+                ))
 
     for priority, handlers_ in sorted(handlers.items(), key=operator.itemgetter(0)):
         code.exception_table.extend(handlers_)
@@ -636,11 +940,10 @@ def assemble(
         stackmap_table = StackMapTable(code)
         code.stackmap_table = stackmap_table
 
-        dead_blocks: Set[InsnBlock] = set()
-
         prev_offset = -1
         prev_locals = None
 
+        # FIXME: Might not include blocks by the assembler and might mess up on inlined block. More info needed.
         for block, offset in written:
             offset_delta = offset - prev_offset
 
@@ -654,168 +957,38 @@ def assemble(
                 else:
                     continue
 
-                # AKA a block with no instructions. We do have to be careful though as it may be the entry block, which we
-                # do want to have a frame for (though we don't need to write it as the first frame is implicit).
+                # AKA a block with no instructions. We do have to be careful though as it may be the entry block, which
+                # we do want to have a frame for (though we don't need to write it as the first frame is implicit).
                 if not offset_delta:
                     continue
 
             prev_offset = offset
             offset_delta -= 1  # Another space saving measure by the JVM.
 
-            entries = trace.entries.get(block)
-            if not entries:  # FIXME: Determine entry constraints or nop instructions (probably will do the latter).
-                dead_blocks.add(block)
-                continue
-
-            skip = False
-            live = trace.pre_liveness[block]
-
-            frame, *_ = entries
-
-            # If there is an uninitialized this type in the locals, no matter if it's live, we still need to declare it.
-            # Info obtained from ProGuard so credit to them.
-            # https://github.com/Guardsquare/proguard-core/blob/master/base/src/main/java/proguard/preverify/CodePreverifier.java#L296C1-L300C80
-            for index, entry in frame.locals.items():
-                if entry._type is uninitialized_this_t:  # Use of ._type is for performance and accuracy.
-                    live.add(index)
-
-            stack_depth = len(frame.stack)
-            max_local = max(live) + 1 if live else 0  # TODO: uninit_this_t needs to be accounted for no matter what
-
-            stack = []
-            locals_ = []
-
-            for entry in frame.stack:
-                stack.append(entry.inference())
-            for index in range(max_local):
-                if not index in live:
-                    locals_.append({top_t})
-                    continue
-                entry = frame.locals.get(index)
-                # This is invalid yes, but if do_raise=True then the error will have been raised prior to this, so the
-                # best we can do at this point is guess.
-                if entry is None:
-                    locals_.append({top_t})
-                    continue
-                locals_.append(entry.inference())
-
-            for frame in entries[1:]:
-                if len(frame.stack) != stack_depth:
-                    # Again, another case where do_raise=True would've caught this earlier. We will have to skip over
-                    # this frame fully though if we encounter this.
-                    skip = True
-                    break
-
-                # FIXME: Are merges between uninitialized_this_ts actually valid? Might have to substitute for a top_t.
-                for index, entry in frame.locals.items():
-                    if entry._type is uninitialized_this_t:
-                        live.add(index)
-
-                for index, entry in enumerate(frame.stack):
-                    stack[index].update(entry.inference())
-
-                for index in range(max_local):
-                    if not index in live:
-                        continue
-                    entry = frame.locals.get(index)
-                    if entry is None:
-                        continue
-                    locals_[index].update(entry.inference())
-
-            if skip:
-                continue
-
-            for index, types in enumerate(stack):
-                valid = []
-                invalid = False
-
-                types = list(types)
-                while types:
-                    vtype = types.pop().as_vtype()
-                    for type_ in types:
-                        if not vtype.mergeable(type_) and not type_.mergeable(vtype):
-                            invalid = True
-                            break
-                    else:
-                        valid.append(vtype)
-
-                # This may appear to be a somewhat cheap way of handling these situations, but in actuality it's more
-                # nuanced. To demonstrate this, here's an example (this is based off information xxDark gave me, so
-                # credits to him):
-                # entry:
-                #   aconst_null
-                #   ifnull push_ints
-                # push_double:
-                #   dconst_0
-                #   goto combine
-                # push_ints:
-                #   iconst_0
-                #   iconst_0
-                # combine:
-                #   pop2
-                #   return
-                # In this case, the merge conflict would be at the combine label, however note that the pop2 instruction
-                # does not care what type is on the stack, so you can somewhat trick the verifier into thinking that this
-                # is valid bytecode. If any other usage that didn't fit this criteria was used then we previously
-                # would've reported the error as a type conflict (if do_raise=True).
-                # As a sidenote: jdk11 doesn't seem to fall for this trick.
-                if invalid:
-                    stack[index] = top_t
-                    continue
-                elif len(valid) == 1:
-                    stack[index], = valid
-                    continue
-
-                ...  # TODO: Merge common supertypes?
-                raise NotImplementedError("Cannot merge common supertypes yet.")
-
-            for index, types in enumerate(locals_):
-                valid = []
-                invalid = False
-
-                types = list(types)
-                while types:
-                    vtype = types.pop().as_vtype()
-                    for type_ in types:
-                        if not vtype.mergeable(type_) and not type_.mergeable(vtype):
-                            invalid = True
-                            break
-                    else:
-                        valid.append(vtype)
-
-                # Unfortunately the same logic about invalid types on the stack cannot really be applied to the
-                # locals as they are read to and written from via typed instructions, but we'll still try our best.
-                if invalid:
-                    locals_[index] = top_t
-                    continue
-                elif len(valid) == 1:
-                    locals_[index], = valid
-                    continue
-
-                ...  # TODO: Merge common supertypes
-                raise NotImplementedError("Cannot merge common supertypes yet.")
+            stack, locals_ = frame_precalc[block]
 
             # Reserved types are implicit when dealing with the stack map table, so we need to remove all of them.
-            stack = [type_ for type_ in stack if type_ is not reserved_t]
-            locals_ = [type_ for type_ in locals_ if type_ is not reserved_t]
-            # while reserved_t in stack:
-            #     stack.remove(reserved_t)
             # while reserved_t in locals_:
             #     locals_.remove(reserved_t)
+            locals_ = tuple(type_ for type_ in locals_ if type_ is not reserved_t)
 
             if block is graph.entry_block:  # As stated above, no need to write this frame.
                 prev_offset = -1
                 prev_locals = locals_
                 continue
 
+            # while reserved_t in stack:
+            #     stack.remove(reserved_t)
+            stack = tuple(type_ for type_ in stack if type_ is not reserved_t)
+
             # print(offset, offset_delta, block)
             # print("[", ", ".join(map(str, stack)), "]")
             # print("[", ", ".join(map(str, locals_)), "]")
 
-            stackmap_frame = StackMapTable.FullFrame(offset_delta, locals_, stack)
+            stackmap_frame = None
 
             if not compress_frames:
-                stackmap_table.frames.append(stackmap_frame)
+                stackmap_table.frames.append(StackMapTable.FullFrame(offset_delta, locals_, stack))
                 continue
 
             locals_delta = len(locals_) - len(prev_locals)
@@ -839,11 +1012,10 @@ def assemble(
                 if locals_delta in range(-3, 1) and locals_ == prev_locals[:locals_delta]:
                     stackmap_frame = StackMapTable.ChopFrame(offset_delta, -locals_delta)
                 elif locals_delta in range(0, 4) and locals_[:-locals_delta] == prev_locals:
-                    stackmap_frame = StackMapTable.AppendFrame(offset_delta, tuple(locals_[-locals_delta:]))
+                    stackmap_frame = StackMapTable.AppendFrame(offset_delta, locals_[-locals_delta:])
 
             prev_locals = locals_
-
-            stackmap_table.frames.append(stackmap_frame)
+            stackmap_table.frames.append(stackmap_frame or StackMapTable.FullFrame(offset_delta, locals_, stack))
 
         if not stackmap_table:
             code.stackmap_table = None

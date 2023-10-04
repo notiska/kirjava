@@ -15,7 +15,7 @@ from .abc import Offset, Source
 
 if typing.TYPE_CHECKING:
     from .analysis import InsnBlock
-    from .instructions.jvm import Instruction
+    from .instructions import Instruction
 
 
 class InstructionAtOffset(Offset):

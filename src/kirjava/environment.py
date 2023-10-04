@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 __all__ = (
+    "DEFAULT",
+    "Provider",
     "Environment",
 )
 
@@ -9,9 +11,15 @@ Information about classes for Kirjava to use.
 """
 
 import logging
+import os
+import threading
 import typing
+from os import PathLike
+from types import TracebackType
+from typing import Iterable, List, Optional, Set, Union
 from weakref import WeakValueDictionary
-from typing import Iterable, Optional, Set, Union
+
+from .error import ClassNotFoundError
 
 if typing.TYPE_CHECKING:
     from .abc import Class
@@ -19,25 +27,51 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger("kirjava.environment")
 
 
+class Provider:
+    """
+    Provides classes when looked up.
+    """
+
+    __slots__ = ()
+
+    def provide_class(self, name: str) -> "Class":
+        """
+        Provides a class with the given name.
+        """
+
+        ...
+
+
 class Environment:
     """
     Allows for registration and lookup of classes.
     """
 
-    __slots__ = ("do_raise", "_refs", "_classes")
+    __slots__ = ("providers", "_refs", "_classes", "_lock")
 
-    def __init__(self, inherit: Optional["Environment"] = None, *, do_raise: bool = False) -> None:
-        """
-        :param inherit: An old environment to inherit from.
-        :param do_raise: Should an exception be raised if a class is not found?
-        """
-
-        self.do_raise = do_raise
+    def __init__(self, inherit: Optional["Environment"] = None) -> None:
+        self.providers: List[Provider] = []
 
         self._refs: Set["Class"] = set()  # Strong references to classes
         self._classes: WeakValueDictionary[str, "Class"] = WeakValueDictionary()
         if inherit is not None:
             self._classes.update(inherit._classes)
+
+        self._lock = threading.RLock()
+
+    def __enter__(self) -> "Environment":
+        self._lock.acquire()
+        return self
+
+    def __exit__(self, exc_type: Optional[type], exc_value: Optional[Exception], traceback: Optional[TracebackType]) -> None:
+        self._lock.release()
+
+    def release_refs(self) -> None:
+        """
+        Releases all strong references to classes.
+        """
+
+        self._refs.clear()
 
     def register_class(self, class_: "Class", *, weak: bool = False) -> None:
         """
@@ -47,11 +81,12 @@ class Environment:
         :param weak: Should the class be weakly referenced?
         """
 
-        if class_.name in self._classes:
-            logger.debug("Overriding already defined class %s.", class_.name)
-        self._classes[class_.name] = class_
-        if not weak:
-            self._refs.add(class_)
+        with self._lock:
+            if class_.name in self._classes:
+                logger.debug("Overriding already defined class %s.", class_.name)
+            self._classes[class_.name] = class_
+            if not weak:
+                self._refs.add(class_)
 
     def register_classes(self, *classes: Union[Iterable["Class"], "Class"], weak: bool = False) -> None:
         """
@@ -61,39 +96,55 @@ class Environment:
         :param weak: Should the classes be weakly referenced?
         """
 
-        for class_ in classes:
-            try:
-                self.register_classes(*class_, weak=weak)
-            except TypeError:  # Ugh I hate not being able to import Class directly
-                self.register_class(class_, weak=weak)
+        with self._lock:
+            for class_ in classes:
+                try:
+                    self.register_classes(*class_, weak=weak)
+                except TypeError:  # Ugh I hate not being able to import Class directly
+                    self.register_class(class_, weak=weak)
 
-    def unregister_class(self, name: str) -> Optional["Class"]:
+    def unregister_class(self, name: str, *, do_raise: bool = True) -> Optional["Class"]:
         """
         Unregisters the class with the given name.
 
         :param name: The name of the class to unregister.
+        :param do_raise: Raises an exception if the class could not be found.
         :return: The class that was unregistered.
         """
 
-        class_ = self._classes.pop(name, None)
-        self._refs.discard(class_)
-        if class_ is None:
-            if not self.do_raise:
-                return None
-            raise LookupError("Couldn't find class by name %r." % name)
-        return class_
+        with self._lock:
+            class_ = self._classes.pop(name, None)
+            self._refs.discard(class_)
+            if class_ is None:
+                if not do_raise:
+                    return None
+                raise ClassNotFoundError(name)
+            return class_
 
-    def find_class(self, name: str) -> Optional["Class"]:
+    def find_class(self, name: str, *, do_raise: bool = True) -> Optional["Class"]:
         """
         Retrieves a class from the environment.
 
         :param name: The name of the class to retrieve.
-        :return: The class. A LookupError is thrown otherwise.
+        :param do_raise: Raises an exception if the class could not be found.
+        :return: The class.
         """
 
-        class_ = self._classes.get(name)
-        if class_ is None:
-            if not self.do_raise:
-                return None
-            raise LookupError("Couldn't find class by name %r." % name)
-        return class_
+        with self._lock:
+            class_ = self._classes.get(name)
+
+            if class_ is None:
+                for provider in self.providers:
+                    class_ = provider.provide_class(name)
+                    if class_ is not None:
+                        self.register_class(class_, weak=True)  # We'll assume that we can discard afterwards.
+                        return class_
+
+                if not do_raise:
+                    return None
+                raise ClassNotFoundError(name)
+
+            return class_
+
+
+DEFAULT = Environment()

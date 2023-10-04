@@ -15,13 +15,9 @@ import typing
 from typing import Dict, Optional, Union
 
 from . import Instruction
-from ..ir.other import CompoundStatement  # FIXME: Compound statements = dumb
-from ..ir.variable import DeclareStatement
-from ... import types
-from ...abc import Value
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Context
+    from ..analysis import Context
 
 
 class PopInstruction(Instruction):

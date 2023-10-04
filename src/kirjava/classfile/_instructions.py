@@ -12,7 +12,7 @@ import operator
 import typing
 from typing import Dict, IO
 
-from ..instructions.jvm import wide, INSTRUCTIONS, Instruction
+from ..instructions import wide, INSTRUCTIONS, Instruction
 
 if typing.TYPE_CHECKING:
     from . import ClassFile

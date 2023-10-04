@@ -12,15 +12,12 @@ import typing
 from typing import Any, Dict, IO, Union
 
 from . import Instruction
-from ..ir.field import *
-from ... import types
-from ...abc import Value
-from ...constants import FieldRef
-from ...types import Class
+from ..constants import FieldRef
+from ..types import null_t, uninitialized_this_t, Class, Reference
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Context
-    from ...classfile import ClassFile
+    from ..analysis import Context
+    from ..classfile import ClassFile
 
 
 class FieldInstruction(Instruction):
@@ -74,7 +71,13 @@ class GetFieldInstruction(FieldInstruction):
     def trace(self, context: "Context") -> None:
         if not self.static:
             context.constrain(context.pop(), self.reference.class_.class_type)
-        context.push(self.reference.field_type)
+
+        field_type = self.reference.field_type
+        entry = context.push(field_type.as_vtype())
+
+        context.constrain(entry, field_type, original=True)
+        if isinstance(field_type, Reference):
+            context.constrain(entry, null_t, original=True)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
     #     if self.static:
@@ -99,7 +102,7 @@ class PutFieldInstruction(FieldInstruction):
             # The JVM allows you to set fields on an uninitializedThis type (but not get) and they cannot be fields on
             # the super class.
             if (
-                entry.type == types.uninitialized_this_t and
+                entry.generic is uninitialized_this_t and
                 self.reference.class_.class_type == context.method.class_.get_type()
             ):
                 return  # Don't add the constraint as it will create a type conflict.

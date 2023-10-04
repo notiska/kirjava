@@ -14,13 +14,10 @@ import typing
 from typing import Dict
 
 from . import Instruction
-from ..ir.other import *
-from ... import types
-from ...abc import Value
-from ...types import Class, Verification
+from ..types import reference_t, throwable_t, void_t, Class, Verification
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Context
+    from ..analysis import Context
 
 
 class ReturnInstruction(Instruction):
@@ -35,7 +32,7 @@ class ReturnInstruction(Instruction):
     type: Verification = ...
 
     def trace(self, context: "Context") -> None:
-        if self.type is not types.void_t:
+        if self.type is not void_t:
             *_, entry = context.pop(1 + self.type.wide, as_tuple=True)
             context.constrain(entry, self.type)
             context.constrain(entry, context.method.return_type)
@@ -63,11 +60,7 @@ class AThrowInstruction(Instruction):
     def trace(self, context: "Context") -> None:
         entry = context.pop()
         context.pop(len(context.frame.stack))
-
-        if entry.type == types.null_t:  # FIXME: This might throw things off the in the future?
-            context.push(Class("java/lang/NullPointerException"))
-        else:
-            context.push(entry, types.throwable_t)
+        context.push(entry, throwable_t)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> ThrowStatement:
     #     return ThrowStatement(associations[delta.pops[-1]])
@@ -83,7 +76,7 @@ class MonitorEnterInstruction(Instruction):
     throws = (Class("java/lang/NullPointerException"),)
 
     def trace(self, context: "Context") -> None:
-        context.constrain(context.pop(), types.reference_t)
+        context.constrain(context.pop(), reference_t)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> MonitorEnterStatement:
     #     return MonitorEnterStatement(associations[delta.pops[-1]])
@@ -102,7 +95,7 @@ class MonitorExitInstruction(Instruction):
     )
 
     def trace(self, context: "Context") -> None:
-        context.constrain(context.pop(), types.reference_t)
+        context.constrain(context.pop(), reference_t)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> MonitorExitStatement:
     #     return MonitorExitStatement(associations[delta.pops[-1]])

@@ -20,7 +20,7 @@ from ..error import MergeError
 logger = logging.getLogger("kirjava.analysis._trace")
 
 
-def trace(trace: Trace, graph: InsnGraph, do_raise: bool) -> None:
+def trace(trace: Trace, graph: InsnGraph, do_raise: bool, merge_non_live: bool) -> None:
     logger.debug("Computing trace information for %s:" % graph.method)
 
     context = Context(graph.method, graph, do_raise)
@@ -36,7 +36,7 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool) -> None:
 
     trace_stack: Deque[Tuple[Frame, InsnBlock, Optional[InsnEdge]]] = deque()
     liveness_stack: Deque[InsnEdge] = deque()
-    branches: Deque[Tuple[Frame, InsnBlock, InsnEdge]] = deque()
+    branches: Deque[Tuple[Frame, InsnBlock, InsnEdge]] = []
     retraces: List[Tuple[Frame, InsnBlock, InsnEdge]] = []
 
     uses: Dict[InsnBlock, Set[int]] = defaultdict(set)
@@ -92,7 +92,9 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool) -> None:
 
                 for constraint in constraints:
                     try:
-                        if frame.merge(constraint, edge, live_locals, check_depth):
+                        # Note: probably due to a retrace(?) so won't merge non-live locals on this pass.
+                        # FIXME: Verify this is actually the correct way of doing things.
+                        if frame.merge(constraint, edge, live_locals, check_depth, False):
                             can_merge = True
                             # We'll break early for performance reasons. Any further entry merges will be done later in
                             # the retrace stage.
@@ -259,7 +261,7 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool) -> None:
             # we merge all entries that can be merged.
             for constraint in constraints:
                 try:
-                    if frame.merge(constraint, edge, live_locals, check_depth):
+                    if frame.merge(constraint, edge, live_locals, check_depth, merge_non_live):
                         can_merge = True
                 except MergeError as error:
                     if do_raise:

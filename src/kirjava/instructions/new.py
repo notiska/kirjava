@@ -12,15 +12,13 @@ import typing
 from typing import Any, Dict, IO, Union
 
 from . import Instruction
-from ..ir.value import NewExpression, NewArrayExpression
-from ... import _argument, types
-from ...abc import Value
-from ...constants import Class as ClassConstant
-from ...types import Array, Class as ClassType, Primitive, Reference, Uninitialized
+from .. import _argument, types
+from ..constants import Class as ClassConstant
+from ..types import int_t, Array, Class as ClassType, Primitive, Reference, Uninitialized
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Context
-    from ...classfile import ClassFile
+    from ..analysis import Context
+    from ..classfile import ClassFile
 
 
 class NewInstruction(Instruction):
@@ -135,7 +133,7 @@ class NewArrayInstruction(Instruction):
         super().write(class_file, buffer, wide)
 
     def trace(self, context: "Context") -> None:
-        context.constrain(context.pop(), types.int_t)
+        context.constrain(context.pop(), int_t)
         context.push(self.type)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
@@ -184,7 +182,7 @@ class ANewArrayInstruction(Instruction):
         super().write(class_file, buffer, wide)
 
     def trace(self, context: "Context") -> None:
-        context.constrain(context.pop(), types.int_t)
+        context.constrain(context.pop(), int_t)
         context.push(self.type)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
@@ -212,7 +210,7 @@ class MultiANewArrayInstruction(Instruction):
         self.dimension = dimension
 
     def __repr__(self) -> str:
-        return "<ANewArrayInstruction(opcode=0x%x, mnemonic=%s, type=%r, dimension=%i) at %x>" % (
+        return "<MultiANewArrayInstruction(opcode=0x%x, mnemonic=%s, type=%r, dimension=%i) at %x>" % (
             self.opcode, self.mnemonic, self.type, self.dimension, id(self),
         )
 
@@ -227,7 +225,11 @@ class MultiANewArrayInstruction(Instruction):
         ) or other is type(self)
 
     def copy(self) -> "MultiANewArrayInstruction":
-        return type(self)(self.type, self.dimension)
+        instruction = type(self)(self.type, self.dimension)
+        if type(self.type) is not Array:
+            # Otherwise it will be automatically converted, which may not be correct in some cases.
+            instruction.type = self.type
+        return instruction
 
     def read(self, class_file: "ClassFile", buffer: IO[bytes], wide: bool) -> None:
         super().read(class_file, buffer, wide)
@@ -245,7 +247,7 @@ class MultiANewArrayInstruction(Instruction):
         #     ))
 
         for entry in context.pop(self.dimension):
-            context.constrain(entry, types.int_t)
+            context.constrain(entry, int_t)
         context.push(self.type)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:

@@ -12,15 +12,13 @@ import typing
 from typing import Any, Dict, IO
 
 from . import Instruction
-from ..ir.cast import *
-from ... import _argument, types
-from ...abc import Value
-from ...constants import Class as ClassConstant
-from ...types import Class as ClassType, Primitive
+from .. import _argument
+from ..constants import Class as ClassConstant
+from ..types import int_t, Class as ClassType, Primitive
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Context
-    from ...classfile import ClassFile
+    from ..analysis import Context
+    from ..classfile import ClassFile
 
 
 class ConversionInstruction(Instruction):
@@ -54,7 +52,7 @@ class TruncationInstruction(ConversionInstruction):
 
     __slots__ = ()
 
-    type_in = types.int_t
+    type_in = int_t
 
     def __repr__(self) -> str:
         return "<TruncationInstruction(opcode=0x%x, mnemonic=%s, type_out=%r) at %x>" % (
@@ -150,7 +148,7 @@ class InstanceOfInstruction(Instruction):
 
     def trace(self, context: "Context") -> None:
         context.constrain(context.pop(), self.type)
-        context.push(types.int_t)
+        context.push(int_t)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
     #     associations[delta.pushes] = InstanceOfExpression(associations[delta.pops[-1]], self.type)

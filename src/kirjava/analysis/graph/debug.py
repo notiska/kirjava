@@ -10,7 +10,7 @@ Extra JVM debug information.
 
 from typing import Any, Optional
 
-from ...instructions.jvm import _ReservedInstruction
+from ...instructions import _ReservedInstruction
 
 
 class LineNumber(_ReservedInstruction):

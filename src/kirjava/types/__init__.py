@@ -41,6 +41,7 @@ JVM, verification and (some) JLS types.
  - https://docs.oracle.com/javase/specs/jvms/se20/html/jvms-4.html#jvms-4.10.1.2
 """
 
+from functools import cached_property
 from typing import Any, Optional
 from weakref import WeakValueDictionary
 
@@ -200,9 +201,9 @@ class _Integer(Primitive, OneWord):
     __slots__ = ()
 
     def mergeable(self, other: "Type") -> bool:
-        # int_t.mergeable(byte_t) -> True
-        # byte_t.mergeable(int_t) -> False
-        return self is int_t and isinstance(other, _Integer)
+        # byte_t.mergeable(int_t) -> True
+        # int_t.mergeable(byte_t) -> False
+        return other is int_t  # self is int_t and isinstance(other, _Integer)
 
     def as_vtype(self) -> "_Integer":
         return int_t
@@ -343,17 +344,62 @@ class Array(_JavaReference):
     An array type.
     """
 
-    __slots__ = ("element",)
+    __slots__ = ("__dict__", "element")
 
     _cached: WeakValueDictionary[Type, "Array"] = WeakValueDictionary()
 
-    @property
+    @classmethod
+    def from_dimension(cls, element: Type, dimension: int) -> "Array":
+        """
+        Creates an array type from a dimension and element type.
+
+        :param element: The element type.
+        :param dimension: The dimension.
+        :return: The array type.
+        """
+
+        if not dimension:
+            raise ValueError("Invalid dimension 0.")
+
+        type_ = cls(element)
+        for _ in range(dimension - 1):
+            type_ = cls(type_)
+        return type_
+
+    @cached_property  # Possible because we know this is immutable.
+    def lowest_element(self) -> Type:
+        """
+        :return: The lowest element type of this array type.
+        """
+
+        element = self.element
+        while type(element) is Array:
+            element = element.element
+
+        return element
+
+    @cached_property
     def dimensions(self) -> int:
         """
         :return: The dimensions of this array type.
         """
 
-        return self.element.dimensions + 1 if type(self.element) is Array else 1
+        dimension = 1
+
+        element = self.element
+        while type(element) is Array:
+            dimension += 1
+            element = element.element
+
+        return dimension
+
+    @cached_property
+    def primitive(self) -> bool:
+        """
+        :return: Is this array type a primitive array type?
+        """
+
+        return isinstance(self.element, Primitive)  # and not self.element.abstract
 
     def __new__(cls, element: Type) -> "Array":
         cached = cls._cached.get(element)
@@ -374,10 +420,18 @@ class Array(_JavaReference):
         return "<Array(element=%r)>" % self.element
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, Array) and other.element == self.element
+        return isinstance(other, Array) and self.element == other.element
 
     def __hash__(self) -> int:
         return self._hash
+
+    # We won't get into specifics here as it causes issues in the assembler. It's notable that arrays can just be
+    # generified to java/lang/Object, making this technically valid. If a more precise comparison is needed the element
+    # field is accessible.
+    # def mergeable(self, other: Type) -> bool:
+    #     if isinstance(other, Array):
+    #         return self.element.mergeable(other.element)
+    #     return super().mergeable(other)
 
 
 class Class(_JavaReference):

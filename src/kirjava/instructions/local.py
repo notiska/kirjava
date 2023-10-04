@@ -14,17 +14,12 @@ import typing
 from typing import Any, Dict, IO, Optional
 
 from . import Instruction
-from ..ir.arithmetic import AdditionExpression
-from ..ir.variable import GetLocalExpression, SetLocalStatement
-from ..ir.value import ConstantValue
-from ... import types
-from ...abc import Value
-from ...constants import Integer
-from ...types import Reference, ReturnAddress, Verification
+from ..constants import Integer
+from ..types import int_t, Reference, ReturnAddress, Verification
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Context
-    from ...classfile import ClassFile
+    from ..analysis import Context
+    from ..classfile import ClassFile
 
 
 class LoadLocalInstruction(Instruction):
@@ -57,8 +52,7 @@ class LoadLocalInstruction(Instruction):
         return type(self)(self.index)
 
     def trace(self, context: "Context") -> None:
-        entry = context.get(self.index)
-        context.push(entry, self.type)
+        context.push(context.get(self.index), self.type)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
     #     entry = delta.pushes[0]
@@ -136,7 +130,7 @@ class StoreLocalInstruction(Instruction):
     def trace(self, context: "Context") -> None:
         *_, entry = context.pop(1 + self.type.wide, as_tuple=True)
         # The astore instruction has a special case for storing return addresses which we need to account for.
-        if isinstance(self.type, Reference) and isinstance(entry.type, ReturnAddress):
+        if isinstance(self.type, Reference) and type(entry.generic) is ReturnAddress:
             context.set(self.index, entry)
         else:
             context.constrain(entry, self.type)
@@ -220,8 +214,8 @@ class IncrementLocalInstruction(Instruction):
 
     def trace(self, context: "Context") -> None:
         entry = context.get(self.index)
-        context.constrain(entry, types.int_t)
-        context.set(self.index, types.int_t)
+        context.constrain(entry, int_t)
+        context.set(self.index, int_t)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> SetLocalStatement:
     #     old, new = delta.overwrites[self.index]

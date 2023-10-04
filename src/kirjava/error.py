@@ -2,6 +2,7 @@
 
 __all__ = (
     "ClassFormatError",
+    "ClassNotFoundError",
     "TypeConflictError",
     "MergeError",
     "MergeDepthError",
@@ -30,6 +31,16 @@ class ClassFormatError(Exception):
 
     def __init__(self, message: Optional[str] = None) -> None:
         super().__init__(message or "Malformed class file.")
+
+
+class ClassNotFoundError(Exception):
+    """
+    Raised when a class cannot be found when looked up.
+    """
+
+    def __init__(self, name: str) -> None:
+        super().__init__("Class by name %r was not found." % name)
+        self.name = name
 
 
 class VerifyError(Exception):

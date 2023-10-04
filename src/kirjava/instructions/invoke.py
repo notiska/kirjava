@@ -16,17 +16,13 @@ from typing import Any, IO, List, Optional, Union
 
 from . import Instruction
 from .new import NewInstruction
-from ..ir.invoke import *
-from ..ir.variable import AssignStatement
-from ... import types
-from ...abc import Value
-from ...constants import InterfaceMethodRef, InvokeDynamic, MethodRef
-from ...source import *
-from ...types import Class, Uninitialized
+from ..constants import InterfaceMethodRef, InvokeDynamic, MethodRef
+from ..source import *
+from ..types import null_t, uninitialized_this_t, void_t, Class, Reference, Uninitialized
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Context
-    from ...classfile import ClassFile
+    from ..analysis import Context
+    from ..classfile import ClassFile
 
 
 class InvokeInstruction(Instruction):
@@ -74,6 +70,21 @@ class InvokeInstruction(Instruction):
             *_, entry = context.pop(1 + argument_type.wide, as_tuple=True)
             context.constrain(entry, argument_type)
 
+    def _trace_return(self, context: "Context") -> None:
+        """
+        Partial tracing for the return type this instruction references.
+        """
+
+        return_type = self.reference.return_type
+        if return_type is void_t:
+            return
+
+        entry = context.push(return_type.as_vtype())
+        context.constrain(entry, return_type, original=True)
+        if isinstance(return_type, Reference):
+            # Just to be on the safe-side, we'll say that this is nullable.
+            context.constrain(entry, null_t, original=True)
+
 
 class InvokeVirtualInstruction(InvokeInstruction):
     """
@@ -92,8 +103,7 @@ class InvokeVirtualInstruction(InvokeInstruction):
     def trace(self, context: "Context") -> None:
         self._trace_arguments(context)
         context.constrain(context.pop(), self.reference.class_.class_type)
-        if self.reference.return_type is not types.void_t:
-            context.push(self.reference.return_type)
+        self._trace_return(context)
 
     # def lift(
     #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
@@ -123,31 +133,36 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction):
         self._trace_arguments(context)
         entry = context.pop()
 
-        if self.reference.name == "<init>" and self.reference.return_type is types.void_t:
-            if entry.type == types.uninitialized_this_t:
-                context.replace(entry, context.method.class_.get_type())
-                return
-            # Unverified code can cause this not to be an uninitialized type
-            elif isinstance(entry.type, Uninitialized):
-                class_type: Optional[Class] = None
-                source = entry.type.source
+        # The requirements for the reference to be a constructor method.
+        if self.reference.name != "<init>" or self.reference.return_type is not void_t:
+            self._trace_return(context)
+            return
 
-                if isinstance(source, NewInstruction):
-                    class_type = source.type
-                elif type(source) in (InstructionInBlock, InstructionAtOffset) and isinstance(source.instruction, NewInstruction):
-                    class_type = source.instruction.type
+        if entry.generic is uninitialized_this_t:
+            context.replace(entry, context.method.class_.get_type())
+            return
 
-                if class_type is None:
-                    if context.do_raise:
-                        ...  # TODO: Report some kind of error here?
-                    class_type = self.reference.class_.class_type
+        # Unverified code can cause this not to be an uninitialized type
+        elif isinstance(entry.generic, Uninitialized):
+            class_type: Optional[Class] = None
+            source = entry.generic.source
 
-                context.replace(entry, class_type)
-                return
+            if isinstance(source, NewInstruction):
+                class_type = source.type
+            elif type(source) in (InstructionInBlock, InstructionAtOffset) and isinstance(source.instruction, NewInstruction):
+                class_type = source.instruction.type
 
-        context.constrain(entry, self.reference.class_.class_type)
-        if self.reference.return_type is not types.void_t:
-            context.push(self.reference.return_type)
+            if class_type is None:
+                if context.do_raise:
+                    ...  # TODO: Report some kind of error here?
+                class_type = self.reference.class_.class_type
+
+            context.replace(entry, class_type)
+            return
+
+        if context.do_raise:
+            ...  # TODO: Raise error?
+        self._trace_return(context)
 
     # def lift(
     #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
@@ -164,8 +179,7 @@ class InvokeStaticInstruction(InvokeInstruction):
 
     def trace(self, context: "Context") -> None:
         self._trace_arguments(context)
-        if self.reference.return_type is not types.void_t:
-            context.push(self.reference.return_type)
+        self._trace_return(context)
 
     # def lift(
     #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
@@ -197,9 +211,10 @@ class InvokeInterfaceInstruction(InvokeVirtualInstruction):
 
     def trace(self, context: "Context") -> None:
         self._trace_arguments(context)
+        # Sidenote: it's not actually required that we check if it's an interface at verification time, but we'll add
+        #           this "constraint" more as a hint that we're dealing with an interface.
         context.constrain(context.pop(), self.reference.class_.class_type.as_interface())
-        if self.reference.return_type is not types.void_t:
-            context.push(self.reference.return_type)
+        self._trace_return(context)
 
 
 class InvokeDynamicInstruction(InvokeStaticInstruction):
@@ -222,4 +237,4 @@ class InvokeDynamicInstruction(InvokeStaticInstruction):
         return "%s %s" % (self.mnemonic, self.reference)
 
     def __eq__(self, other: Any) -> bool:
-        return (type(other) is type(self) and other.reference == self.reference) or other is type(self)
+        return (type(other) is type(self) and self.reference == other.reference) or other is type(self)

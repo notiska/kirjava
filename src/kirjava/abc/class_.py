@@ -11,6 +11,7 @@ Class abstraction.
 import typing
 from typing import Iterable, Optional, Tuple, Union
 
+from .. import environment
 from ..types import Class as ClassType, Interface
 
 if typing.TYPE_CHECKING:
@@ -48,14 +49,16 @@ class Class:
     fields: Tuple["Field", ...]
     methods: Tuple["Method", ...]
 
-    def __init__(self, environment: Optional["Environment"]) -> None:
+    def __init__(self, environment: Optional["Environment"] = environment.DEFAULT) -> None:
         """
         :param environment: The environment that this class belongs to.
         """
 
         self.environment = environment
         if environment is not None:
-            environment.register_class(self)
+            # We'll assume it's a weak reference by default. If this isn't the case, the user can re-register the class
+            # as a strong reference.
+            environment.register_class(self, weak=True)
 
     def get_method(self, name: str, *descriptor: "MethodDescriptor") -> "Method":
         """

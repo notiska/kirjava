@@ -12,13 +12,10 @@ import typing
 from typing import Dict, Optional
 
 from . import Instruction
-from ..ir.array import *
-from ... import types
-from ...abc import Value
-from ...types import Array, Class
+from ..types import array_t, int_t, Array, Class
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Context
+    from ..analysis import Context
 
 
 class ArrayLoadInstruction(Instruction):
@@ -36,9 +33,8 @@ class ArrayLoadInstruction(Instruction):
     type: Array = ...
 
     def trace(self, context: "Context") -> None:
-        context.constrain(context.pop(), types.int_t)
-        entry = context.pop()
-        context.constrain(entry, self.type)
+        context.constrain(context.pop(), int_t)
+        context.constrain(context.pop(), self.type)
         entry = context.push(self.type.element.as_vtype())
         context.constrain(entry, self.type.element, original=True)
 
@@ -68,7 +64,7 @@ class ArrayStoreInstruction(Instruction):
     def trace(self, context: "Context") -> None:
         *_, entry = context.pop(1 + self.type.element.wide, as_tuple=True)
         context.constrain(entry, self.type.element)
-        context.constrain(context.pop(), types.int_t)
+        context.constrain(context.pop(), int_t)
         context.constrain(context.pop(), self.type)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> ArrayStoreStatement:
@@ -90,8 +86,8 @@ class ArrayLengthInstruction(Instruction):
     throws = (Class("java/lang/NullPointerException"),)
 
     def trace(self, context: "Context") -> None:
-        context.constrain(context.pop(), types.array_t)
-        context.push(types.int_t)
+        context.constrain(context.pop(), array_t)
+        context.push(int_t)
 
     # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
     #     associations[delta.pushes[0]] = ArrayLengthExpression(associations[delta.pops[-1]])

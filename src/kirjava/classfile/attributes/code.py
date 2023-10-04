@@ -105,7 +105,7 @@ class StackMapTable(AttributeInfo):
         elif type_ is long_t:
             buffer.write(bytes((4,)))
         elif type(type_) is Uninitialized:
-            if not isinstance(type_.source, cls.Offset):
+            if not isinstance(type_.source, Offset):
                 raise TypeError("Invalid source %r for Uninitialized." % type(type_.source))
             buffer.write(bytes((8,)))
             buffer.write(pack_H(type_.source.offset))
@@ -379,7 +379,7 @@ class StackMapTable(AttributeInfo):
             for index in range(self.chopped):
                 entry = frame.locals.pop(max_local)
                 max_local -= 1
-                if entry.type is reserved_t:  # Category 2 type
+                if entry.generic is reserved_t:  # Category 2 type
                     max_local -= 1
 
             return frame

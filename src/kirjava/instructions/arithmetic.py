@@ -16,14 +16,12 @@ import typing
 from typing import Dict, Optional
 
 from . import Instruction
-from ..ir.arithmetic import *
-from ..ir.value import ConstantValue
-from ... import types
-from ...abc import Constant, Value
-from ...types import Type, Verification
+from .. import types
+from ..abc import Constant
+from ..types import Type, Verification
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Context
+    from ..analysis import Context
 
 
 class UnaryOperationInstruction(Instruction):

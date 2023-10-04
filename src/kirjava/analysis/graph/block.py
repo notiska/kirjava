@@ -10,7 +10,7 @@ from typing import Any, Iterable, Iterator, List, Optional, Tuple, Type, Union
 from .debug import *
 from ... import instructions
 from ...abc import Block, RethrowBlock, ReturnBlock
-from ...instructions.jvm import Instruction, JumpInstruction, ReturnInstruction
+from ...instructions import Instruction, JumpInstruction, ReturnInstruction
 from ...source import InstructionInBlock
 
 if typing.TYPE_CHECKING:
@@ -61,6 +61,7 @@ class InsnBlock(Block):
         # 42.9ns -> 14.5ns
         # 209ms (5.8%) -> 71ms (2.1%)
         # Funnily enough this is faster than the default behaviour, lol. I'll take an extra 2.7%.
+        # TODO: Need to be checking for future versions of Python to see if they improve this behaviour.
         return self._hash  # id(self)
 
     def __iter__(self) -> Iterator[Instruction]:

@@ -275,16 +275,10 @@ class Graph:
         if block is self.entry_block:
             self.entry_block = None
 
-        try:
-            for edge in self._backward_edges.pop(block):
-                self.disconnect(edge)
-        except KeyError:
-            ...
-        try:
-            for edge in self._forward_edges.pop(block):
-                self.disconnect(edge)
-        except KeyError:
-            ...
+        for edge in self._backward_edges.pop(block):
+            self.disconnect(edge)
+        for edge in self._forward_edges.pop(block):
+            self.disconnect(edge)
 
     def connect(self, edge: Edge, overwrite: bool = False, *, check: bool = True) -> None:
         """
@@ -346,16 +340,13 @@ class Graph:
 
         try:
             self._forward_edges[edge.from_].remove(edge)
-        except KeyError:  # It's just faster lol
-            ...
+        except KeyError:
+            raise ValueError("Edge %r is not in the graph." % edge)
 
         if edge.to is not None:
-            try:
-                self._backward_edges[edge.to].remove(edge)
-            except KeyError:
-                ...
+            self._backward_edges[edge.to].discard(edge)
         else:
-            self._opaque_edges.remove(edge)
+            self._opaque_edges.discard(edge)
 
     def is_opaque(self, edge: Edge) -> bool:
         """

@@ -10,7 +10,7 @@ from typing import Any, Optional, Tuple
 from ... import instructions, types
 from ...abc import Edge
 from ...error import NotAReturnAddressError, NotASubroutineError
-from ...instructions.jvm import Instruction, JsrInstruction, RetInstruction, SwitchInstruction
+from ...instructions import Instruction, JsrInstruction, RetInstruction, SwitchInstruction
 from ...source import *
 from ...types import Class, ReturnAddress
 
@@ -179,14 +179,14 @@ class RetEdge(JumpEdge):
 
         context.source = self
         entry = context.get(self.instruction.index)
-        if not isinstance(entry._type, ReturnAddress):
+        if not isinstance(entry.generic, ReturnAddress):
             # FIXME: JVM (hotspot in particular) can interpret any value as returnAddress and in some cases we may be
             #        able to work this out? Would be some weird edge cases though. Presumably any obfuscation using this
             #        would make the values opaque, but who knows.
             #        (https://discord.com/channels/443258489146572810/887649798918909972/1133022037674303499)
             if not context.do_raise:
                 return None, None
-            raise NotAReturnAddressError(self, entry._type)
+            raise NotAReturnAddressError(self, entry.generic)
 
         # The following code is not the prettiest I've ever written, I'll admit :p.
 
@@ -195,19 +195,19 @@ class RetEdge(JumpEdge):
         fallthrough_edge: Optional[JsrFallthroughEdge] = None
 
         # Trying to find the source of the subroutine lol. It (might) have been messed with by the user?
-        if type(entry._type.source) is JsrJumpEdge:
-            origin_block = entry._type.source.from_
-            jump_edge = entry._type.source
-        elif type(entry._type.source) is JsrFallthroughEdge:
-            origin_block = entry._type.source.from_
-            fallthrough_edge = entry._type.source
-        elif type(entry._type.source) is InstructionInBlock:
-            origin_block = entry._type.source.block
+        if type(entry.generic.source) is JsrJumpEdge:
+            origin_block = entry.generic.source.from_
+            jump_edge = entry.generic.source
+        elif type(entry.generic.source) is JsrFallthroughEdge:
+            origin_block = entry.generic.source.from_
+            fallthrough_edge = entry.generic.source
+        elif type(entry.generic.source) is InstructionInBlock:
+            origin_block = entry.generic.source.block
 
         if origin_block is None:
             if not context.do_raise:
                 return None, None
-            raise NotASubroutineError(self, entry._type.source)
+            raise NotASubroutineError(self, entry.generic.source)
 
         for origin_edge in context.graph.out_edges(origin_block):
             if jump_edge is None and type(origin_edge) is JsrJumpEdge:

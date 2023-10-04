@@ -19,12 +19,11 @@ from enum import Enum
 from typing import Any, Dict, IO, Optional
 
 from . import Instruction
-from ... import types
-from ...types import ReturnAddress, Type, Verification
+from ..types import int_t, return_address_t, ReturnAddress, Type, Verification
 
 if typing.TYPE_CHECKING:
-    from ...analysis import Context
-    from ...classfile import ClassFile
+    from ..analysis import Context
+    from ..classfile import ClassFile
 
 
 class JumpInstruction(Instruction):
@@ -52,24 +51,6 @@ class JumpInstruction(Instruction):
 
     def copy(self) -> "JumpInstruction":
         return type(self)(self.offset)
-
-    def trace(self, context: "Context") -> "JumpInstruction.WillJump":
-        """
-        :return: will this jump instruction actually jump?
-        """
-
-        return JumpInstruction.WillJump.ALWAYS
-
-    # ------------------------------ Classes ------------------------------ #
-
-    class WillJump(Enum):
-        """
-        A three-state enum for representing jump predicates.
-        """
-
-        ALWAYS = 0
-        MAYBE  = 1
-        NEVER  = 2
 
 
 class SwitchInstruction(Instruction):
@@ -108,9 +89,8 @@ class JsrInstruction(JumpInstruction):
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, context: "Context") -> JumpInstruction.WillJump:
+    def trace(self, context: "Context") -> None:
         context.push(ReturnAddress(context.source))
-        return JumpInstruction.WillJump.ALWAYS
 
 
 class RetInstruction(JumpInstruction):
@@ -146,9 +126,8 @@ class RetInstruction(JumpInstruction):
     def copy(self) -> "RetInstruction":
         return type(self)(self.index)
 
-    def trace(self, context: "Context") -> JumpInstruction.WillJump:
-        context.constrain(context.get(self.index), types.return_address_t)
-        return JumpInstruction.WillJump.ALWAYS
+    def trace(self, context: "Context") -> None:
+        context.constrain(context.get(self.index), return_address_t)
 
 
 class ConditionalJumpInstruction(JumpInstruction):
@@ -187,10 +166,9 @@ class UnaryComparisonJumpInstruction(ConditionalJumpInstruction):
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, context: "Context") -> JumpInstruction.WillJump:
+    def trace(self, context: "Context") -> None:
         *_, entry = context.pop(1 + self.type.wide, as_tuple=True)
         context.constrain(entry, self.type)
-        return JumpInstruction.WillJump.MAYBE
 
 
 class BinaryComparisonJumpInstruction(ConditionalJumpInstruction):
@@ -207,12 +185,11 @@ class BinaryComparisonJumpInstruction(ConditionalJumpInstruction):
             self.opcode, self.mnemonic, self.offset, id(self),
         )
 
-    def trace(self, context: "Context") -> JumpInstruction.WillJump:
+    def trace(self, context: "Context") -> None:
         *_, entry_a = context.pop(1 + self.type.wide, as_tuple=True)
         context.constrain(entry_a, self.type)
         *_, entry_b = context.pop(1 + self.type.wide, as_tuple=True)
         context.constrain(entry_b, self.type)
-        return JumpInstruction.WillJump.MAYBE  # self.compare(entry_a, entry_b)
 
     # @abstractmethod
     # def compare(self, entry_a: Entry, entry_b: Entry) -> JumpInstruction.Troolean:
@@ -290,7 +267,7 @@ class TableSwitchInstruction(SwitchInstruction):
         return 1 + 3 - offset % 4 + 12 + 4 * len(self.offsets)
 
     def trace(self, context: "Context") -> None:
-        context.constrain(context.pop(), types.int_t)
+        context.constrain(context.pop(), int_t)
 
 
 class LookupSwitchInstruction(SwitchInstruction):
@@ -344,4 +321,4 @@ class LookupSwitchInstruction(SwitchInstruction):
         return 1 + 3 - offset % 4 + 8 + 8 * len(self.offsets)
 
     def trace(self, context: "Context") -> None:
-        context.constrain(context.pop(), types.int_t)
+        context.constrain(context.pop(), int_t)

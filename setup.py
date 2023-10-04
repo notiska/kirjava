@@ -23,8 +23,6 @@ if __name__ == "__main__":
             "kirjava.classfile",
             "kirjava.classfile.attributes",
             "kirjava.instructions",
-            "kirjava.instructions.ir",
-            "kirjava.instructions.jvm",
             "kirjava.jarfile",
             "kirjava.types",
         ],
