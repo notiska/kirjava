@@ -1,6 +1,8 @@
 # Kirjava
 A Java bytecode library for Python.  
 
+**Active development is mostly done on the `dev` branch, if you're curious about new features.**
+
 ## Quickstart
 I might add documentation in the future, not sure yet lol. Anyway, here's the quickstart guide, for more usage, see [examples](examples/).
 
