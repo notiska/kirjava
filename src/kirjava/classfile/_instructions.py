@@ -10,7 +10,7 @@ Reads instructions from binary data.
 
 import operator
 import typing
-from typing import Dict, IO
+from typing import IO
 
 from ..instructions import wide, INSTRUCTIONS, Instruction
 
@@ -29,7 +29,7 @@ for instruction in INSTRUCTIONS:
         _mutable_opcode_map[instruction.opcode] = instruction
 
 
-def read_instructions(class_file: "ClassFile", buffer: IO[bytes], length: int) -> Dict[int, Instruction]:
+def read_instructions(class_file: "ClassFile", buffer: IO[bytes], length: int) -> dict[int, Instruction]:
     """
     Reads a list of instructions from the provided buffer.
 
@@ -65,7 +65,7 @@ def read_instructions(class_file: "ClassFile", buffer: IO[bytes], length: int) -
     return instructions_
 
 
-def write_instructions(instructions_: Dict[int, Instruction], class_file: "ClassFile", buffer: IO[bytes]) -> None:
+def write_instructions(instructions_: dict[int, Instruction], class_file: "ClassFile", buffer: IO[bytes]) -> None:
     """
     Writes a list of instructions to the buffer.
 

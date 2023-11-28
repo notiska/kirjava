@@ -11,7 +11,7 @@ Verifier implementation, verifies that graphs and/or methods are valid.
 """
 
 import typing
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable
 
 from . import version
 from .abc import Source
@@ -148,7 +148,7 @@ class Error:
 
     __slots__ = ("message", "source", "_hash")
 
-    def __init__(self, message: str, source: Optional[Source] = None) -> None:
+    def __init__(self, message: str, source: None | Source = None) -> None:
         self.message = message
         self.source = source
 

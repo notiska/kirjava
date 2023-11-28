@@ -9,17 +9,18 @@ __all__ = (
 Nicer argument conversions for easier API usage.
 """
 
-from typing import Tuple, Union
+from typing import Union
 
 from . import types
 from .abc import Class
 from .types import descriptor, Reference, Type
 
 
+# FIXME: Cleanup!!
 ClassConstant = Union[Reference, "constants.Class", Class, str]
-FieldDescriptor = Union[Type, str]
+FieldDescriptor = Type | str
 #                                 argument types              return type      full descriptor
-MethodDescriptor = Union[Tuple[Union[Tuple[Type, ...], str], Union[Type, str]], Tuple[str]]
+MethodDescriptor = Union[tuple[Union[tuple[Type, ...], str], Union[Type, str]], tuple[str]]
 ReferenceType = Union[Reference, "constants.Class", Class, str]
 
 
@@ -88,7 +89,7 @@ def get_field_descriptor(argument: FieldDescriptor) -> Type:
         raise TypeError("Don't know how to convert %r into a field descriptor type." % type(argument))
 
 
-def get_method_descriptor(*arguments: MethodDescriptor) -> Tuple[Tuple[Type, ...], Type]:
+def get_method_descriptor(*arguments: MethodDescriptor) -> tuple[tuple[Type, ...], Type]:
     """
     Gets a method descriptor from some arguments.
 

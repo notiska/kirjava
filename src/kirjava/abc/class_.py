@@ -9,7 +9,7 @@ Class abstraction.
 """
 
 import typing
-from typing import Iterable, Optional, Tuple, Union
+from typing import Iterable, Optional, Union
 
 from .. import environment
 from ..types import Class as ClassType, Interface
@@ -40,14 +40,14 @@ class Class:
 
     name: str
 
-    super: Optional["Class"]
-    super_name: Optional[str]
+    super: Optional["Class"]  # TODO: Any way to do None | "Class"?
+    super_name: None | str
 
-    interfaces: Tuple["Class", ...]
-    interface_names: Tuple[str, ...]
+    interfaces: tuple["Class", ...]
+    interface_names: tuple[str, ...]
 
-    fields: Tuple["Field", ...]
-    methods: Tuple["Method", ...]
+    fields: tuple["Field", ...]
+    methods: tuple["Method", ...]
 
     def __init__(self, environment: Optional["Environment"] = environment.DEFAULT) -> None:
         """
@@ -152,7 +152,7 @@ class Class:
 
         ...
 
-    def get_type(self) -> Union[ClassType, Interface]:
+    def get_type(self) -> ClassType | Interface:
         """
         :return: The type representation of this class.
         """

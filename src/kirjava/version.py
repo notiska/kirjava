@@ -24,7 +24,7 @@ __all__ = (
     "Version",
 )
 
-from typing import Any, Tuple, Union
+from typing import Any
 
 
 class Version:
@@ -58,7 +58,7 @@ class Version:
     }
 
     @classmethod
-    def get(cls, version: Union[Tuple[int, int], str, float]) -> "Version":
+    def get(cls, version: str | float | tuple[int, int]) -> "Version":
         """
         Gets a version from some form of specifier.
 

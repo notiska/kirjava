@@ -11,7 +11,7 @@ Local-related instructions.
 """
 
 import typing
-from typing import Any, Dict, IO, Optional
+from typing import Any, IO
 
 from . import Instruction
 from ..constants import Integer
@@ -54,7 +54,7 @@ class LoadLocalInstruction(Instruction):
     def trace(self, context: "Context") -> None:
         context.push(context.get(self.index), self.type)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     entry = delta.pushes[0]
     #     value = associations[entry]
     #     if type(value) is Parameter:
@@ -136,7 +136,7 @@ class StoreLocalInstruction(Instruction):
             context.constrain(entry, self.type)
             context.set(self.index, entry, self.type)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> Optional[SetLocalStatement]:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None | SetLocalStatement:
     #     if not self.index in delta.overwrites:
     #         return None
     #
@@ -217,7 +217,7 @@ class IncrementLocalInstruction(Instruction):
         context.constrain(entry, int_t)
         context.set(self.index, int_t)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> SetLocalStatement:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> SetLocalStatement:
     #     old, new = delta.overwrites[self.index]
     #     value = AdditionExpression(
     #         GetLocalExpression(self.index, associations[old]), ConstantValue(Integer(self.value)),

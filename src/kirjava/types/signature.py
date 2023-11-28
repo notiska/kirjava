@@ -6,7 +6,7 @@
 # Generic signature parsing.
 # """
 
-# from typing import Tuple, Union
+# from typing import Union
 
 # from .descriptor import _find_enclosing, next_argument as next_argument_
 # from .. import types
@@ -41,7 +41,7 @@
 
 
 # # FIXME
-# # def to_signature(*values: Union[Tuple["BaseType", ...], "BaseType"], dont_throw: bool = False) -> str:
+# # def to_signature(*values: Union[tuple["BaseType", ...], "BaseType"], dont_throw: bool = False) -> str:
 # #     """
 # #     Serializes the provided types into a signature.
 
@@ -82,7 +82,7 @@
 # #     return signature
 
 
-# def next_argument(signature: str, force_read: bool = False) -> Tuple[Union[TypeArgumentList, TypeArgument, BaseType], str]:
+# def next_argument(signature: str, force_read: bool = False) -> tuple[Union[TypeArgumentList, TypeArgument, BaseType], str]:
 #     """
 #     Gets the next type argument from a signature.
 
@@ -278,7 +278,7 @@
 #         *,
 #         force_read: bool = False,
 #         do_raise: bool = True,
-# ) -> Union[Tuple[TypeArgumentList, Tuple[BaseType, ...], BaseType, Tuple[ClassOrInterfaceType, ...]], InvalidType]:
+# ) -> Union[tuple[TypeArgumentList, tuple[BaseType, ...], BaseType, tuple[ClassOrInterfaceType, ...]], InvalidType]:
 #     """
 #     Parses a method signature.
 
@@ -382,7 +382,7 @@
 #         *,
 #         force_read: bool = True,
 #         do_raise: bool = True,
-# ) -> Union[Tuple[TypeArgumentList, ClassOrInterfaceType, Tuple[ClassOrInterfaceType, ...]], InvalidType]:
+# ) -> Union[tuple[TypeArgumentList, ClassOrInterfaceType, tuple[ClassOrInterfaceType, ...]], InvalidType]:
 #     """
 #     Parses a class signature.
 
@@ -441,7 +441,7 @@
 
 
 # # def parse_any_signature(signature: str, dont_throw: bool = False, force_tuple: bool = False,
-# #                         force_read: bool = True) -> Union[Tuple["BaseType", ...], "BaseType"]:
+# #                         force_read: bool = True) -> Union[tuple["BaseType", ...], "BaseType"]:
 # #     """
 # #     Parses any signature.
 # # 

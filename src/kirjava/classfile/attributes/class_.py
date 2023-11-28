@@ -10,7 +10,7 @@ Attributes found exclusively in the ClassFile structure.
 """
 
 import typing
-from typing import Any, Dict, IO, Iterable, List, Optional, Tuple
+from typing import Any, IO, Iterable
 
 from . import AttributeInfo
 from .. import attributes
@@ -36,7 +36,7 @@ class BootstrapMethods(AttributeInfo):
     def __init__(self, parent: "ClassFile") -> None:
         super().__init__(parent, BootstrapMethods.name_)
 
-        self.methods: List[BootstrapMethods.BootstrapMethod] = []
+        self.methods: list[BootstrapMethods.BootstrapMethod] = []
 
     def __repr__(self) -> str:
         return "<BootstrapMethods(methods=%r) at %x>" % (self.methods, id(self))
@@ -82,14 +82,14 @@ class BootstrapMethods(AttributeInfo):
 
             return bootstrap_method
 
-        def __init__(self, method_handle: MethodHandle, arguments: Optional[Iterable[ConstantInfo]] = None) -> None:
+        def __init__(self, method_handle: MethodHandle, arguments: None | Iterable[ConstantInfo] = None) -> None:
             """
             :param method_handle: The method handle for this bootstrap method.
             :param arguments: The bootstrap arguments used to resolve the call site.
             """
 
             self.method_handle = method_handle
-            self.arguments: List[ConstantInfo] = []
+            self.arguments: list[ConstantInfo] = []
 
             if arguments is not None:
                 self.arguments.extend(arguments)
@@ -121,7 +121,7 @@ class NestHost(AttributeInfo):
     since = Version(55, 0)
     locations = ("ClassFile",)
     
-    def __init__(self, parent: "ClassFile", host_class: Optional[Class] = None) -> None:
+    def __init__(self, parent: "ClassFile", host_class: None | Class = None) -> None:
         """
         :param host_class: The host class of the nest that this class/interface belongs to.
         """
@@ -152,14 +152,14 @@ class NestMembers(AttributeInfo):
     since = Version(55, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", classes: Optional[Iterable[Class]] = None) -> None:
+    def __init__(self, parent: "ClassFile", classes: None | Iterable[Class] = None) -> None:
         """
         :param classes: The classes/interfaces that belong to the nest that this class hosts.
         """
 
         super().__init__(parent, NestMembers.name_)
 
-        self.classes: List[Class] = []
+        self.classes: list[Class] = []
         if classes is not None:
             self.classes.extend(classes)
 
@@ -190,14 +190,14 @@ class PermittedSubclasses(AttributeInfo):
     since = Version(61, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", classes: Optional[Iterable[Class]] = None) -> None:
+    def __init__(self, parent: "ClassFile", classes: None | Iterable[Class] = None) -> None:
         """
         :param classes: The list of permitted subclasses.
         """
 
         super().__init__(parent, PermittedSubclasses.name_)
 
-        self.classes: List[Class] = []
+        self.classes: list[Class] = []
         if classes is not None:
             self.classes.extend(classes)
 
@@ -229,14 +229,14 @@ class InnerClasses(AttributeInfo):
     since = Version(45, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", classes: Optional[Iterable["InnerClasses.InnerClass"]] = None) -> None:
+    def __init__(self, parent: "ClassFile", classes: None | Iterable["InnerClasses.InnerClass"] = None) -> None:
         """
         :param classes: Information about inner classes.
         """
 
         super().__init__(parent, InnerClasses.name_)
 
-        self.classes: List[InnerClasses.InnerClass] = []
+        self.classes: list[InnerClasses.InnerClass] = []
         if classes is not None:
             self.classes.extend(classes)
 
@@ -428,8 +428,8 @@ class InnerClasses(AttributeInfo):
         def __init__(
                 self,
                 inner_class: Class,
-                outer_class: Optional[Class],
-                inner_name: Optional[UTF8],
+                outer_class: None | Class,
+                inner_name: None | UTF8,
                 *,
                 is_public: bool = False,
                 is_private: bool = False,
@@ -491,7 +491,7 @@ class EnclosingMethod(AttributeInfo):
     since = Version(49, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", class_: Optional[Class] = None, method: Optional[NameAndType] = None) -> None:
+    def __init__(self, parent: "ClassFile", class_: None | Class = None, method: None | NameAndType = None) -> None:
         """
         :param class_: The class enclosing this class.
         :param method: The method enclosing this class, if any.
@@ -529,14 +529,14 @@ class Record(AttributeInfo):
     since = Version(60, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", components: Optional[Iterable["Record.ComponentInfo"]] = None) -> None:
+    def __init__(self, parent: "ClassFile", components: None | Iterable["Record.ComponentInfo"] = None) -> None:
         """
         :param components: The components of the record.
         """
 
         super().__init__(parent, Record.name_)
 
-        self.components: List[Record.ComponentInfo] = []
+        self.components: list[Record.ComponentInfo] = []
         if components is not None:
             self.components.extend(components)
 
@@ -592,7 +592,7 @@ class Record(AttributeInfo):
             self.name = name
             self.descriptor = descriptor
 
-            self.attributes: Dict[str, Tuple[AttributeInfo, ...]] = {}
+            self.attributes: dict[str, tuple[AttributeInfo, ...]] = {}
 
         def __repr__(self) -> str:
             return "<ComponentInfo(name=%r, descriptor=%r) at %x>" % (self.name, self.descriptor, id(self))
@@ -630,7 +630,7 @@ class SourceFile(AttributeInfo):
     since = Version(45, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", source_file: Optional[UTF8] = None) -> None:
+    def __init__(self, parent: "ClassFile", source_file: None | UTF8 = None) -> None:
         """
         :param source_file: The name of the source file that generated the class.
         """

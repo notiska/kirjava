@@ -11,7 +11,6 @@ as a valid category, because I'm lazy.
 """
 
 import typing
-from typing import Dict
 
 from . import Instruction
 from ..types import reference_t, throwable_t, void_t, Class, Verification
@@ -41,7 +40,7 @@ class ReturnInstruction(Instruction):
         # if state.stack:
         #     raise ValueError("Stack is not empty after return.")
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> ReturnStatement:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> ReturnStatement:
     #     return ReturnStatement(associations[delta.pops[-1]] if self.type_ != types.void_t else None)
 
 
@@ -62,7 +61,7 @@ class AThrowInstruction(Instruction):
         context.pop(len(context.frame.stack))
         context.push(entry, throwable_t)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> ThrowStatement:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> ThrowStatement:
     #     return ThrowStatement(associations[delta.pops[-1]])
 
 
@@ -78,7 +77,7 @@ class MonitorEnterInstruction(Instruction):
     def trace(self, context: "Context") -> None:
         context.constrain(context.pop(), reference_t)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> MonitorEnterStatement:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> MonitorEnterStatement:
     #     return MonitorEnterStatement(associations[delta.pops[-1]])
 
 
@@ -97,5 +96,5 @@ class MonitorExitInstruction(Instruction):
     def trace(self, context: "Context") -> None:
         context.constrain(context.pop(), reference_t)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> MonitorExitStatement:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> MonitorExitStatement:
     #     return MonitorExitStatement(associations[delta.pops[-1]])

@@ -5,7 +5,7 @@ __all__ = (
 )
 
 import typing
-from typing import Any, Iterable, Iterator, List, Optional, Tuple, Type, Union
+from typing import Any, Iterable, Iterator
 
 from .debug import *
 from ... import instructions
@@ -25,14 +25,14 @@ class InsnBlock(Block):
     __slots__ = ("_instructions", "inline", "_hash")
 
     @property
-    def instructions(self) -> Tuple[Instruction, ...]:
+    def instructions(self) -> tuple[Instruction, ...]:
         """
         :return: A tuple of the instructions in this block, cos I keep forgetting this is iterable.
         """
 
         return tuple(self._instructions)
 
-    def __init__(self, label: int, instructions_: Optional[Iterable[Instruction]] = None) -> None:
+    def __init__(self, label: int, instructions_: None | Iterable[Instruction] = None) -> None:
         """
         :param label: The label of this block.
         :param instructions_: JVM instructions to initialise this block with.
@@ -40,7 +40,7 @@ class InsnBlock(Block):
 
         super().__init__(label)
 
-        self._instructions: List[Instruction] = []
+        self._instructions: list[Instruction] = []
         self.inline = False  # Can this block be inlined?
 
         if instructions_ is not None:
@@ -67,7 +67,7 @@ class InsnBlock(Block):
     def __iter__(self) -> Iterator[Instruction]:
         return iter(self._instructions)
 
-    def __getitem__(self, item: Any) -> Union[Tuple[Instruction, ...], Instruction]:
+    def __getitem__(self, item: Any) -> tuple[Instruction, ...] | Instruction:
         return self._instructions[item]
 
     def __setitem__(self, key: Any, value: Any) -> None:
@@ -95,7 +95,7 @@ class InsnBlock(Block):
     def __bool__(self) -> bool:
         return bool(self._instructions)
 
-    def copy(self, label: Optional[int] = None, deep: bool = True) -> "InsnBlock":
+    def copy(self, label: None | int = None, deep: bool = True) -> "InsnBlock":
         block = InsnBlock(label or self.label)
         block.inline = self.inline
 
@@ -133,7 +133,7 @@ class InsnBlock(Block):
 
     # ------------------------------ Public API ------------------------------ #
 
-    def append(self, instruction: Union[Type[Instruction], Instruction], do_raise: bool = True) -> Instruction:
+    def append(self, instruction: type[Instruction] | Instruction, do_raise: bool = True) -> Instruction:
         """
         Adds an instruction to this block.
 
@@ -153,7 +153,7 @@ class InsnBlock(Block):
 
         return instruction
 
-    def insert(self, index: int, instruction: Union[Type[Instruction], Instruction], do_raise: bool = True) -> Instruction:
+    def insert(self, index: int, instruction: type[Instruction] | Instruction, do_raise: bool = True) -> Instruction:
         """
         Inserts an instruction at the given index.
 
@@ -230,7 +230,7 @@ class InsnReturnBlock(ReturnBlock, InsnBlock):
     def __repr__(self) -> str:
         return "<InsnReturnBlock() at %x>" % id(self)
 
-    def copy(self, label: Optional[int] = None, deep: bool = True) -> "InsnReturnBlock":
+    def copy(self, label: None | int = None, deep: bool = True) -> "InsnReturnBlock":
         return InsnReturnBlock()
 
 
@@ -242,5 +242,5 @@ class InsnRethrowBlock(RethrowBlock, InsnBlock):
     def __repr__(self) -> str:
         return "<InsnRethrowBlock() at %x>" % id(self)
 
-    def copy(self, label: Optional[int] = None, deep: bool = True) -> "InsnRethrowBlock":
+    def copy(self, label: None | int = None, deep: bool = True) -> "InsnRethrowBlock":
         return InsnRethrowBlock()

@@ -8,7 +8,7 @@ __all__ = (
 Extra JVM debug information.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from ...instructions import _ReservedInstruction
 
@@ -47,7 +47,7 @@ class LocalVariable(_ReservedInstruction):
 
     __slot__ = ("index", "name", "descriptor", "signature", "_hash")
 
-    def __init__(self, index: int, name: str, descriptor: str, signature: Optional[str] = None) -> None:
+    def __init__(self, index: int, name: str, descriptor: str, signature: None | str = None) -> None:
         """
         :param index: The index of the local variable.
         :param name: The name of the local variable.

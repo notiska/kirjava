@@ -10,7 +10,6 @@ The actual code that computes trace information.
 
 import logging
 from collections import defaultdict, deque
-from typing import Deque, Dict, List, Optional, Set, Tuple
 
 from . import Context, Trace
 from .frame import Frame
@@ -34,13 +33,13 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool, merge_non_live: bool) 
     pre_liveness = trace.pre_liveness
     post_liveness = trace.post_liveness
 
-    trace_stack: Deque[Tuple[Frame, InsnBlock, Optional[InsnEdge]]] = deque()
-    liveness_stack: Deque[InsnEdge] = deque()
-    branches: Deque[Tuple[Frame, InsnBlock, InsnEdge]] = []
-    retraces: List[Tuple[Frame, InsnBlock, InsnEdge]] = []
+    trace_stack: deque[tuple[Frame, InsnBlock, None | InsnEdge]] = deque()
+    liveness_stack: deque[InsnEdge] = deque()
+    branches: deque[tuple[Frame, InsnBlock, InsnEdge]] = []
+    retraces: list[tuple[Frame, InsnBlock, InsnEdge]] = []
 
-    uses: Dict[InsnBlock, Set[int]] = defaultdict(set)
-    defs: Dict[InsnBlock, Set[int]] = defaultdict(set)
+    uses: dict[InsnBlock, set[int]] = defaultdict(set)
+    defs: dict[InsnBlock, set[int]] = defaultdict(set)
 
     initial = Frame.initial(graph.method)
     trace.max_locals = initial.max_locals
@@ -174,7 +173,7 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool, merge_non_live: bool) 
 
         # The graph doesn't know about any resolved subroutines, and we need these for the liveness stack, so we'll record
         # the exit blocks in a dictionary for fast lookup.
-        subroutine_exits: Dict[InsnBlock, Set[RetEdge]] = defaultdict(set)
+        subroutine_exits: dict[InsnBlock, set[RetEdge]] = defaultdict(set)
 
         for subroutine in subroutines:
             ret_edge = subroutine.ret_edge.copy(to=subroutine.exit_block, deep=False)

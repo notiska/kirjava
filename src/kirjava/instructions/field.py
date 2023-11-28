@@ -9,7 +9,7 @@ Field access instructions.
 """
 
 import typing
-from typing import Any, Dict, IO, Union
+from typing import Any, IO
 
 from . import Instruction
 from ..constants import FieldRef
@@ -79,7 +79,7 @@ class GetFieldInstruction(FieldInstruction):
         if isinstance(field_type, Reference):
             context.constrain(entry, null_t, original=True)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     if self.static:
     #         associations[delta.pushes[0]] = GetStaticFieldExpression(self.reference)
     #     else:
@@ -109,7 +109,7 @@ class PutFieldInstruction(FieldInstruction):
 
             context.constrain(entry, self.reference.class_.class_type)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> Union[SetFieldStatement, SetStaticFieldStatement]:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> SetFieldStatement | SetStaticFieldStatement:
     #     if self.static:
     #         return SetStaticFieldStatement(associations[delta.pops[-1]], self.reference)
     #     else:

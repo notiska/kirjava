@@ -4,8 +4,6 @@ __all__ = (
     "to_descriptor", "parse_field_descriptor", "parse_method_descriptor",
 )
 
-from typing import Optional, Tuple, Union
-
 from . import (
     boolean_t, byte_t, char_t, double_t, float_t, int_t, long_t, short_t, void_t, Array, Class, Invalid, Reference, Type,
 )
@@ -36,7 +34,7 @@ _BACKWARD_BASE_TYPES = {
 
 def _find_enclosing(
         string: str, start_identifier: str, end_identifier: str,
-) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+) -> tuple[None | str, None | str, None | str]:
     """
     Finds the enclosing arguments within the provided start and ending identifiers, as well as the string before and
     after the start and end.
@@ -57,7 +55,7 @@ def _find_enclosing(
     return string[:start_index], string[start_index + 1: end_index], string[end_index + 1:]
 
 
-def to_descriptor(*values: Union[Tuple[Type, ...], Type], do_raise: bool = True) -> str:
+def to_descriptor(*values: tuple[Type, ...] | Type, do_raise: bool = True) -> str:
     """
     Serializes the provided types to a descriptor.
 
@@ -87,7 +85,7 @@ def to_descriptor(*values: Union[Tuple[Type, ...], Type], do_raise: bool = True)
     return descriptor
 
 
-def next_argument(descriptor: str) -> Tuple[Type, str]:
+def next_argument(descriptor: str) -> tuple[Type, str]:
     """
     Gets the next argument from the descriptor.
 
@@ -164,7 +162,7 @@ def parse_method_descriptor(
         *,
         force_read: bool = False,
         do_raise: bool = True,
-) -> Union[Tuple[Tuple[Type, ...], Type], Invalid]:
+) -> tuple[tuple[Type, ...], Type] | Invalid:
     """
     Parses a method descriptor.
     Note: This cannot parse signatures, use the signature parser instead.
@@ -223,7 +221,7 @@ def parse_method_descriptor(
 
 
 # def parse_any_descriptor(descriptor: str, dont_throw: bool = False, force_tuple: bool = False,
-#                          force_read: bool = True) -> Union[Tuple[BaseType, ...], BaseType]:
+#                          force_read: bool = True) -> tuple[BaseType, ...] | BaseType:
 #     """
 #     Parses any descriptor.
 #     Note: This cannot parse signatures, use the signature parser instead.

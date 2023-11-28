@@ -11,7 +11,6 @@ The disassembler.
 import logging
 import typing
 from collections import defaultdict
-from typing import Dict, Set, List, Optional
 
 from .block import InsnBlock
 from .debug import *
@@ -47,7 +46,7 @@ def disassemble(
     instructions_ = code.instructions
     source_map = graph.source_map
 
-    flow_splits: Set[int] = set()
+    flow_splits: set[int] = set()
 
     for offset, instruction in instructions_.items():
         if isinstance(instruction, JumpInstruction):
@@ -106,11 +105,11 @@ def disassemble(
     #              Create basic blocks and jump edges              #
     # ------------------------------------------------------------ #
 
-    starting: Dict[int, InsnBlock] = {}
-    ending:   Dict[InsnBlock, int] = {}
-    forward_jumps: Dict[int, List[InsnEdge]] = defaultdict(list)  # Forward reference jump targets
+    starting: dict[int, InsnBlock] = {}
+    ending:   dict[InsnBlock, int] = {}
+    forward_jumps: dict[int, list[InsnEdge]] = defaultdict(list)  # Forward reference jump targets
 
-    previous: Optional[InsnBlock] = None
+    previous: None | InsnBlock = None
     block = graph.entry_block
 
     # We do this so that we always create a new block if offset 0 is a jump target because by definition the entry block

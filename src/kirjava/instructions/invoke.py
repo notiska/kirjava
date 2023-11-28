@@ -12,7 +12,7 @@ Invocation instructions.
 """
 
 import typing
-from typing import Any, IO, List, Optional, Union
+from typing import Any, IO
 
 from . import Instruction
 from .new import NewInstruction
@@ -32,7 +32,7 @@ class InvokeInstruction(Instruction):
 
     __slots__ = ("_index", "reference")
 
-    def __init__(self, reference: Union[MethodRef, InterfaceMethodRef, InvokeDynamic]) -> None:
+    def __init__(self, reference: MethodRef | InterfaceMethodRef | InvokeDynamic) -> None:
         """
         :param reference: The reference to the method.
         """
@@ -61,7 +61,7 @@ class InvokeInstruction(Instruction):
         self._index = class_file.constant_pool.add(self.reference)
         super().write(class_file, buffer, wide)
 
-    def _trace_arguments(self, context: "Context") -> None:  # List[Entry]:
+    def _trace_arguments(self, context: "Context") -> None:  # list[Entry]:
         """
         Partial tracing for the arguments this instruction should accept.
         """
@@ -107,7 +107,7 @@ class InvokeVirtualInstruction(InvokeInstruction):
 
     # def lift(
     #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
-    # ) -> Union[InvokeStatement, AssignStatement]:
+    # ) -> InvokeStatement | AssignStatement:
     #     ...
     #
     #     # if self.reference.return_type == types.void_t:
@@ -144,7 +144,7 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction):
 
         # Unverified code can cause this not to be an uninitialized type
         elif isinstance(entry.generic, Uninitialized):
-            class_type: Optional[Class] = None
+            class_type: None | Class = None
             source = entry.generic.source
 
             if isinstance(source, NewInstruction):
@@ -166,7 +166,7 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction):
 
     # def lift(
     #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
-    # ) -> Union[InvokeStatement, AssignStatement]:
+    # ) -> InvokeStatement | AssignStatement:
     #     ...
 
 
@@ -183,7 +183,7 @@ class InvokeStaticInstruction(InvokeInstruction):
 
     # def lift(
     #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
-    # ) -> Union[InvokeStaticStatement, AssignStatement]:
+    # ) -> InvokeStaticStatement | AssignStatement:
     #     ...
 
 

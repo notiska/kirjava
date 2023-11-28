@@ -15,7 +15,7 @@ Various exceptions raised by kirjava.
 """
 
 import typing
-from typing import Collection, Optional
+from typing import Collection
 
 if typing.TYPE_CHECKING:
     from .abc import Constant, Edge
@@ -29,7 +29,7 @@ class ClassFormatError(Exception):
     Raised when a class file is malformed.
     """
 
-    def __init__(self, message: Optional[str] = None) -> None:
+    def __init__(self, message: None | str = None) -> None:
         super().__init__(message or "Malformed class file.")
 
 
@@ -70,7 +70,7 @@ class InvalidConstantError(Exception):
     Raised when a referenced constant is invalid.
     """
 
-    def __init__(self, constant: "Constant", message: Optional[str] = None) -> None:
+    def __init__(self, constant: "Constant", message: None | str = None) -> None:
         super().__init__(message or ("The constant %r is invalid." % constant))
         self.constant = constant
 
@@ -93,7 +93,7 @@ class MergeError(Exception):
     Raised when an illegal frame merge into the same block is attempted.
     """
 
-    def __init__(self, edge: "Edge", message: Optional[str] = None) -> None:
+    def __init__(self, edge: "Edge", message: None | str = None) -> None:
         """
         :param edge: The edge that caused the issue.
         """
@@ -154,7 +154,7 @@ class UnresolvableSubroutineError(Exception):
     Raised when a subroutine cannot be resolved.
     """
 
-    def __init__(self, edge: "RetEdge", message: Optional[str] = None) -> None:
+    def __init__(self, edge: "RetEdge", message: None | str = None) -> None:
         super().__init__(message or "Could not resolve subroutine origin at edge %s." % edge)
 
         self.edge = edge

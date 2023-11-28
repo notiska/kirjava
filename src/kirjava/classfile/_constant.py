@@ -6,7 +6,7 @@ __all__ = (
 
 import logging
 import typing
-from typing import Any, Dict, IO, Iterable, Optional, Tuple, Union
+from typing import Any, IO, Iterable
 
 from .._struct import *
 from ..constants import _constant_map, Class, ConstantInfo, String, UTF8
@@ -30,7 +30,7 @@ class Index(ConstantInfo):
         raise Exception("Tried to read index type.")
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: Any) -> None:
         raise Exception("Tried to dereference index type.")
 
     def __init__(self, index: int) -> None:
@@ -106,7 +106,7 @@ class ConstantPool:
         return constant_pool
 
     @property
-    def entries(self) -> Dict[int, ConstantInfo]:
+    def entries(self) -> dict[int, ConstantInfo]:
         """
         :return: A dictionary containing the forward entries in the pool.
         """
@@ -117,16 +117,16 @@ class ConstantPool:
         self.min_deref = False
         self._index = 1
 
-        self._forward_entries: Dict[int, ConstantInfo] = {}
-        self._backward_entries: Dict[ConstantInfo, int] = {}
+        self._forward_entries: dict[int, ConstantInfo] = {}
+        self._backward_entries: dict[ConstantInfo, int] = {}
 
     def __repr__(self) -> str:
         return "<ConstantPool(size=%i) at %x>" % (len(self), id(self))
 
-    def __iter__(self) -> Iterable[Tuple[int, ConstantInfo]]:
+    def __iter__(self) -> Iterable[tuple[int, ConstantInfo]]:
         return iter(self._forward_entries.items())
 
-    def __getitem__(self, item: Any) -> Union[ConstantInfo, int]:
+    def __getitem__(self, item: Any) -> ConstantInfo | int:
         if type(item) is int:
             if self.min_deref:
                 return Index(item)
@@ -200,7 +200,7 @@ class ConstantPool:
 
     # ------------------------------ Public API ------------------------------ #
 
-    def get(self, index: int, default: Optional[ConstantInfo] = None, do_raise: bool = False) -> ConstantInfo:
+    def get(self, index: int, default: None | ConstantInfo = None, do_raise: bool = False) -> ConstantInfo:
         """
         Gets the constant at a given index.
 
@@ -224,7 +224,7 @@ class ConstantPool:
 
         return Index(index)
 
-    def get_utf8(self, index: int, default: Optional[str] = None, *, do_raise: bool = True) -> str:
+    def get_utf8(self, index: int, default: None | str = None, *, do_raise: bool = True) -> str:
         """
         Gets a UTF-8 value at the given index.
 
@@ -255,7 +255,7 @@ class ConstantPool:
         self._forward_entries.clear()
         self._backward_entries.clear()
 
-    def add(self, constant: Union[ConstantInfo, str]) -> int:
+    def add(self, constant: ConstantInfo | str) -> int:
         """
         Adds a constant to this constant pool.
 

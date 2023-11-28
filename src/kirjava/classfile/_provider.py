@@ -7,7 +7,6 @@ __all__ = (
 import os
 import zipfile
 from os import PathLike
-from typing import Union
 
 from . import ClassFile
 from ..environment import Provider
@@ -21,7 +20,7 @@ class DirectoryProvider(Provider):
 
     __slots__ = ("directory",)
 
-    def __init__(self, directory: Union[PathLike, str]) -> None:
+    def __init__(self, directory: PathLike | str) -> None:
         self.directory = os.fspath(directory)
         if not os.path.isdir(self.directory):
             raise ValueError("Not a directory: %s" % self.directory)
@@ -47,7 +46,7 @@ class ZipProvider(Provider):
 
     __slots__ = ("zip_file",)
 
-    def __init__(self, zip_file: Union[PathLike, str, zipfile.ZipFile]) -> None:
+    def __init__(self, zip_file: PathLike | str | zipfile.ZipFile) -> None:
         if not isinstance(zip_file, zipfile.ZipFile):
             zip_file = zipfile.ZipFile(zip_file, "r")
         elif zip_file.mode != "r":

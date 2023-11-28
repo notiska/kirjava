@@ -11,7 +11,7 @@ Attributes that appear in multiple elements inside a class file.
 
 import logging
 import typing
-from typing import Any, IO, Iterable, List, Optional, Tuple, Union
+from typing import Any, IO, Iterable, Union
 
 from . import AttributeInfo
 from .class_ import Record
@@ -61,7 +61,7 @@ class Signature(AttributeInfo):
     def __init__(
             self,
             parent: Union["ClassFile", "FieldInfo", "MethodInfo", Record.ComponentInfo],
-            signature: Optional[UTF8] = None,
+            signature: None | UTF8 = None,
     ) -> None:
         super().__init__(parent, Signature.name_)
 
@@ -116,7 +116,7 @@ class Annotations(AttributeInfo):
             self,
             parent: Union["ClassFile", "FieldInfo", "MethodInfo"],
             name: str,
-            annotations: Optional[Iterable["Annotations.Annotation"]] = None,
+            annotations: None | Iterable["Annotations.Annotation"] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.
@@ -124,7 +124,7 @@ class Annotations(AttributeInfo):
 
         super().__init__(parent, name)
 
-        self.annotations: List[Annotations.Annotation] = []
+        self.annotations: list[Annotations.Annotation] = []
         if annotations is not None:
             self.annotations.extend(annotations)
 
@@ -208,7 +208,7 @@ class Annotations(AttributeInfo):
         def __init__(
                 self,
                 tag: bytes,
-                value: Union[ConstantInfo, Tuple[UTF8, UTF8], "Annotations.Annotation", List["Annotations.Element"]],
+                value: Union[ConstantInfo, tuple[UTF8, UTF8], "Annotations.Annotation", list["Annotations.Element"]],
         ) -> None:
             """
             :param tag: The tag that represents the type of value this element holds.
@@ -282,7 +282,7 @@ class Annotations(AttributeInfo):
             return annotation
 
         def __init__(
-                self, descriptor: UTF8, elements: Optional[Iterable[Tuple[UTF8, "Annotations.Element"]]] = None,
+                self, descriptor: UTF8, elements: None | Iterable[tuple[UTF8, "Annotations.Element"]] = None,
         ) -> None:
             """
             :param descriptor: The type descriptor for this element.
@@ -290,7 +290,7 @@ class Annotations(AttributeInfo):
             """
 
             self.descriptor = descriptor
-            self.elements: List[Tuple[UTF8, Annotations.Element]] = []
+            self.elements: list[tuple[UTF8, Annotations.Element]] = []
 
             if elements is not None:
                 self.elements.extend(elements)
@@ -298,10 +298,10 @@ class Annotations(AttributeInfo):
         def __repr__(self) -> str:
             return "<Annotation(descriptor=%r, elements=%r) at %x>" % (self.descriptor, self.elements, id(self))
 
-        def __iter__(self) -> Iterable[Tuple[UTF8, "Annotations.Element"]]:
+        def __iter__(self) -> Iterable[tuple[UTF8, "Annotations.Element"]]:
             return iter(self.elements)
 
-        def __getitem__(self, item: Union[int, str, UTF8]) -> Tuple[UTF8, "Annotations.Element"]:
+        def __getitem__(self, item: int | str | UTF8) -> tuple[UTF8, "Annotations.Element"]:
             if type(item) is int:
                 return self.elements[item]
             if type(item) is str:
@@ -310,7 +310,7 @@ class Annotations(AttributeInfo):
                 if name == item:
                     return name, element
 
-        def __setitem__(self, item: Union[int, str, UTF8], value: "Annotations.Element") -> None:
+        def __setitem__(self, item: int | str | UTF8, value: "Annotations.Element") -> None:
             if type(item) is int:
                 self.elements[item] = value
                 return
@@ -347,7 +347,7 @@ class RuntimeVisibleAnnotations(Annotations):
     def __init__(
             self,
             parent: Union["ClassFile", "FieldInfo", "MethodInfo"],
-            annotations: Optional[Iterable["RuntimeVisibleAnnotations.Annotation"]] = None,
+            annotations: None | Iterable["RuntimeVisibleAnnotations.Annotation"] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.
@@ -366,7 +366,7 @@ class RuntimeInvisibleAnnotations(Annotations):
     def __init__(
             self,
             parent: Union["ClassFile", "FieldInfo", "MethodInfo"],
-            annotations: Optional[Iterable["RuntimeInvisibleAnnotations.Annotation"]] = None,
+            annotations: None | Iterable["RuntimeInvisibleAnnotations.Annotation"] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.

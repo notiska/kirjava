@@ -10,7 +10,6 @@ Java field abstraction.
 
 import typing
 import weakref
-from typing import Tuple
 
 from ..types import Type
 

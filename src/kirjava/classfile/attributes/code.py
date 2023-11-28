@@ -10,7 +10,7 @@ Attributes found exclusively in the Code attribute.
 
 import logging
 import typing
-from typing import Any, IO, Iterable, List, Optional, Tuple
+from typing import Any, IO, Iterable, Optional
 
 from . import AttributeInfo
 from ... import types
@@ -116,14 +116,14 @@ class StackMapTable(AttributeInfo):
         else:
             raise TypeError("Invalid verification type %r." % type_)
 
-    def __init__(self, parent: "Code", frames: Optional[Iterable["StackMapTable.StackMapFrame"]] = None) -> None:
+    def __init__(self, parent: "Code", frames: None | Iterable["StackMapTable.StackMapFrame"] = None) -> None:
         """
         :param frames: The stackmap frames in this table.
         """
 
         super().__init__(parent, StackMapTable.name_)
 
-        self.frames: List[StackMapTable.StackMapFrame] = []
+        self.frames: list[StackMapTable.StackMapFrame] = []
         if frames is not None:
             self.frames.extend(frames)
 
@@ -426,7 +426,7 @@ class StackMapTable(AttributeInfo):
             )
             return cls(offset_delta, locals_)
 
-        def __init__(self, offset_delta: int, locals_: Tuple[Verification, ...]) -> None:
+        def __init__(self, offset_delta: int, locals_: tuple[Verification, ...]) -> None:
             """
             :param locals_: The locals to append.
             """
@@ -484,7 +484,7 @@ class StackMapTable(AttributeInfo):
             return cls(offset_delta, locals_, stack)
 
         def __init__(
-                self, offset_delta: int, locals_: Tuple[Verification, ...], stack: Tuple[Verification, ...],
+                self, offset_delta: int, locals_: tuple[Verification, ...], stack: tuple[Verification, ...],
         ) -> None:
             """
             :param locals_: The locals in this frame.
@@ -555,14 +555,14 @@ class LineNumberTable(AttributeInfo):
     since = Version(45, 3)
     locations = ("Code",)
 
-    def __init__(self, parent: "Code", entries: Optional[Iterable["LineNumberTable.LineNumberEntry"]] = None) -> None:
+    def __init__(self, parent: "Code", entries: None | Iterable["LineNumberTable.LineNumberEntry"] = None) -> None:
         """
         :param entries: The line number entries.
         """
 
         super().__init__(parent, LineNumberTable.name_)
 
-        self.entries: List[LineNumberTable.LineNumberEntry] = []
+        self.entries: list[LineNumberTable.LineNumberEntry] = []
         if entries is not None:
             self.entries.extend(entries)
 
@@ -648,7 +648,7 @@ class LocalVariableTable(AttributeInfo):
     locations = ("Code",)
 
     def __init__(
-            self, parent: "Code", entries: Optional[Iterable["LocalVariableTable.LocalVariableEntry"]] = None,
+            self, parent: "Code", entries: None | Iterable["LocalVariableTable.LocalVariableEntry"] = None,
     ) -> None:
         """
         :param entries: The local variable entries.
@@ -656,7 +656,7 @@ class LocalVariableTable(AttributeInfo):
 
         super().__init__(parent, LocalVariableTable.name_)
 
-        self.entries: List[LocalVariableTable.LocalVariableEntry] = []
+        self.entries: list[LocalVariableTable.LocalVariableEntry] = []
         if entries is not None:
             self.entries.extend(entries)
 
@@ -785,7 +785,7 @@ class LocalVariableTypeTable(AttributeInfo):
     locations = ("Code",)
 
     def __init__(
-            self, parent: "Code", entries: Optional[Iterable["LocalVariableTypeTable.LocalVariableTypeEntry"]] = None,
+            self, parent: "Code", entries: None | Iterable["LocalVariableTypeTable.LocalVariableTypeEntry"] = None,
     ) -> None:
         """
         :param entries: The local variable type entries.
@@ -793,7 +793,7 @@ class LocalVariableTypeTable(AttributeInfo):
 
         super().__init__(parent, LocalVariableTypeTable.name_)
 
-        self.entries: List[LocalVariableTypeTable.LocalVariableTypeEntry] = []
+        self.entries: list[LocalVariableTypeTable.LocalVariableTypeEntry] = []
         if entries is not None:
             self.entries.extend(entries)
 

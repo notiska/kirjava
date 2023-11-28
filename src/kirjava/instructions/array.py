@@ -9,7 +9,6 @@ Instructions related to arrays.
 """
 
 import typing
-from typing import Dict, Optional
 
 from . import Instruction
 from ..types import array_t, int_t, Array, Class
@@ -38,7 +37,7 @@ class ArrayLoadInstruction(Instruction):
         entry = context.push(self.type.element.as_vtype())
         context.constrain(entry, self.type.element, original=True)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     offset = self.type_.internal_size if self.type_ is not None else 1
     #     associations[delta.pushes[0]] = ArrayLoadExpression(
     #         array=associations[delta.pops[-(1 + offset)]],
@@ -67,7 +66,7 @@ class ArrayStoreInstruction(Instruction):
         context.constrain(context.pop(), int_t)
         context.constrain(context.pop(), self.type)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> ArrayStoreStatement:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> ArrayStoreStatement:
     #     offset = self.type_.internal_size if self.type_ is not None else 1
     #     return ArrayStoreStatement(
     #         array=associations[delta.pops[-(2 + offset)]],
@@ -89,5 +88,5 @@ class ArrayLengthInstruction(Instruction):
         context.constrain(context.pop(), array_t)
         context.push(int_t)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     associations[delta.pushes[0]] = ArrayLengthExpression(associations[delta.pops[-1]])

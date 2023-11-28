@@ -10,13 +10,13 @@ Helper functions for Kirjava, to make the API more simplistic.
 """
 
 from io import BytesIO
-from typing import IO, Union
+from typing import IO
 
 from .analysis import InsnGraph, Trace
 from .classfile import ClassFile, MethodInfo
 
 
-def load(file_data_or_stream: Union[str, bytes, IO[bytes]], **kwargs: bool) -> ClassFile:
+def load(file_data_or_stream: str | bytes | IO[bytes], **kwargs: bool) -> ClassFile:
     """
     Reads a classfile given either the path to the file or a binary stream.
 
@@ -32,7 +32,7 @@ def load(file_data_or_stream: Union[str, bytes, IO[bytes]], **kwargs: bool) -> C
     return ClassFile.read(file_data_or_stream, **kwargs)
 
 
-def dump(classfile: ClassFile, file_or_stream: Union[str, IO[bytes]]) -> None:
+def dump(classfile: ClassFile, file_or_stream: str | IO[bytes]) -> None:
     """
     Writes a classfile to the provided file or binary stream.
 
@@ -72,7 +72,7 @@ def disassemble(method: MethodInfo, ignore_flags: bool = False, **kwargs: bool) 
     return InsnGraph.disassemble(method, **kwargs)
 
 
-def trace(method_or_graph: Union[MethodInfo, InsnGraph], **kwargs: bool) -> Trace:
+def trace(method_or_graph: MethodInfo | InsnGraph, **kwargs: bool) -> Trace:
     """
     Traces the provided graph or method and prints the results to stdout.
 

@@ -106,7 +106,7 @@ JVM instructions.
 
 import struct
 import typing
-from typing import Any, Callable, Dict, IO, List, Optional, Tuple, Type
+from typing import Any, Callable, IO
 
 from .. import types
 from ..abc import Source
@@ -128,17 +128,17 @@ class Instruction(Source):
     opcode: int = ...
     mnemonic: str = ...
 
-    operands:      Dict[str, str] = {}
-    operands_wide: Dict[str, str] = {}
+    operands:      dict[str, str] = {}
+    operands_wide: dict[str, str] = {}
 
-    throws: Tuple[Class, ...] = ()
+    throws: tuple[Class, ...] = ()
 
     # Hidden attributes, so PyCharm doesn't complain.
-    _operands: Tuple[List[Tuple[str, int, Callable, Callable]], ...]
+    _operands: tuple[list[tuple[str, int, Callable, Callable]], ...]
     _hash: int
-    _size: Tuple[int, int]
+    _size: tuple[int, int]
 
-    _cache: Dict[Type["Instruction"], "Instruction"] = {}
+    _cache: dict[type["Instruction"], "Instruction"] = {}
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "Instruction":
         if args or kwargs:
@@ -226,7 +226,7 @@ class Instruction(Source):
         ...
 
     # @abstractmethod
-    # def lift(self, delta: "FrameDelta", scope: "Scope", associations: Dict["Entry", Value]) -> Optional[Statement]:
+    # def lift(self, delta: "FrameDelta", scope: "Scope", associations: dict["Entry", Value]) -> None | Statement:
     #     """
     #     Generates IR code from this instruction.
     #
@@ -280,12 +280,12 @@ class _ReservedInstruction(Instruction):
 def new_instruction(
         opcode: int,
         mnemonic: str,
-        base: Optional[Type[Instruction]] = None,
-        operands: Optional[Dict[str, str]] = None,
-        operands_wide: Optional[Dict[str, str]] = None,
-        throws: Optional[Tuple[Class, ...]] = None,
+        base: None | type[Instruction] = None,
+        operands: None | dict[str, str] = None,
+        operands_wide: None | dict[str, str] = None,
+        throws: None | tuple[Class, ...] = None,
         **namespace: object,
-) -> Type[Instruction]:
+) -> type[Instruction]:
     """
     Creates a new instruction with the given information.
 

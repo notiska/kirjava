@@ -11,7 +11,7 @@ Abstract base classes for graph representations of methods.
 import logging
 import typing
 from collections import defaultdict
-from typing import Any, Dict, Iterator, Optional, Set, Tuple
+from typing import Any, Iterator
 
 from .source import Source
 
@@ -49,7 +49,7 @@ class Block(Source):
     def __hash__(self) -> int:
         return id(self)
 
-    def copy(self, label: Optional[int] = None, deep: bool = False) -> "Block":
+    def copy(self, label: None | int = None, deep: bool = False) -> "Block":
         """
         Creates a copy of this block.
 
@@ -105,7 +105,7 @@ class Edge(Source):
     __slots__ = ("from_", "to", "_hash")
 
     # Limits how many of this certain type of edge can occur at a block. If None, there is no limit.
-    limit: Optional[int] = None
+    limit: None | int = None
 
     def __init__(self, from_: Block, to: Block) -> None:
         """
@@ -132,7 +132,7 @@ class Edge(Source):
     def __hash__(self) -> int:
         return self._hash
 
-    def copy(self, from_: Optional[Block] = None, to: Optional[Block] = None, deep: bool = True) -> "Edge":
+    def copy(self, from_: None | Block = None, to: None | Block = None, deep: bool = True) -> "Edge":
         """
         Creates a copy of this edge with the new to/from blocks.
 
@@ -157,18 +157,18 @@ class Graph:
     )
 
     @property
-    def blocks(self) -> Tuple[Block, ...]:
+    def blocks(self) -> tuple[Block, ...]:
         return tuple(self._blocks.values())
 
     @property
-    def edges(self) -> Tuple[Edge, ...]:
+    def edges(self) -> tuple[Edge, ...]:
         edges = []
         for edges_ in self._forward_edges.values():
             edges.extend(edges_)
         return tuple(edges)
 
     @property
-    def opaque_edges(self) -> Tuple[Edge, ...]:
+    def opaque_edges(self) -> tuple[Edge, ...]:
         return tuple(self._opaque_edges)
 
     def __init__(
@@ -188,14 +188,14 @@ class Graph:
         self.return_block = return_block
         self.rethrow_block = rethrow_block
 
-        self._blocks: Dict[int, Block] = {
+        self._blocks: dict[int, Block] = {
             entry_block.label: entry_block,
             return_block.label: return_block,
             rethrow_block.label: rethrow_block,
         }
-        self._forward_edges: Dict[Block, Set[Edge]] = defaultdict(set)  # Blocks to their out edges (faster lookup)
-        self._backward_edges: Dict[Block, Set[Edge]] = defaultdict(set)  # Blocks to their in edges
-        self._opaque_edges: Set[Edge] = set()  # Edges whose jump targets we don't know yet
+        self._forward_edges: dict[Block, set[Edge]] = defaultdict(set)  # Blocks to their out edges (faster lookup)
+        self._backward_edges: dict[Block, set[Edge]] = defaultdict(set)  # Blocks to their in edges
+        self._opaque_edges: set[Edge] = set()  # Edges whose jump targets we don't know yet
 
     def __iter__(self) -> Iterator[Block]:
         return iter(self._blocks.values())
@@ -275,10 +275,16 @@ class Graph:
         if block is self.entry_block:
             self.entry_block = None
 
-        for edge in self._backward_edges.pop(block):
-            self.disconnect(edge)
-        for edge in self._forward_edges.pop(block):
-            self.disconnect(edge)
+        try:
+            for edge in self._backward_edges.pop(block):
+                self.disconnect(edge)
+        except KeyError:
+            ...
+        try:
+            for edge in self._forward_edges.pop(block):
+                self.disconnect(edge)
+        except KeyError:
+            ...
 
     def connect(self, edge: Edge, overwrite: bool = False, *, check: bool = True) -> None:
         """
@@ -358,7 +364,7 @@ class Graph:
 
         return edge in self._opaque_edges
 
-    def successors(self, block: Block) -> Tuple[Block, ...]:
+    def successors(self, block: Block) -> tuple[Block, ...]:
         """
         Gets the successors for a given block.
 
@@ -366,7 +372,7 @@ class Graph:
         :return: The block's successors.
         """
 
-        return tuple(edge.to for edge in self._forward_edges.get(block, ()))
+        return tuple(edge.to for edge in self._forward_edges[block])
 
     def successors_iter(self, block: Block) -> Iterator[Block]:
         """
@@ -378,7 +384,7 @@ class Graph:
         for edge in self._forward_edges[block]:
             yield edge.to
 
-    def predecessors(self, block: Block) -> Tuple[Block, ...]:
+    def predecessors(self, block: Block) -> tuple[Block, ...]:
         """
         Gets the predecessors for a given block.
 
@@ -386,7 +392,7 @@ class Graph:
         :return: The block's predecessors.
         """
 
-        return tuple(edge.from_ for edge in self._backward_edges.get(block, ()))
+        return tuple(edge.from_ for edge in self._backward_edges[block])
 
     def predecessors_iter(self, block: Block) -> Iterator[Block]:
         """
@@ -398,7 +404,7 @@ class Graph:
         for edge in self._backward_edges[block]:
             yield edge.from_
 
-    def out_edges(self, block: Block) -> Tuple[Edge, ...]:
+    def out_edges(self, block: Block) -> tuple[Edge, ...]:
         """
         Gets the out edges for a given block.
 
@@ -406,7 +412,7 @@ class Graph:
         :return: The out edges for that block.
         """
 
-        return tuple(self._forward_edges.get(block, ()))
+        return tuple(self._forward_edges[block])
 
     def out_edges_iter(self, block: Block) -> Iterator[Edge]:
         """
@@ -418,7 +424,7 @@ class Graph:
         for edge in self._forward_edges[block]:
             yield edge
 
-    def in_edges(self, block: Block) -> Tuple[Edge, ...]:
+    def in_edges(self, block: Block) -> tuple[Edge, ...]:
         """
         Gets the in edges for a given block.
 
@@ -426,7 +432,7 @@ class Graph:
         :return: The in edges for that block.
         """
 
-        return tuple(self._backward_edges.get(block, ()))
+        return tuple(self._backward_edges[block])
 
     def in_edges_iter(self, block: Block) -> Iterator[Edge]:
         """

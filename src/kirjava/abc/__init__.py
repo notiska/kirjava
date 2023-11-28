@@ -19,5 +19,4 @@ from .constant import *  # Same as above
 from .class_ import *
 from .field import *
 from .graph import *
-from .ir import *
 from .method import *

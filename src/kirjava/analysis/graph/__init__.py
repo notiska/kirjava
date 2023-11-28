@@ -15,7 +15,6 @@ A control flow graph containing JVM instructions.
 
 import logging
 import typing
-from typing import Dict, Optional, Set, Tuple, Type, Union
 
 from . import block, edge
 from ._asm import assemble
@@ -49,10 +48,10 @@ class InsnGraph(Graph):
     return_block: InsnReturnBlock
     rethrow_block: InsnRethrowBlock
 
-    _blocks: Dict[int, InsnBlock]
-    _forward_edges: Dict[InsnBlock, Set[InsnEdge]]
-    _backward_edges: Dict[InsnBlock, Set[InsnEdge]]
-    _opaque_edges: Set[InsnEdge]
+    _blocks: dict[int, InsnBlock]
+    _forward_edges: dict[InsnBlock, set[InsnEdge]]
+    _backward_edges: dict[InsnBlock, set[InsnEdge]]
+    _opaque_edges: set[InsnEdge]
 
     @classmethod
     def disassemble(
@@ -84,7 +83,7 @@ class InsnGraph(Graph):
     def __init__(self, method: "MethodInfo") -> None:
         super().__init__(method, InsnBlock(0), InsnReturnBlock(), InsnRethrowBlock())
 
-        self.source_map: Dict[int, Union[InstructionInBlock, InsnEdge]] = {}
+        self.source_map: dict[int, InstructionInBlock | InsnEdge] = {}
 
     def __repr__(self) -> str:
         return "<InsnGraph(blocks=%i, edges=%i)> at %x" % (len(self._blocks), len(self._forward_edges), id(self))
@@ -205,7 +204,7 @@ class InsnGraph(Graph):
         self.add(block, check=False)
         return block
 
-    def instructions(self, block_or_label: Union[InsnBlock, int]) -> Tuple[Instruction, ...]:
+    def instructions(self, block_or_label: InsnBlock | int) -> tuple[Instruction, ...]:
         """
         Iterates over all the instructions in a block (including any instructions in its out edges).
 
@@ -246,7 +245,7 @@ class InsnGraph(Graph):
             self,
             from_: InsnBlock,
             to: InsnBlock,
-            jump: Union[Type[Instruction], Instruction, None] = None,
+            jump: None | type[Instruction] | Instruction = None,
             overwrite: bool = True,
     ) -> JumpEdge:
         """
@@ -275,7 +274,7 @@ class InsnGraph(Graph):
             self,
             from_: InsnBlock,
             to: InsnBlock,
-            priority: Optional[int] = None,
+            priority: None | int = None,
             exception: _argument.ReferenceType = types.throwable_t,
     ) -> ExceptionEdge:
         """

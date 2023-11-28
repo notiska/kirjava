@@ -9,10 +9,9 @@ Instructions that push constants to the stack.
 """
 
 import typing
-from typing import Any, Dict, IO, Union
+from typing import Any, IO, Union
 
 from . import Instruction
-from ..abc import Value
 from ..constants import ConstantInfo, Integer
 from ..error import ConstantWidthError, InvalidConstantError
 
@@ -61,7 +60,7 @@ class ConstantInstruction(Instruction):
         entry = context.push(type_.as_vtype())
         context.constrain(entry, type_, original=True)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     associations[delta.pushes[0]] = ConstantValue(self.constant)
 
 
@@ -100,7 +99,7 @@ class IntegerConstantInstruction(ConstantInstruction):
 
     __slots__ = ("_value",)
 
-    def __init__(self, constant: Union[int, Integer]) -> None:
+    def __init__(self, constant: int | Integer) -> None:
         if type(constant) is int:
             constant = Integer(constant)
         super().__init__(constant)

@@ -17,7 +17,7 @@ Bytecode analysis stuff.
 
 import typing
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any
 
 from . import frame
 from .frame import *
@@ -67,15 +67,15 @@ class Trace:
 
         self.graph = graph
 
-        self.entries: Dict["InsnBlock", List[Frame]] = defaultdict(list)
-        self.exits: Dict["InsnBlock", List[Frame]] = defaultdict(list)
+        self.entries: dict["InsnBlock", list[Frame]] = defaultdict(list)
+        self.exits: dict["InsnBlock", list[Frame]] = defaultdict(list)
 
-        self.conflicts: Set[Trace.Conflict] = set()
-        self.returned: Set[Entry] = set()
-        self.subroutines: List[Trace.Subroutine] = []
+        self.conflicts: set[Trace.Conflict] = set()
+        self.returned: set[Entry] = set()
+        self.subroutines: list[Trace.Subroutine] = []
 
-        self.pre_liveness: Dict["InsnBlock", Set[int]] = {}
-        self.post_liveness: Dict["InsnBlock", Set[int]] = {}
+        self.pre_liveness: dict["InsnBlock", set[int]] = {}
+        self.post_liveness: dict["InsnBlock", set[int]] = {}
 
         self.max_stack = 0
         self.max_locals = 0
@@ -92,7 +92,7 @@ class Trace:
 
         __slots__ = ("entry", "expected", "source", "_hash")
 
-        def __init__(self, entry: Entry, expected: Type, source: Optional[Source]) -> None:
+        def __init__(self, entry: Entry, expected: Type, source: None | Source) -> None:
             self.entry = entry
             self.expected = expected
             self.source = source
@@ -160,16 +160,16 @@ class Context:
 
         self.do_raise = do_raise
 
-        self.frame: Optional[Frame] = None
-        self.source: Optional[Source] = None  # The source of the current tracing instruction
+        self.frame: None | Frame = None
+        self.source: None | Source = None  # The source of the current tracing instruction
 
-        self.returned: Set[Entry] = set()
-        self.conflicts: Set[Trace.Conflict] = set()
+        self.returned: set[Entry] = set()
+        self.conflicts: set[Trace.Conflict] = set()
 
         # These are used on a per-block basis, namely for live variable analysis. The intention is that they are reset
         # every time a new block is entered.
-        self.local_uses: Set[int] = set()
-        self.local_defs: Set[int] = set()
+        self.local_uses: set[int] = set()
+        self.local_defs: set[int] = set()
 
     def __repr__(self) -> str:
         return "<Context(method=%r, frame=%r) at %x>" % (self.method, self.frame, id(self))
@@ -197,7 +197,7 @@ class Context:
 
     # ------------------------------ Stack operations ------------------------------ #
 
-    def push(self, entry_or_type: Union[Entry, Type], constraint: Optional[Type] = None) -> Entry:
+    def push(self, entry_or_type: Entry | Type, constraint: None | Type = None) -> Entry:
         """
         Pushes an entry or type onto the top of the stack.
         This also handles wide types automatically.
@@ -234,7 +234,7 @@ class Context:
 
         return entry
 
-    def pop(self, count: int = 1, *, as_tuple: bool = False) -> Union[Tuple[Entry, ...], Entry]:
+    def pop(self, count: int = 1, *, as_tuple: bool = False) -> tuple[Entry, ...] | Entry:
         """
         Pops one or more entries from the stack.
         Does not handle wide types.
@@ -262,7 +262,7 @@ class Context:
 
     # ------------------------------ Locals operations ------------------------------ #
 
-    def set(self, index: int, entry_or_type: Union[Entry, Type], constraint: Optional[Type] = None) -> None:
+    def set(self, index: int, entry_or_type: Entry | Type, constraint: None | Type = None) -> None:
         """
         Sets the local at the given index to the given entry or type.
         This also handles wide types automatically.

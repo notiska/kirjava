@@ -9,7 +9,7 @@ Conversion instructions.
 """
 
 import typing
-from typing import Any, Dict, IO
+from typing import Any, IO
 
 from . import Instruction
 from .. import _argument
@@ -41,7 +41,7 @@ class ConversionInstruction(Instruction):
         context.constrain(entry, self.type_in)
         context.push(entry.cast(self.type_out, context.source))
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     associations[delta.pushes[0]] = ValueCastExpression(associations[delta.pops[-1]], self.type_out)
 
 
@@ -104,7 +104,7 @@ class CheckCastInstruction(Instruction):
         context.constrain(entry, self.type)
         context.push(entry.cast(self.type, context.source))
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     associations[delta.pushes[0]] = TypeCastExpression(associations[delta.pops[-1]], self.type)
 
 
@@ -150,5 +150,5 @@ class InstanceOfInstruction(Instruction):
         context.constrain(context.pop(), self.type)
         context.push(int_t)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     associations[delta.pushes] = InstanceOfExpression(associations[delta.pops[-1]], self.type)

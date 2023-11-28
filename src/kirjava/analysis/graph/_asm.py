@@ -13,7 +13,6 @@ import logging
 import operator
 import typing
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Tuple
 
 from .block import *
 from .debug import *
@@ -71,7 +70,7 @@ def assemble(
         logger.debug(" - skipping stackmap table generation as class version is %s." % classfile.version)
         compute_frames = False
 
-    trace: Optional[Trace] = None
+    trace: None | Trace = None
 
     if compute_maxes or compute_frames:
         # As pointed out in comments in the trace code, we don't need to merge non-live locals for this as we're going
@@ -92,8 +91,8 @@ def assemble(
     forward_edges = graph._forward_edges
     backward_edges = graph._backward_edges
 
-    order: List[InsnBlock] = []
-    skipped: Set[InsnBlock] = set()
+    order: list[InsnBlock] = []
+    skipped: set[InsnBlock] = set()
 
     for label, block in sorted(blocks.items(), key=operator.itemgetter(0)):
         is_entry_block = block is graph.entry_block
@@ -331,17 +330,17 @@ def assemble(
     # ------------------------------------------------------------ #
 
     environment = classfile.environment or DEFAULT
-    frame_precalc: Dict[InsnBlock, Tuple[List[Type], List[Type]]] = {}
+    frame_precalc: dict[InsnBlock, tuple[list[Type], list[Type]]] = {}
 
     # Type hints... type hints... type hints...
-    uninit_offset_blocks: Dict[InsnBlock, Dict[int, List[Tuple[List[Type], int]]]] = {}
-    uninit_offset_edges:  Dict[InsnEdge, List[Tuple[List[Type], int]]] = {}
+    uninit_offset_blocks: dict[InsnBlock, dict[int, list[tuple[list[Type], int]]]] = {}
+    uninit_offset_edges:  dict[InsnEdge, list[tuple[list[Type], int]]] = {}
 
     if compute_frames:
         # Caches the type inference for entries as it can be very expensive to compute, especially for larger methods
-        # with exception handlers.
-        inference_cache: Dict[Entry, Set[Type]] = {}
-        supertype_cache: Dict[Tuple[ClassType, ClassType], Class] = {}  # :p
+        # with many exception handlers.
+        inference_cache: dict[Entry, set[Type]] = {}
+        supertype_cache: dict[tuple[ClassType, ClassType], Class] = {}  # :p
 
         for block in blocks.values():
             if block in skipped:
@@ -408,7 +407,7 @@ def assemble(
 
             # We also need to keep track of any uninitialised types, as we need to give them the correct offset later on
             # in the code generation stage.
-            uninitialised: Dict[Entry, List[Tuple[List[Type], int]]] = defaultdict(list)
+            uninitialised: dict[Entry, list[tuple[list[Type], int]]] = defaultdict(list)
 
             for array in (stack, locals_):
                 for index, types in enumerate(array):
@@ -461,13 +460,9 @@ def assemble(
                             uninitialised[entries[0].stack[index]].append((array, index))
                         continue
 
-                    # TODO: Check, is Uninitialized mergeable with Class?
-
                     lowest = valid.pop()
                     while valid:
                         higher = valid.pop()
-                        if higher == lowest:  # higher is lowest:
-                            continue
 
                         common = supertype_cache.get((lowest, higher))
                         if common is not None:
@@ -475,24 +470,22 @@ def assemble(
                             continue
 
                         # These are used if there's an array type and we need to merge the element classes.
-                        old_higher: Optional[Array] = None
-                        old_lowest: Optional[Array] = None
+                        old_higher: None | Array = None
+                        old_lowest: None | Array = None
 
-                        error: Optional[Exception] = None  # Might throw this later if needs be.
-                        supertypes: Set[Class] = set()
+                        error: None | Exception = None  # Might throw this later if needs be.
+                        supertypes: set[Class] = set()
 
                         # Special handling for arrays. We need to try and merge their element types, this gets a little
                         # more difficult with primitive and multi-dimensional arrays.
                         if type(higher) is Array:
                             if type(lowest) is not Array:
                                 lowest = object_t
-                                continue
+                                break
 
                             higher_dim = higher.dimensions
                             lowest_dim = lowest.dimensions
 
-                            # FIXME: Need to test the validity of all these combinations. I'm not sure if the verifier
-                            #        would allow all of them.
                             if higher_dim != lowest_dim:
                                 lowest = Array.from_dimension(object_t, min(higher_dim, lowest_dim))
                                 continue
@@ -540,6 +533,7 @@ def assemble(
                         except ClassNotFoundError as error_:
                             # FIXME: I don't think we can assign directly to error, afaik there's an implicit `del error`?
                             error = error_
+                            found = False
 
                         if found:
                             if old_higher is not None and old_lowest is not None:
@@ -564,20 +558,28 @@ def assemble(
 
                         except ClassNotFoundError as error_:
                             error = error or error_  # Mhm, not sure which to raise but I guess this is fine, for now.
+                            found = False
 
                         if found:
                             if old_higher is not None and old_lowest is not None:
                                 lowest = Array.from_dimension(lowest, old_higher.dimensions)
                             continue
-                        elif do_raise and error is not None:
+                        elif not add_checkcasts and do_raise and error is not None:
                             raise error
 
                         # Best we can do, this will still cause issues though (unless add_checkcasts=True).
                         lowest = object_t
 
                         if not add_checkcasts:
-                            continue
+                            if old_higher is not None and old_lowest is not None:
+                                lowest = Array.from_dimension(lowest, old_higher.dimensions)
+                            break
 
+    # ------------------------------------------------------------ #
+    #                        Add checkcasts                        #
+    # ------------------------------------------------------------ #
+
+                        # print("t")
                         ...  # TODO: Add checkcasts.
 
                     array[index] = lowest
@@ -607,19 +609,19 @@ def assemble(
     for pass_ in range(5):
         code.instructions.clear()
 
-        written:  List[Tuple[InsnBlock, int]] = []  # The order and offset of written blocks.
-        starting: Dict[InsnBlock, int] = {}
-        ending:   Dict[InsnBlock, int] = {}
-        inlined:  Dict[InsnBlock, Tuple[List[int], List[int]]] = defaultdict(lambda: ([], []))
+        written:  list[tuple[InsnBlock, int]] = []  # The order and offset of written blocks.
+        starting: dict[InsnBlock, int] = {}
+        ending:   dict[InsnBlock, int] = {}
+        inlined:  dict[InsnBlock, tuple[list[int], list[int]]] = defaultdict(lambda: ([], []))
 
         # This will save us time at the jump adjustment stage.
-        switches:            Dict[int, List[SwitchEdge]] = {}
-        unconditional_jumps: Dict[int, JumpEdge] = {}
-        conditional_jumps:   Dict[int, JumpEdge] = {}
+        switches:            dict[int, list[SwitchEdge]] = {}
+        unconditional_jumps: dict[int, JumpEdge] = {}
+        conditional_jumps:   dict[int, JumpEdge] = {}
 
-        line_numbers: Dict[int, int] = {}
+        line_numbers: dict[int, int] = {}
 
-        inline_stack: List[InsnBlock] = []
+        inline_stack: list[InsnBlock] = []
 
         index = 0
         offset = 0
@@ -657,13 +659,13 @@ def assemble(
                 offset += instruction.get_size(offset, wide)
                 wide = instruction == instructions.wide
 
-            switch_edges: List[SwitchEdge] = []
-            inline_edges: List[InsnEdge] = []
+            switch_edges: list[SwitchEdge] = []
+            inline_edges: list[InsnEdge] = []
 
-            positions: Optional[List[Tuple[List[Type], int]]] = None
+            positions: None | list[tuple[list[Type], int]] = None
 
-            jump_edge:        Optional[JumpEdge] = None
-            jump_instruction: Optional[Instruction] = None
+            jump_edge:        None | JumpEdge = None
+            jump_instruction: None | Instruction = None
 
             for edge in forward_edges[block]:
                 if type(edge) is SwitchEdge:
@@ -807,7 +809,6 @@ def assemble(
             # block.inline = True
             order.insert(order.index(edge.to) + 1, intermediary_block)  # We want to write it immediately after
 
-            # FIXME
             conditional_edge = edge.copy(to=intermediary_block, deep=False)
             direct_edge = JumpEdge(intermediary_block, edge.to, instructions.goto_w())
 
@@ -843,7 +844,7 @@ def assemble(
     split_handlers = 0
     merged_edges = 0
 
-    handlers: Dict[int, List[Code.ExceptionHandler]] = defaultdict(list)  # Handlers and their priority
+    handlers: dict[int, list[Code.ExceptionHandler]] = defaultdict(list)  # Handlers and their priority
 
     # We'll iterate through the backward edges as it allows us to easily group and merge exception ranges that may span
     # multiple blocks.
@@ -858,7 +859,7 @@ def assemble(
             continue
 
         # Otherwise, we will attempt to merge the ranges of exception edges which have the same priority and throwable.
-        exception_edges: Dict[Tuple[int, Optional[Reference]], Dict[int, Tuple[int, ExceptionEdge]]] = defaultdict(dict)
+        exception_edges: dict[tuple[int, None | Reference], dict[int, tuple[int, ExceptionEdge]]] = defaultdict(dict)
 
         for edge in in_edges:
             if type(edge) is ExceptionEdge and not edge.from_ in skipped:
@@ -878,7 +879,7 @@ def assemble(
         # range. Otherwise, we'll just have to split the exception range into multiple handlers.
         for (priority, throwable), edges in exception_edges.items():
             current_handlers = handlers[priority]
-            current_range: Optional[Tuple[int, int]] = None
+            current_range: None | tuple[int, int] = None
 
             for start, (end, edge) in sorted(edges.items(), key=operator.itemgetter(0)):
                 in_range = False

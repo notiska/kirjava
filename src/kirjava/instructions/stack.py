@@ -12,7 +12,6 @@ Instructions that manipulate values on the stack.
 """
 
 import typing
-from typing import Dict, Optional, Union
 
 from . import Instruction
 
@@ -52,7 +51,7 @@ class DupInstruction(Instruction):
     def trace(self, context: "Context") -> None:
         context.frame.dup()
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> Optional[DeclareStatement]:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None | DeclareStatement:
     #     if not delta.dups:
     #         return None
     #
@@ -100,7 +99,7 @@ class Dup2Instruction(Instruction):
     def trace(self, context: "Context") -> None:
         context.frame.dup(2)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> Union[CompoundStatement, DeclareStatement, None]:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None | CompoundStatement | DeclareStatement:
     #     if not delta.dups:
     #         return None
     #

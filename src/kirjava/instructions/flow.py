@@ -16,7 +16,7 @@ import operator
 import struct
 import typing
 from enum import Enum
-from typing import Any, Dict, IO, Optional
+from typing import Any, IO
 
 from . import Instruction
 from ..types import int_t, return_address_t, ReturnAddress, Type, Verification
@@ -33,7 +33,7 @@ class JumpInstruction(Instruction):
 
     __slots__ = ("offset",)
 
-    def __init__(self, offset: Optional[int] = None) -> None:
+    def __init__(self, offset: None | int = None) -> None:
         self.offset = offset
 
     def __repr__(self) -> str:
@@ -62,7 +62,7 @@ class SwitchInstruction(Instruction):
 
     operands = {"_": ">B"}  # Dummy operands so that the instruction is not mistaken for immutable.
 
-    def __init__(self, default: int, offsets: Dict[int, int]) -> None:
+    def __init__(self, default: int, offsets: dict[int, int]) -> None:
         """
         :param default: The default offset to jump to.
         :param offsets: The offsets to jump to, keyed by the index/value in the jump table.
@@ -211,7 +211,7 @@ class TableSwitchInstruction(SwitchInstruction):
 
     __slots__ = ("low", "high")
 
-    def __init__(self, default: int, low: int, high: int, offsets: Dict[int, int]) -> None:
+    def __init__(self, default: int, low: int, high: int, offsets: dict[int, int]) -> None:
         """
         :param low: The lowest index in the jump table.
         :param high: The highest index in the jump table.

@@ -23,7 +23,7 @@ __all__ = (
 )
 
 import typing
-from typing import Any, Dict, IO, Optional, Tuple, Union
+from typing import Any, IO, Optional, Union
 
 from ._struct import *
 from .abc import Constant
@@ -80,7 +80,7 @@ class ConstantInfo(Constant):
         ...
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, "ConstantInfo"], info: Any) -> Optional["ConstantInfo"]:
+    def dereference(cls, lookups: dict[int, "ConstantInfo"], info: Any) -> Optional["ConstantInfo"]:
         """
         Dereferences this constant from the provided information.
 
@@ -119,7 +119,7 @@ class UTF8(ConstantInfo):
         ).replace(b"\xc0\x80", b"\x00").decode("utf-8", errors="ignore"))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: Any) -> None:
         raise Exception("Tried to dereference UTF8 constant.")
 
     def __init__(self, value: str) -> None:
@@ -152,7 +152,7 @@ class Integer(ConstantInfo):
         return cls(unpack_i(buffer.read(4))[0])
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: Any) -> None:
         raise Exception("Tried to dereference integer constant.")
 
     def __init__(self, value: int) -> None:
@@ -235,7 +235,7 @@ class Float(ConstantInfo):
         return cls(unpack_f(buffer.read(4))[0])
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: Any) -> None:
         raise Exception("Tried to dereference float constant.")
 
     def __init__(self, value: float) -> None:
@@ -294,7 +294,7 @@ class Long(ConstantInfo):
         return cls(unpack_q(buffer.read(8))[0])
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: Any) -> None:
         raise Exception("Tried to dereference long constant.")
 
     def __init__(self, value: int) -> None:
@@ -378,7 +378,7 @@ class Double(ConstantInfo):
         return cls(unpack_d(buffer.read(8))[0])
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Any) -> None:
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: Any) -> None:
         raise Exception("Tried to dereference double constant.")
 
     def __init__(self, value: float) -> None:
@@ -436,13 +436,13 @@ class Class(ConstantInfo):
         return unpack_H(buffer.read(2))[0]
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "Class":
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: int) -> "Class":
         name = lookups.get(info)
         if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
         return cls(name.value)
 
-    def __init__(self, name_or_type: Union[str, Reference]) -> None:
+    def __init__(self, name_or_type: str | Reference) -> None:
         """
         :param name_or_type: The name value of the class or a reference type.
         """
@@ -487,7 +487,7 @@ class String(ConstantInfo):
         return unpack_H(buffer.read(2))[0]
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "String":
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: int) -> "String":
         value = lookups.get(info)
         if type(value) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(value)))
@@ -508,17 +508,17 @@ class FieldRef(ConstantInfo):
     since = Version(45, 0)
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+    def read(cls, buffer: IO[bytes]) -> tuple[int, int]:
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["FieldRef"]:
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: tuple[int, int]) -> Optional["FieldRef"]:
         class_ = lookups.get(info[0])
         if class_ is None:
             return None
         elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type: Optional[NameAndType] = lookups.get(info[1])
+        name_and_type: None | NameAndType = lookups.get(info[1])
         if name_and_type is None:
             return None
         elif type(name_and_type) is not NameAndType:
@@ -582,17 +582,17 @@ class MethodRef(ConstantInfo):
     since = Version(45, 0)
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+    def read(cls, buffer: IO[bytes]) -> tuple[int, int]:
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["MethodRef"]:
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: tuple[int, int]) -> Optional["MethodRef"]:
         class_ = lookups.get(info[0])
         if class_ is None:
             return None
         elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type: Optional[NameAndType] = lookups.get(info[1])
+        name_and_type: None | NameAndType = lookups.get(info[1])
         if name_and_type is None:
             return None
         elif type(name_and_type) is not NameAndType:
@@ -660,17 +660,17 @@ class InterfaceMethodRef(MethodRef):
     since = Version(45, 0)
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+    def read(cls, buffer: IO[bytes]) -> tuple[int, int]:
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["InterfaceMethodRef"]:
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: tuple[int, int]) -> Optional["InterfaceMethodRef"]:
         class_ = lookups.get(info[0])
         if class_ is None:
             return None
         elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type: Optional[NameAndType] = lookups.get(info[1])
+        name_and_type: None | NameAndType = lookups.get(info[1])
         if name_and_type is None:
             return None
         elif type(name_and_type) is not NameAndType:
@@ -706,11 +706,11 @@ class NameAndType(ConstantInfo):
     since = Version(45, 0)
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+    def read(cls, buffer: IO[bytes]) -> tuple[int, int]:
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> "NameAndType":
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: tuple[int, int]) -> "NameAndType":
         name = lookups.get(info[0])
         if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
@@ -753,30 +753,30 @@ class MethodHandle(ConstantInfo):
     tag = 15
     since = Version(51, 0)
 
-    REF_GET_FIELD = 1
-    REF_GET_STATIC = 2
-    REF_PUT_FIELD = 3
-    REF_PUT_STATIC = 4
-    REF_INVOKE_VIRTUAL = 5
-    REF_INVOKE_STATIC = 6
-    REF_INVOKE_SPECIAL = 7
+    REF_GET_FIELD          = 1
+    REF_GET_STATIC         = 2
+    REF_PUT_FIELD          = 3
+    REF_PUT_STATIC         = 4
+    REF_INVOKE_VIRTUAL     = 5
+    REF_INVOKE_STATIC      = 6
+    REF_INVOKE_SPECIAL     = 7
     REF_NEW_INVOKE_SPECIAL = 8
-    REF_INVOKE_INTERFACE = 9
+    REF_INVOKE_INTERFACE   = 9
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+    def read(cls, buffer: IO[bytes]) -> tuple[int, int]:
         return unpack_BH(buffer.read(3))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["MethodHandle"]:
-        reference: Union[FieldRef, MethodRef, None] = lookups.get(info[1])
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: tuple[int, int]) -> Optional["MethodHandle"]:
+        reference: None | FieldRef | MethodRef = lookups.get(info[1])
         if reference is None:
             return None
         elif type(reference) is not FieldRef and not isinstance(reference, MethodRef):
             raise TypeError("Expected type %r or %r, got %r." % (FieldRef, MethodRef, type(reference)))
         return cls(info[0], reference)
 
-    def __init__(self, reference_kind: int, reference: Union[FieldRef, MethodRef, InterfaceMethodRef]) -> None:
+    def __init__(self, reference_kind: int, reference: FieldRef | MethodRef | InterfaceMethodRef) -> None:
         """
         :param reference_kind: The type of reference.
         :param reference: The reference itself.
@@ -807,7 +807,7 @@ class MethodType(ConstantInfo):
         return unpack_H(buffer.read(2))[0]
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "MethodType":
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: int) -> "MethodType":
         descriptor = lookups.get(info)
         if type(descriptor) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(descriptor)))
@@ -841,12 +841,12 @@ class Dynamic(ConstantInfo):
     since = Version(55, 0)
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+    def read(cls, buffer: IO[bytes]) -> tuple[int, int]:
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["Dynamic"]:
-        name_and_type: Optional[NameAndType] = lookups.get(info[1])
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: tuple[int, int]) -> Optional["Dynamic"]:
+        name_and_type: None | NameAndType = lookups.get(info[1])
         if name_and_type is None:  # Can't dereference it yet
             return None
         elif type(name_and_type) is not NameAndType:
@@ -906,12 +906,12 @@ class InvokeDynamic(ConstantInfo):
     since = Version(51, 0)
 
     @classmethod
-    def read(cls, buffer: IO[bytes]) -> Tuple[int, int]:
+    def read(cls, buffer: IO[bytes]) -> tuple[int, int]:
         return unpack_HH(buffer.read(4))
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: Tuple[int, int]) -> Optional["InvokeDynamic"]:
-        name_and_type: Optional[NameAndType] = lookups.get(info[1])
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: tuple[int, int]) -> Optional["InvokeDynamic"]:
+        name_and_type: None | NameAndType = lookups.get(info[1])
         if name_and_type is None:  # Can't dereference it yet
             return None
         elif type(name_and_type) is not NameAndType:
@@ -981,7 +981,7 @@ class Module(ConstantInfo):
         return unpack_H(buffer.read(2))[0]
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "Module":
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: int) -> "Module":
         name = lookups.get(info)
         if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))
@@ -1015,7 +1015,7 @@ class Package(ConstantInfo):
         return unpack_H(buffer.read(2))[0]
 
     @classmethod
-    def dereference(cls, lookups: Dict[int, ConstantInfo], info: int) -> "Package":
+    def dereference(cls, lookups: dict[int, ConstantInfo], info: int) -> "Package":
         name = lookups.get(info)
         if type(name) is not UTF8:
             raise TypeError("Expected type %r, got %r." % (UTF8, type(name)))

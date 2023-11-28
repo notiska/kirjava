@@ -9,7 +9,7 @@ Attributes that are only found in fields info structures.
 """
 
 import typing
-from typing import IO, Optional
+from typing import IO
 
 from . import AttributeInfo
 from ..._struct import *
@@ -31,7 +31,7 @@ class ConstantValue(AttributeInfo):
     since = Version(45, 0)
     locations = ("FieldInfo",)
 
-    def __init__(self, parent: "FieldInfo", value: Optional[ConstantInfo] = None) -> None:
+    def __init__(self, parent: "FieldInfo", value: None | ConstantInfo = None) -> None:
         super().__init__(parent, ConstantValue.name_)
 
         self.value = value

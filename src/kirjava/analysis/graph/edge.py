@@ -5,7 +5,7 @@ __all__ = (
 )
 
 import typing
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 from ... import instructions, types
 from ...abc import Edge
@@ -29,7 +29,7 @@ class InsnEdge(Edge):
     from_: "InsnBlock"
     to: "InsnBlock"
 
-    def __init__(self, from_: "InsnBlock", to: "InsnBlock", instruction: Optional[Instruction] = None) -> None:
+    def __init__(self, from_: "InsnBlock", to: "InsnBlock", instruction: None | Instruction = None) -> None:
         """
         :param instruction: The instruction that this edge contains.
         """
@@ -63,7 +63,7 @@ class InsnEdge(Edge):
             self.from_ if from_ is None else from_, self.to if to is None else to, instruction,
         )
 
-    def trace(self, context: "Context") -> Tuple[Optional["Frame"], Optional["InsnBlock"]]:
+    def trace(self, context: "Context") -> tuple[Optional["Frame"], Optional["InsnBlock"]]:
         """
         Traces any instructions in this edge.
 
@@ -94,7 +94,7 @@ class FallthroughEdge(InsnEdge):
             return "fallthrough %s -> %s" % (self.from_, self.to)
         return "%s %s -> %s" % (self.instruction, self.from_, self.to)
 
-    def trace(self, context: "Context") -> Tuple["Frame", "InsnBlock"]:
+    def trace(self, context: "Context") -> tuple["Frame", "InsnBlock"]:
         # We can skip any extra computation as we know we shouldn't have executable instructions here.
         return context.frame, self.to
 
@@ -152,7 +152,7 @@ class JsrFallthroughEdge(FallthroughEdge):
     def __str__(self) -> str:
         return "fallthrough %s %s (-> %s)" % (self.instruction, self.from_, self.to)
 
-    def trace(self, context: "Context") -> Tuple[None, None]:
+    def trace(self, context: "Context") -> tuple[None, None]:
         return None, None  # Symbolic edge (merely for the assembler), do nothing.
 
 
@@ -172,7 +172,7 @@ class RetEdge(JumpEdge):
             return "%s %s -> %s" % (self.instruction, self.from_, self.to)
         return "%s %s -> unknown" % (self.instruction, self.from_)
 
-    def trace(self, context: "Context") -> Tuple[Optional["Frame"], Optional["InsnBlock"]]:
+    def trace(self, context: "Context") -> tuple[Optional["Frame"], Optional["InsnBlock"]]:
         # The deal with ret edges is that we need to resolve the origin of the subroutine, which is not as easy as you
         # may think, at times. In cases where it is actually impossible, we will either raise an exception or skip over
         # this edge.
@@ -191,8 +191,8 @@ class RetEdge(JumpEdge):
         # The following code is not the prettiest I've ever written, I'll admit :p.
 
         origin_block:     Optional["InsnBlock"] = None
-        jump_edge:        Optional[JsrJumpEdge] = None
-        fallthrough_edge: Optional[JsrFallthroughEdge] = None
+        jump_edge:        None | JsrJumpEdge = None
+        fallthrough_edge: None | JsrFallthroughEdge = None
 
         # Trying to find the source of the subroutine lol. It (might) have been messed with by the user?
         if type(entry.generic.source) is JsrJumpEdge:
@@ -238,7 +238,7 @@ class SwitchEdge(JumpEdge):
             from_: "InsnBlock",
             to: "InsnBlock",
             instruction: SwitchInstruction,
-            value: Optional[int] = None,
+            value: None | int = None,
     ) -> None:
         """
         :param instruction: The switch instruction that created this edge.
@@ -284,7 +284,7 @@ class SwitchEdge(JumpEdge):
             self.from_ if from_ is None else from_, self.to if to is None else to, instruction, self.value,
         )
 
-    def trace(self, context: "Context") -> Tuple[Optional["Frame"], Optional["InsnBlock"]]:
+    def trace(self, context: "Context") -> tuple[Optional["Frame"], Optional["InsnBlock"]]:
         # We'll only trace the instruction on the default edge to avoid tracing it for every case edge.
         if self.value is None:
             return super().trace(context)
@@ -304,7 +304,7 @@ class ExceptionEdge(InsnEdge):
             from_: "InsnBlock",
             to: "InsnBlock",
             priority: int,
-            throwable: Optional[Class] = None,
+            throwable: None | Class = None,
             inline_coverage: bool = False,
     ) -> None:
         """
@@ -354,7 +354,7 @@ class ExceptionEdge(InsnEdge):
             self.priority, self.throwable, self.inline_coverage,
         )
 
-    def trace(self, context: "Context") -> Tuple["Frame", "InsnBlock"]:
+    def trace(self, context: "Context") -> tuple["Frame", "InsnBlock"]:
         # Exception edges modify the state of the frame ONLY for the exception handler, if an exception is not thrown,
         # the frame will be the same as it was before and hence we need to create a copy of said frame and only operate
         # on the copy to avoid modifying the state of the non-exception jump.

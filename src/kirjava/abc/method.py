@@ -10,7 +10,7 @@ Java method abstraction.
 
 import typing
 import weakref
-from typing import Iterable, Tuple
+from typing import Iterable
 
 from ..types import Type
 
@@ -39,7 +39,7 @@ class Method:
     is_synthetic: bool
 
     name: str
-    argument_types: Tuple[Type, ...]
+    argument_types: tuple[Type, ...]
     return_type: Type
 
     def __init__(self, class_: "Class") -> None:

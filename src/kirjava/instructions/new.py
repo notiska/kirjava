@@ -9,7 +9,7 @@ Instructions that create new references.
 """
 
 import typing
-from typing import Any, Dict, IO, Union
+from typing import Any, IO
 
 from . import Instruction
 from .. import _argument, types
@@ -66,7 +66,7 @@ class NewInstruction(Instruction):
         #     ))
         context.push(Uninitialized(context.source))
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     associations[delta.pushes[0]] = NewExpression(self.type)
     #     # Technically this has no side effects (invoking the constructor does), so there's no need to return anything.
 
@@ -101,7 +101,7 @@ class NewArrayInstruction(Instruction):
         types.long_t:    11,
     }
 
-    def __init__(self, type_: Union[Array, Primitive]) -> None:
+    def __init__(self, type_: Array | Primitive) -> None:
         """
         :param type_: Either the array type itself, or the element type of the array.
         """
@@ -136,7 +136,7 @@ class NewArrayInstruction(Instruction):
         context.constrain(context.pop(), int_t)
         context.push(self.type)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     associations[delta.pushes[0]] = NewArrayExpression(self.type, (associations[delta.pops[-1]],))
 
 
@@ -150,7 +150,7 @@ class ANewArrayInstruction(Instruction):
     operands = {"_index": ">H"}
     throws = (ClassType("java/lang/NegativeArraySizeException"),)
 
-    def __init__(self, type_: Union[Array, Reference]) -> None:
+    def __init__(self, type_: Array | Reference) -> None:
         """
         :param type_: Either the array type, or the element type in the array.
         """
@@ -185,7 +185,7 @@ class ANewArrayInstruction(Instruction):
         context.constrain(context.pop(), int_t)
         context.push(self.type)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     associations[delta.pushes[0]] = NewArrayExpression(self.type, (associations[delta.pops[-1]],))
 
 
@@ -198,7 +198,7 @@ class MultiANewArrayInstruction(Instruction):
 
     operands = {"_index": ">H", "dimension": ">B"}
 
-    def __init__(self, type_: Union[Array, Reference], dimension: int) -> None:
+    def __init__(self, type_: Array | Reference, dimension: int) -> None:
         """
         :param type_: Either the array type, or the element type in the array.
         :param dimension: The dimensions of the array to initialise.
@@ -250,5 +250,5 @@ class MultiANewArrayInstruction(Instruction):
             context.constrain(entry, int_t)
         context.push(self.type)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value]) -> None:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
     #     associations[delta.pushes[-1]] = NewArrayExpression(self.type, tuple(map(associations.get, delta.pops)))

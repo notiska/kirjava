@@ -10,7 +10,7 @@ Stack frames (and others).
 
 import operator
 import typing
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import Any, Iterator, Optional
 
 from ..abc import Method, Source
 from ..error import MergeDepthError, MergeMissingLocalError
@@ -43,7 +43,7 @@ class Entry:
             return type_
 
     @property
-    def parents(self) -> Tuple["Entry", ...]:
+    def parents(self) -> tuple["Entry", ...]:
         """
         :return: All the parents of this entry.
         """
@@ -57,7 +57,7 @@ class Entry:
         return tuple(parents)
 
     @property
-    def constraints(self) -> Tuple["Entry.Constraint", ...]:
+    def constraints(self) -> tuple["Entry.Constraint", ...]:
         """
         :return: All type constraints for this entry. Note: this is not necessarily all the types this entry could be.
         """
@@ -70,7 +70,7 @@ class Entry:
         return tuple(constraints)
 
     @property
-    def producers(self) -> Tuple[Source, ...]:
+    def producers(self) -> tuple[Source, ...]:
         """
         :return: All the sources that "produced" this entry.
         """
@@ -86,7 +86,7 @@ class Entry:
         return tuple(producers)
 
     @property
-    def consumers(self) -> Tuple[Source, ...]:
+    def consumers(self) -> tuple[Source, ...]:
         """
         :return: All the sources that "consumed" this entry.
         """
@@ -120,7 +120,7 @@ class Entry:
     #     return any(parent.nullable for parent in self.parents)
 
     @classmethod
-    def _generify(cls, type_: Type) -> Tuple[Verification, Set[Type]]:
+    def _generify(cls, type_: Type) ->tuple[Verification, set[Type]]:
         # We can generify all reference types (except uninitialized types) to java/lang/Object. The idea is that the
         # type will be inferred from constraints, later on.
         if isinstance(type_, Reference) and not isinstance(type_, Uninitialized):
@@ -132,7 +132,7 @@ class Entry:
 
         return vtype, set()
 
-    def __init__(self, type_: Type, source: Optional[Source] = None, parent: Optional["Entry"] = None) -> None:
+    def __init__(self, type_: Type, source: None | Source = None, parent: Optional["Entry"] = None) -> None:
         """
         :param type_: The type of this entry.
         :param source: The source that created this entry.
@@ -141,11 +141,11 @@ class Entry:
 
         self.generic, constraints = self._generify(type_)
 
-        self.merges: Set[Entry] = set()
+        self.merges: set[Entry] = set()
 
         self.parent = parent
         self.source = source
-        self._consumers: List[Source] = []
+        self._consumers: list[Source] = []
 
         self._constraints = set(Entry.Constraint(constraint, source, original=True) for constraint in constraints)
 
@@ -229,7 +229,7 @@ class Entry:
 
     # ------------------------------ Public API ------------------------------ #
 
-    def inference(self, *, as_vtypes: bool = True, no_nullable: bool = False) -> Set[Type]:
+    def inference(self, *, as_vtypes: bool = True, no_nullable: bool = False) -> set[Type]:
         """
         :param as_vtypes: Turns all constraints into verification types.
         :param no_nullable: Removes the null_t in nullable types.
@@ -273,7 +273,7 @@ class Entry:
 
     # ------------------------------ Trace methods ------------------------------ #
 
-    def constrain(self, type_: Type, source: Optional[Source] = None, *, original: bool = False) -> bool:
+    def constrain(self, type_: Type, source: None | Source = None, *, original: bool = False) -> bool:
         """
         Adds a type constraint to this entry.
 
@@ -290,7 +290,7 @@ class Entry:
         self._constraints.add(constraint)
         return True
 
-    def cast(self, type_: Type, source: Optional[Source] = None) -> "Entry":
+    def cast(self, type_: Type, source: None | Source = None) -> "Entry":
         """
         Casts this entry to another type.
 
@@ -324,7 +324,7 @@ class Entry:
 
         __slots__ = ("type", "source", "original", "_hash")
 
-        def __init__(self, type_: Type, source: Optional[Source] = None, original: bool = False) -> None:
+        def __init__(self, type_: Type, source: None | Source = None, original: bool = False) -> None:
             self.type = type_
             self.source = source
             self.original = original
@@ -361,7 +361,7 @@ class Entry:
 #             pushes: Iterable[Union[Entry, "Delta.Identity"]],
 #             pops: Iterable[Union[Entry, "Delta.Identity"]],
 #             # Excellent typing...
-#             overwrites: Iterable[Tuple[int, Optional[Union[Entry, "Delta.Identity"]], Optional[Union[Entry, "Delta.Identity"]]]],
+#             overwrites: Iterable[tuple[int, None | Union[Entry, "Delta.Identity"], None | Union[Entry, "Delta.Identity"]]],
 #     ) -> None:
 #         """
 #         :param pushes: The entries pushed to the stack.
@@ -402,7 +402,7 @@ class Entry:
 #
 #         __slots__ = ("id", "expect",)
 #
-#         def __init__(self, id_: int, expect: Optional[Type] = None) -> None:
+#         def __init__(self, id_: int, expect: None | Type = None) -> None:
 #             """
 #             :param id_: An ID to represent this identity, unique to the delta it's in.
 #             :param expect: The expected type of this entry.
@@ -461,9 +461,9 @@ class Frame:
         return frame
 
     def __init__(self) -> None:
-        self.stack: List[Entry] = []
-        self.locals: Dict[int, Entry] = {}
-        self.tracked: Set[Entry] = set()
+        self.stack: list[Entry] = []
+        self.locals: dict[int, Entry] = {}
+        self.tracked: set[Entry] = set()
 
         self.max_stack = 0
         self.max_locals = 0
@@ -506,7 +506,7 @@ class Frame:
         frame = Frame()
 
         if deep:
-            copied: Dict[Entry, Entry] = {}
+            copied: dict[Entry, Entry] = {}
             for old_entry in self.tracked:
                 copied[old_entry] = new_entry = Entry(old_entry.generic, None)
                 new_entry.merges.add(old_entry)
@@ -537,7 +537,7 @@ class Frame:
             self,
             other: "Frame",
             edge: "InsnEdge",
-            live_locals: Optional[Set[int]] = None,
+            live_locals: None | set[int] = None,
             check_depth: bool = True,
             merge_non_live: bool = True,
     ) -> bool:
@@ -735,7 +735,7 @@ class Frame:
         if len(self.stack) > self.max_stack:
             self.max_stack = len(self.stack)
 
-    def pop(self, count: int = 1) -> List[Entry]:
+    def pop(self, count: int = 1) -> list[Entry]:
         """
         Pops one or more entries from the stack.
 

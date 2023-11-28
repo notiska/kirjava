@@ -11,12 +11,10 @@ Information about classes for Kirjava to use.
 """
 
 import logging
-import os
 import threading
 import typing
-from os import PathLike
 from types import TracebackType
-from typing import Iterable, List, Optional, Set, Union
+from typing import Iterable, Iterator, Optional, Union
 from weakref import WeakValueDictionary
 
 from .error import ClassNotFoundError
@@ -50,9 +48,9 @@ class Environment:
     __slots__ = ("providers", "_refs", "_classes", "_lock")
 
     def __init__(self, inherit: Optional["Environment"] = None) -> None:
-        self.providers: List[Provider] = []
+        self.providers: list[Provider] = []
 
-        self._refs: Set["Class"] = set()  # Strong references to classes
+        self._refs: set["Class"] = set()  # Strong references to classes
         self._classes: WeakValueDictionary[str, "Class"] = WeakValueDictionary()
         if inherit is not None:
             self._classes.update(inherit._classes)
@@ -63,7 +61,7 @@ class Environment:
         self._lock.acquire()
         return self
 
-    def __exit__(self, exc_type: Optional[type], exc_value: Optional[Exception], traceback: Optional[TracebackType]) -> None:
+    def __exit__(self, exc_type: None | type, exc_value: None | Exception, traceback: None | TracebackType) -> None:
         self._lock.release()
 
     def release_refs(self) -> None:
@@ -145,6 +143,12 @@ class Environment:
                 raise ClassNotFoundError(name)
 
             return class_
+
+    def get_super_classes(self, class_: "Class") -> list["Class"]:
+        ...
+
+    def get_super_classes_iter(self, class_: "Class") -> Iterator["Class"]:
+        ...
 
 
 DEFAULT = Environment()

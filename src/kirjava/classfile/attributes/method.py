@@ -11,7 +11,7 @@ Attributes that are only found in method info structures.
 import logging
 import typing
 from io import BytesIO
-from typing import Dict, IO, Iterable, List, Optional, Tuple
+from typing import IO, Iterable, Optional
 
 from . import AttributeInfo
 from .code import LineNumberTable, LocalVariableTable, LocalVariableTypeTable, StackMapTable
@@ -115,9 +115,9 @@ class Code(AttributeInfo):
         self.max_stack = max_stack
         self.max_locals = max_locals
 
-        self.instructions: Dict[int, "Instruction"] = {}
-        self.exception_table: List[Code.ExceptionHandler] = []
-        self.attributes: Dict[str, Tuple[AttributeInfo, ...]] = {}
+        self.instructions: dict[int, "Instruction"] = {}
+        self.exception_table: list[Code.ExceptionHandler] = []
+        self.attributes: dict[str, tuple[AttributeInfo, ...]] = {}
 
     def __repr__(self) -> str:
         return "<Code(max_stack=%i, max_locals=%i, exception_table=%r) at %x>" % (
@@ -203,7 +203,7 @@ class Code(AttributeInfo):
 
             return handler
 
-        def __init__(self, start_pc: int, end_pc: int, handler_pc: int, catch_type: Optional[Class]) -> None:
+        def __init__(self, start_pc: int, end_pc: int, handler_pc: int, catch_type: None | Class) -> None:
             """
             :param start_pc: The starting bytecode offset of the exception handler.
             :param end_pc The ending bytecode offset of the exception handler.
@@ -248,10 +248,10 @@ class Exceptions(AttributeInfo):
     since = Version(45, 0)
     locations = ("MethodInfo",)
 
-    def __init__(self, parent: "MethodInfo", exceptions: Optional[Iterable[Class]] = None) -> None:
+    def __init__(self, parent: "MethodInfo", exceptions: None | Iterable[Class] = None) -> None:
         super().__init__(parent, Exceptions.name_)
 
-        self.exceptions: List[Class] = []
+        self.exceptions: list[Class] = []
         if exceptions is not None:
             self.exceptions.extend(exceptions)
 
