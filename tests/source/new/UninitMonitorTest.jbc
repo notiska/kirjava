@@ -1,0 +1,22 @@
+version 11;
+public class UninitMonitorTest extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            new UninitMonitorTest
+            dup
+            monitorenter
+            nop
+            monitorexit
+        exit:
+            return
+    }
+
+    public void <init>() {
+        entry:
+            aload_0
+            invokespecial java.lang.Object#void <init>()
+        exit:
+            return
+    }
+}

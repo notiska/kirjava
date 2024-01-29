@@ -5,25 +5,29 @@ __all__ = (
 )
 
 import typing
-from typing import Any
+from typing import Any, Optional
+
+from . import Source
 
 if typing.TYPE_CHECKING:
-    from ..types import BaseType
+    from ..types import Type
 
 
-class Constant:
+class Constant(Source):
     """
     A Java constant (some piece of information that is constant).
     """
 
     __slots__ = ("value", "_hash")
 
+    type: Optional["Type"] = None
+
     def __init__(self, value: Any) -> None:
         self.value = value
         self._hash = hash(self.value)
 
     def __repr__(self) -> str:
-        return "<%s(%r) at %x>" % (self.__class__.__name__, self.value, id(self))
+        return "<%s(%r)>" % (type(self).__name__, self.value)
 
     def __str__(self) -> str:
         return repr(self.value)
@@ -33,10 +37,3 @@ class Constant:
 
     def __hash__(self) -> int:
         return self._hash
-
-    def get_type(self) -> "BaseType":
-        """
-        :return: The type of this constant, if applicable.
-        """
-
-        raise TypeError("Cannot convert %r into a Java type." % self)  # By default

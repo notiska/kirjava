@@ -1,0 +1,15 @@
+/**
+ * Very simple hello world test, prints "Hello world!".
+ */
+version 11;
+public class HelloWorld extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            getstatic java.lang.System#java.io.PrintStream out
+            ldc "Hello world!"
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+        exit:
+            return
+    }
+}

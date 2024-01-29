@@ -1,0 +1,30 @@
+/**
+ * Messing around with integers that should be booleans.
+ */
+version 11;
+public class BooleanTest extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            getstatic java.lang.System#java.io.PrintStream out
+            invokestatic BooleanTest#boolean notReallyABoolean()
+            invokevirtual java.io.PrintStream#void println(int)
+
+        exit:
+            return
+    }
+
+    private static boolean notReallyABoolean() {
+        entry:
+            bipush 122
+            ireturn
+    }
+
+    public void <init>() {
+        entry:
+            aload_0
+            invokespecial java.lang.Object#void <init>()
+            return
+    }
+}
+

@@ -1,0 +1,48 @@
+// A test for nested (single-entry, single-exit) subroutines
+version 1.6;
+public class JSRTest extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            jsr subroutine1
+
+            getstatic java.lang.System#java.io.PrintStream out
+            ldc "returned"
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+
+            goto exit
+
+        subroutine1:
+            jsr subroutine2
+
+            getstatic java.lang.System#java.io.PrintStream out
+            ldc "subroutine1"
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+
+            astore 1
+            ret 1
+
+        subroutine2:
+            getstatic java.lang.System#java.io.PrintStream out
+            ldc "subroutine2"
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+
+            astore 1
+            ret 1
+
+        test:
+            getstatic java.lang.System#java.io.PrintStream out
+            ldc "wtf"
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+
+        exit:
+            return
+    }
+
+    public void <init>() {
+        entry:
+            aload_0
+            invokespecial java.lang.Object#void <init>()
+            return
+    }
+}

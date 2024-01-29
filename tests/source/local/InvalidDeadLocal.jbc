@@ -1,0 +1,23 @@
+version 11;
+public class InvalidDeadLocal extends java.lang.Object {
+    public static void main(java.lang.String[]) {
+        entry:
+            // We'll start by defining local 1 as an integer before anything else. In this block, the idea is that
+            // it is not used, but we use it (illegally) later.
+            iconst_0
+            istore_1
+
+            iconst_0
+            ifeq intermediary
+            goto exit
+
+        intermediary:
+            // Now we'll attempt to load it as a float.
+            fload_1
+            pop
+
+        exit:
+            aload_1
+            return
+    }
+}

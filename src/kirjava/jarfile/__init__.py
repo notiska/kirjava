@@ -12,7 +12,7 @@ Sources:
 """
 
 import logging
-from typing import IO, List, Optional
+from typing import IO, Optional
 
 from .abc import ZipPart
 from .cdfh import CentralDirectoryFileHeader
@@ -55,7 +55,7 @@ class JarFile:
         self._eocd.comment = value
         self._ecod.comment_size = len(value)
 
-    def __init__(self, zip64: bool = False, parts: Optional[List[ZipPart]] = None) -> None:
+    def __init__(self, zip64: bool = False, parts: Optional[list[ZipPart]] = None) -> None:
         """
         :param zip64: Is this a ZIP64 archive?
         :param parts: The zip parts present in this file.
@@ -63,7 +63,7 @@ class JarFile:
 
         self.zip64 = zip64
 
-        self._parts: List[ZipPart] = []
+        self._parts: list[ZipPart] = []
         self._ecod: Optional[EndOfCentralDirectoryRecord] = None  # The EOCD that we're currently using
 
         if parts is not None:

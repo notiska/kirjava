@@ -2,7 +2,7 @@
 
 __all__ = (
     "load", "dump",
-    "disassemble", "assemble",
+    "disassemble", "trace", "assemble",
 )
 
 """
@@ -10,31 +10,29 @@ Helper functions for Kirjava, to make the API more simplistic.
 """
 
 from io import BytesIO
-from typing import IO, Union
+from typing import IO
 
-from .analysis.graph import InsnGraph
-from .classfile import ClassFile
-from .classfile.members import MethodInfo
+from .analysis import InsnGraph, Trace
+from .classfile import ClassFile, MethodInfo
 
 
-def load(file_data_or_stream: Union[str, bytes, IO[bytes]], *, fail_fast: bool = True) -> ClassFile:
+def load(file_data_or_stream: str | bytes | IO[bytes], **kwargs: bool) -> ClassFile:
     """
     Reads a classfile given either the path to the file or a binary stream.
 
     :param file_data_or_stream: The path to a file, binary data or a binary stream.
-    :param fail_fast: If the classfile is obviously invalid, should we raise an exception ASAP?
     :return: The classfile that was read.
     """
 
     if type(file_data_or_stream) is str:
         with open(file_data_or_stream, "rb") as stream:
-            return ClassFile.read(stream, fail_fast)
+            return ClassFile.read(stream, **kwargs)
     elif type(file_data_or_stream) is bytes:
-        return ClassFile.read(BytesIO(file_data_or_stream), fail_fast)
-    return ClassFile.read(file_data_or_stream)
+        return ClassFile.read(BytesIO(file_data_or_stream), **kwargs)
+    return ClassFile.read(file_data_or_stream, **kwargs)
 
 
-def dump(classfile: ClassFile, file_or_stream: Union[str, IO[bytes]]) -> None:
+def dump(classfile: ClassFile, file_or_stream: str | IO[bytes]) -> None:
     """
     Writes a classfile to the provided file or binary stream.
 
@@ -50,12 +48,13 @@ def dump(classfile: ClassFile, file_or_stream: Union[str, IO[bytes]]) -> None:
     classfile.write(file_or_stream)
 
 
-def disassemble(method: MethodInfo, ignore_flags: bool = False) -> InsnGraph:
+def disassemble(method: MethodInfo, ignore_flags: bool = False, **kwargs: bool) -> InsnGraph:
     """
     Disassembles the provided method. If the method has multiple Code attributes, the first is chosen.
 
     :param method: The method to disassemble.
     :param ignore_flags: Skip checking if the method is abstract or native and try to disassemble anyway.
+    :param kwargs: Any extra arguments to pass to the disassemble method (see InsnGraph.disassemble()).
     :return: The disassembled instruction graph.
     """
 
@@ -68,10 +67,26 @@ def disassemble(method: MethodInfo, ignore_flags: bool = False) -> InsnGraph:
         if method.is_native:
             raise ValueError("Method %r is native, cannot disassemble." % str(method))
 
-    code = method.code
-    if code is None:
+    if method.code is None:
         return InsnGraph(method)  # Just create an empty instruction graph
-    return InsnGraph.disassemble(code)
+    return InsnGraph.disassemble(method, **kwargs)
+
+
+def trace(method_or_graph: MethodInfo | InsnGraph, **kwargs: bool) -> Trace:
+    """
+    Traces the provided graph or method and prints the results to stdout.
+
+    :param method_or_graph: The method or graph to trace.
+    :param kwargs: Any extra arguments to pass to the trace method (see Trace.from_graph()).
+    """
+
+    if isinstance(method_or_graph, MethodInfo):
+        method_or_graph = disassemble(method_or_graph)
+
+    if not isinstance(method_or_graph, InsnGraph):
+        raise TypeError("Expected type %r or %r, got %r." % (MethodInfo, InsnGraph, type(graph_or_method)))
+
+    return Trace.from_graph(method_or_graph, **kwargs)
 
 
 def assemble(graph: InsnGraph, **kwargs: bool) -> None:

@@ -1,0 +1,32 @@
+version 11;
+public class UninitFieldTest extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            new UninitFieldTest
+            invokespecial UninitFieldTest#void <init>()
+        exit:
+            return
+    }
+
+    public int testIntField;
+    public float testFloatField; // Used in the UninitSuperFieldTest
+
+    public void <init>() {
+        entry:
+            aload_0
+            iconst_0
+            putfield UninitFieldTest#int testIntField
+
+            aload_0
+            invokespecial java.lang.Object#void <init>()
+
+            getstatic java.lang.System#java.io.PrintStream out
+            aload_0
+            getfield UninitFieldTest#int testIntField
+            invokevirtual java.io.PrintStream#void println(int)
+
+        exit:
+            return
+    }
+}

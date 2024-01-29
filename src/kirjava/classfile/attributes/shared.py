@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "Synthetic", "Signature", "RuntimeVisibleAnnotations", "RuntimeInvisibleAnnotations",
+    "Synthetic", "Signature",
+    "Annotations", "RuntimeVisibleAnnotations", "RuntimeInvisibleAnnotations",
 )
 
 """
@@ -9,15 +10,17 @@ Attributes that appear in multiple elements inside a class file.
 """
 
 import logging
-from typing import IO, Iterable, List, Optional, Tuple, Union
+import typing
+from typing import Any, IO, Iterable, Union
 
 from . import AttributeInfo
 from .class_ import Record
-from .. import ClassFile
-from .._struct import *
-from ..constants import ConstantInfo, UTF8
-from ..members import FieldInfo, MethodInfo
+from ..._struct import *
+from ...constants import ConstantInfo, UTF8
 from ...version import Version
+
+if typing.TYPE_CHECKING:
+    from .. import ClassFile, FieldInfo, MethodInfo
 
 logger = logging.getLogger("kirjava.classfile.attributes.shared")
 
@@ -29,18 +32,18 @@ class Synthetic(AttributeInfo):
 
     name_ = "Synthetic"
     since = Version(45, 0)
-    locations = (ClassFile, FieldInfo, MethodInfo)
+    locations = ("ClassFile", "FieldInfo", "MethodInfo")
 
-    def __init__(self, parent: Union[ClassFile, FieldInfo, MethodInfo]) -> None:
+    def __init__(self, parent: Union["ClassFile", "FieldInfo", "MethodInfo"]) -> None:
         super().__init__(parent, Synthetic.name_)
 
     def __repr__(self) -> str:
         return "<Synthetic() at %x>" % id(self)
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         ...
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         ...
 
 
@@ -53,12 +56,12 @@ class Signature(AttributeInfo):
 
     name_ = "Signature"
     since = Version(49, 0)
-    locations = (ClassFile, FieldInfo, MethodInfo, Record.ComponentInfo)
+    locations = ("ClassFile", "FieldInfo", "MethodInfo", "ComponentInfo")
 
     def __init__(
             self,
-            parent: Union[ClassFile, FieldInfo, MethodInfo, Record.ComponentInfo],
-            signature: Optional[UTF8] = None,
+            parent: Union["ClassFile", "FieldInfo", "MethodInfo", Record.ComponentInfo],
+            signature: None | UTF8 = None,
     ) -> None:
         super().__init__(parent, Signature.name_)
 
@@ -67,7 +70,7 @@ class Signature(AttributeInfo):
     def __repr__(self) -> str:
         return "<Signature(%s) at %x>" % (self.signature, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         signature_index, = unpack_H(buffer.read(2))
 
         # if isinstance(self.parent, MethodInfo):
@@ -95,7 +98,7 @@ class Signature(AttributeInfo):
 
         # logger.debug("%r signature: %s" % (self.parent, self.signature))
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(class_file.constant_pool.add(self.signature)))
 
 
@@ -107,13 +110,13 @@ class Annotations(AttributeInfo):
     __slots__ = ("annotations",)
 
     since = Version(49, 0)
-    locations = (ClassFile, FieldInfo, MethodInfo)
+    locations = ("ClassFile", "FieldInfo", "MethodInfo")
 
     def __init__(
             self,
-            parent: Union[ClassFile, FieldInfo, MethodInfo],
+            parent: Union["ClassFile", "FieldInfo", "MethodInfo"],
             name: str,
-            annotations: Optional[Iterable["Annotations.Annotation"]] = None,
+            annotations: None | Iterable["Annotations.Annotation"] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.
@@ -121,20 +124,35 @@ class Annotations(AttributeInfo):
 
         super().__init__(parent, name)
 
-        self.annotations: List[Annotations.Annotation] = []
+        self.annotations: list[Annotations.Annotation] = []
         if annotations is not None:
             self.annotations.extend(annotations)
 
     def __repr__(self) -> str:
-        return "<%s(%r) at %x>" % (self.__class__.__name__, self.annotations, id(self))
+        return "<%s(%r) at %x>" % (type(self).__name__, self.annotations, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def __iter__(self) -> Iterable["Annotations.Annotation"]:
+        return iter(self.annotations)
+
+    def __getitem__(self, index: int) -> "Annotations.Annotation":
+        return self.annotations[index]
+
+    def __setitem__(self, index: int, value: "Annotations.Annotation") -> None:
+        self.annotations[index] = value
+
+    def __contains__(self, item: "Annotations.Annotation") -> bool:
+        return item in self.annotations
+
+    def __len__(self) -> int:
+        return len(self.annotations)
+
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.annotations.clear()
         annotations_count, = unpack_H(buffer.read(2))
         for index in range(annotations_count):
             self.annotations.append(Annotations.Annotation.read(class_file, buffer, fail_fast))
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(len(self.annotations)))
         for annotation in self.annotations:
             annotation.write(class_file, buffer)
@@ -147,7 +165,7 @@ class Annotations(AttributeInfo):
         __slots__ = ("tag", "value")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "Annotations.Element":
+        def read(cls, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool) -> "Annotations.Element":
             """
             Reads an annotation element from the buffer.
 
@@ -190,7 +208,7 @@ class Annotations(AttributeInfo):
         def __init__(
                 self,
                 tag: bytes,
-                value: Union[ConstantInfo, Tuple[UTF8, UTF8], "Annotations.Annotation", List["Annotations.Element"]],
+                value: Union[ConstantInfo, tuple[UTF8, UTF8], "Annotations.Annotation", list["Annotations.Element"]],
         ) -> None:
             """
             :param tag: The tag that represents the type of value this element holds.
@@ -203,7 +221,10 @@ class Annotations(AttributeInfo):
         def __repr__(self) -> str:
             return "<Element(tag=%r, value=%r) at %x>" % (self.tag, self.value, id(self)) 
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def __eq__(self, other: Any) -> bool:
+            return type(other) is Annotations.Element and other.tag == self.tag and other.value == self.value
+
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             """
             Writes this element to the provided buffer.
 
@@ -236,7 +257,7 @@ class Annotations(AttributeInfo):
         __slots__ = ("descriptor", "elements")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "Annotations.Annotation":
+        def read(cls, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool) -> "Annotations.Annotation":
             """
             Reads a single annotation from the buffer.
 
@@ -261,7 +282,7 @@ class Annotations(AttributeInfo):
             return annotation
 
         def __init__(
-                self, descriptor: UTF8, elements: Optional[Iterable[Tuple[UTF8, "Annotations.Element"]]] = None,
+                self, descriptor: UTF8, elements: None | Iterable[tuple[UTF8, "Annotations.Element"]] = None,
         ) -> None:
             """
             :param descriptor: The type descriptor for this element.
@@ -269,7 +290,7 @@ class Annotations(AttributeInfo):
             """
 
             self.descriptor = descriptor
-            self.elements: List[Tuple[UTF8, Annotations.Element]] = []
+            self.elements: list[tuple[UTF8, Annotations.Element]] = []
 
             if elements is not None:
                 self.elements.extend(elements)
@@ -277,7 +298,32 @@ class Annotations(AttributeInfo):
         def __repr__(self) -> str:
             return "<Annotation(descriptor=%r, elements=%r) at %x>" % (self.descriptor, self.elements, id(self))
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def __iter__(self) -> Iterable[tuple[UTF8, "Annotations.Element"]]:
+            return iter(self.elements)
+
+        def __getitem__(self, item: int | str | UTF8) -> tuple[UTF8, "Annotations.Element"]:
+            if type(item) is int:
+                return self.elements[item]
+            if type(item) is str:
+                item = UTF8(item)
+            for name, element in self.elements:
+                if name == item:
+                    return name, element
+
+        def __setitem__(self, item: int | str | UTF8, value: "Annotations.Element") -> None:
+            if type(item) is int:
+                self.elements[item] = value
+                return
+            if type(item) is str:
+                item = UTF8(item)
+            for index, (name, element) in enumerate(self.elements):
+                if name == item:
+                    self.elements[index] = item, value
+
+        def __len__(self) -> int:
+            return len(self.elements)
+
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             """
             Writes this annotation to the output buffer.
 
@@ -300,8 +346,8 @@ class RuntimeVisibleAnnotations(Annotations):
 
     def __init__(
             self,
-            parent: Union[ClassFile, FieldInfo, MethodInfo],
-            annotations: Optional[Iterable["RuntimeVisibleAnnotations.Annotation"]] = None,
+            parent: Union["ClassFile", "FieldInfo", "MethodInfo"],
+            annotations: None | Iterable["RuntimeVisibleAnnotations.Annotation"] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.
@@ -319,8 +365,8 @@ class RuntimeInvisibleAnnotations(Annotations):
 
     def __init__(
             self,
-            parent: Union[ClassFile, FieldInfo, MethodInfo],
-            annotations: Optional[Iterable["RuntimeInvisibleAnnotations.Annotation"]] = None,
+            parent: Union["ClassFile", "FieldInfo", "MethodInfo"],
+            annotations: None | Iterable["RuntimeInvisibleAnnotations.Annotation"] = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.

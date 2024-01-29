@@ -6,7 +6,7 @@ from setuptools import setup
 if __name__ == "__main__":
     setup(
         name="kirjava",
-        version="0.1.4",
+        version="0.1.5",
         description="A Java bytecode library for Python.",
         # classifiers=[
         #     "Programming Language :: Python",
@@ -19,18 +19,12 @@ if __name__ == "__main__":
             "kirjava",
             "kirjava.abc",
             "kirjava.analysis",
-            "kirjava.analysis.ir",
+            "kirjava.analysis.graph",
             "kirjava.classfile",
             "kirjava.classfile.attributes",
             "kirjava.instructions",
-            "kirjava.instructions.ir",
-            "kirjava.instructions.jvm",
             "kirjava.jarfile",
-            "kirjava.skeleton",
-            "kirjava.skeleton.reconstruct",
-            "kirjava.skeleton.skeletons",
             "kirjava.types",
-            "kirjava.verifier",
         ],
         package_dir={
             "": "src",
@@ -48,4 +42,3 @@ if __name__ == "__main__":
         #     ]),
         # ],
     )
-

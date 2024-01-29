@@ -1,0 +1,40 @@
+// A test for multi-entry, multi-exit subroutines
+version 1.5;
+public class JSRTest5 extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+    entry:
+        jsr subroutine
+
+        getstatic java.lang.System#java.io.PrintStream out
+        ldc "done 1 subroutine"
+        invokevirtual java.io.PrintStream#void println(java.lang.Object)
+
+        jsr subroutine
+
+        getstatic java.lang.System#java.io.PrintStream out
+        ldc "done 2 subroutines"
+        invokevirtual java.io.PrintStream#void println(java.lang.Object)
+
+        return
+
+    subroutine:
+        astore 1
+        iconst_0
+        ifne impossible
+        ret 1
+
+    impossible:
+        getstatic java.lang.System#java.io.PrintStream out
+        ldc "impossible"
+        invokevirtual java.io.PrintStream#void println(java.lang.Object)
+        ret 1
+    }
+
+    public void <init>() {
+    entry:
+       aload_0
+       invokespecial java.lang.Object#void <init>()
+       return
+    }
+}

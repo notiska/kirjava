@@ -1,0 +1,32 @@
+// A test for multi-entry, single-exit subroutines
+version 1.5;
+public class JSRTest3 extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            iconst_0
+            jsr subroutine
+            iconst_1
+            jsr subroutine
+            goto exit
+
+        subroutine:
+            astore 1
+            getstatic java.lang.System#java.io.PrintStream out
+            swap
+            invokevirtual java.io.PrintStream#void println(int)
+
+            ret 1
+
+        exit:
+            return
+    }
+
+    public void <init>() {
+        entry:
+            aload_0
+            invokespecial java.lang.Object#void <init>()
+            return
+    }
+}
+

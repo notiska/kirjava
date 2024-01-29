@@ -1,0 +1,59 @@
+version 1.2;
+public class MultiEntryLoop extends java.lang.Object {
+    public static void main(java.lang.String[]) {
+        entry:
+            bipush 100
+            istore_1
+
+            aload_0
+            iconst_0
+            aaload
+
+            aload_0
+            iconst_1
+            aaload
+
+            if_acmpeq loop_start
+
+            aload_0
+            iconst_0
+            aaload
+
+            aload_0
+            iconst_2
+            aaload
+
+            if_acmpeq loop_middle
+
+            goto loop_start
+
+        loop_start:
+            getstatic java.lang.System#java.io.PrintStream out
+            iload_1
+            invokevirtual java.io.PrintStream#void println(int)
+
+            iinc 1 -1
+
+        loop_middle:
+            iinc 1 1
+
+        loop_end:
+            iinc 1 -1
+
+            iload_1
+            iconst_0
+            if_icmpeq loop_start
+
+            goto exit
+
+        exit:
+            return
+    }
+
+    void <init>() {
+        entry:
+            aload_0
+            invokespecial java.lang.Object#void <init>()
+            return
+    }
+}

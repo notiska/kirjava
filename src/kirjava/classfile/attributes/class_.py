@@ -9,13 +9,17 @@ __all__ = (
 Attributes found exclusively in the ClassFile structure.
 """
 
-from typing import Dict, IO, Iterable, List, Optional, Tuple
+import typing
+from typing import Any, IO, Iterable
 
 from . import AttributeInfo
-from .. import attributes, ClassFile
-from .._struct import *
-from ..constants import ConstantInfo, Class, MethodHandle, UTF8
+from .. import attributes
+from ..._struct import *
+from ...constants import ConstantInfo, Class, MethodHandle, NameAndType, UTF8
 from ...version import Version
+
+if typing.TYPE_CHECKING:
+    from .. import ClassFile
 
 
 class BootstrapMethods(AttributeInfo):
@@ -27,23 +31,23 @@ class BootstrapMethods(AttributeInfo):
 
     name_ = "BootstrapMethods"
     since = Version(51, 0)
-    locations = (ClassFile,)
+    locations = ("ClassFile",)
 
-    def __init__(self, parent: ClassFile) -> None:
+    def __init__(self, parent: "ClassFile") -> None:
         super().__init__(parent, BootstrapMethods.name_)
 
-        self.methods: List[BootstrapMethods.BootstrapMethod] = []
+        self.methods: list[BootstrapMethods.BootstrapMethod] = []
 
     def __repr__(self) -> str:
         return "<BootstrapMethods(methods=%r) at %x>" % (self.methods, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.methods.clear()
         bootstrap_methods_count, = unpack_H(buffer.read(2))
         for index in range(bootstrap_methods_count):
             self.methods.append(BootstrapMethods.BootstrapMethod.read(class_file, buffer))
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(len(self.methods)))
         for bootstrap_method in self.methods:
             bootstrap_method.write(class_file, buffer)
@@ -56,7 +60,7 @@ class BootstrapMethods(AttributeInfo):
         __slots__ = ("method_handle", "arguments")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes]) -> "BootstrapMethods.BootstrapMethod":
+        def read(cls, class_file: "ClassFile", buffer: IO[bytes]) -> "BootstrapMethods.BootstrapMethod":
             """
             Reads a bootstrap method info from the buffer.
 
@@ -78,14 +82,14 @@ class BootstrapMethods(AttributeInfo):
 
             return bootstrap_method
 
-        def __init__(self, method_handle: MethodHandle, arguments: Optional[Iterable[ConstantInfo]] = None) -> None:
+        def __init__(self, method_handle: MethodHandle, arguments: None | Iterable[ConstantInfo] = None) -> None:
             """
             :param method_handle: The method handle for this bootstrap method.
             :param arguments: The bootstrap arguments used to resolve the call site.
             """
 
             self.method_handle = method_handle
-            self.arguments: List[ConstantInfo] = []
+            self.arguments: list[ConstantInfo] = []
 
             if arguments is not None:
                 self.arguments.extend(arguments)
@@ -93,7 +97,7 @@ class BootstrapMethods(AttributeInfo):
         def __repr__(self) -> str:
             return "<BootstrapMethod(handle=%r, arguments=%r) at %x>" % (self.method_handle, self.arguments, id(self))
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             """
             Writes this bootstrap method info to a buffer.
 
@@ -115,9 +119,9 @@ class NestHost(AttributeInfo):
 
     name_ = "NestHost"
     since = Version(55, 0)
-    locations = (ClassFile,)
+    locations = ("ClassFile",)
     
-    def __init__(self, parent: ClassFile, host_class: Optional[Class] = None) -> None:
+    def __init__(self, parent: "ClassFile", host_class: None | Class = None) -> None:
         """
         :param host_class: The host class of the nest that this class/interface belongs to.
         """
@@ -129,11 +133,11 @@ class NestHost(AttributeInfo):
     def __repr__(self) -> str:
         return "<NestHost(host=%r) at %x>" % (self.host_class, id(self))
         
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         host_class_index, = unpack_H(buffer.read(2))
         self.host_class = class_file.constant_pool[host_class_index]
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(class_file.constant_pool.add(self.host_class)))
 
 
@@ -146,30 +150,30 @@ class NestMembers(AttributeInfo):
 
     name_ = "NestMembers"
     since = Version(55, 0)
-    locations = (ClassFile,)
+    locations = ("ClassFile",)
 
-    def __init__(self, parent: ClassFile, classes: Optional[Iterable[Class]] = None) -> None:
+    def __init__(self, parent: "ClassFile", classes: None | Iterable[Class] = None) -> None:
         """
         :param classes: The classes/interfaces that belong to the nest that this class hosts.
         """
 
         super().__init__(parent, NestMembers.name_)
 
-        self.classes: List[Class] = []
+        self.classes: list[Class] = []
         if classes is not None:
             self.classes.extend(classes)
 
     def __repr__(self) -> str:
         return "<NestMembers(classes=%r) at %x>" % (self.classes, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.classes.clear()
         classes_count, = unpack_H(buffer.read(2))
         for index in range(classes_count):
             class_index, = unpack_H(buffer.read(2))
             self.classes.append(class_file.constant_pool[class_index])
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(len(self.classes)))
         for class_ in self.classes:
             buffer.write(pack_H(class_file.constant_pool.add(class_)))
@@ -184,30 +188,30 @@ class PermittedSubclasses(AttributeInfo):
 
     name_ = "PermittedSubclasses"
     since = Version(61, 0)
-    locations = (ClassFile,)
+    locations = ("ClassFile",)
 
-    def __init__(self, parent: ClassFile, classes: Optional[Iterable[Class]] = None) -> None:
+    def __init__(self, parent: "ClassFile", classes: None | Iterable[Class] = None) -> None:
         """
         :param classes: The list of permitted subclasses.
         """
 
         super().__init__(parent, PermittedSubclasses.name_)
 
-        self.classes: List[Class] = []
+        self.classes: list[Class] = []
         if classes is not None:
             self.classes.extend(classes)
 
     def __repr__(self) -> str:
         return "<PermittedSubclasses(classes=%r) at %x>" % (self.classes, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.classes.clear()
         classes_count, = unpack_H(buffer.read(2))
         for index in range(classes_count):
             class_index, = unpack_H(buffer.read(2))
             self.classes.append(class_file.constant_pool[class_index])
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(len(self.classes)))
         for class_ in self.classes:
             buffer.write(pack_H(class_file.constant_pool.add(class_)))
@@ -223,29 +227,41 @@ class InnerClasses(AttributeInfo):
 
     name_ = "InnerClasses"
     since = Version(45, 0)
-    locations = (ClassFile,)
+    locations = ("ClassFile",)
 
-    def __init__(self, parent: ClassFile, classes: Optional[Iterable["InnerClasses.InnerClass"]] = None) -> None:
+    def __init__(self, parent: "ClassFile", classes: None | Iterable["InnerClasses.InnerClass"] = None) -> None:
         """
         :param classes: Information about inner classes.
         """
 
         super().__init__(parent, InnerClasses.name_)
 
-        self.classes: List[InnerClasses.InnerClass] = []
+        self.classes: list[InnerClasses.InnerClass] = []
         if classes is not None:
             self.classes.extend(classes)
 
     def __repr__(self) -> str:
         return "<InnerClasses(classes=%r) at %x>" % (self.classes, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def __iter__(self) -> Iterable["InnerClasses.InnerClass"]:
+        return iter(self.classes)
+
+    def __getitem__(self, index: int) -> "InnerClasses.InnerClass":
+        return self.classes[index]
+
+    def __setitem__(self, index: int, value: "InnerClasses.InnerClass") -> None:
+        self.classes[index] = value
+
+    def __len__(self) -> int:
+        return len(self.classes)
+
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.classes.clear()
         classes_count, = unpack_H(buffer.read(2))
         for index in range(classes_count):
             self.classes.append(InnerClasses.InnerClass.read(class_file, buffer, fail_fast))
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(len(self.classes)))
         for inner_class in self.classes:
             inner_class.write(class_file, buffer)
@@ -258,7 +274,7 @@ class InnerClasses(AttributeInfo):
         __slots__ = ("inner_class", "outer_class", "inner_name", "access_flags")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "InnerClasses.InnerClass":
+        def read(cls, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool) -> "InnerClasses.InnerClass":
             """
             Reads an inner class info from the buffer.
 
@@ -409,15 +425,46 @@ class InnerClasses(AttributeInfo):
             else:
                 self.access_flags &= ~InnerClasses.InnerClass.ACC_ENUM
 
-        def __init__(self) -> None:  # TODO: Constructor
-            ...
+        def __init__(
+                self,
+                inner_class: Class,
+                outer_class: None | Class,
+                inner_name: None | UTF8,
+                *,
+                is_public: bool = False,
+                is_private: bool = False,
+                is_protected: bool = False,
+                is_static: bool = False,
+                is_final: bool = False,
+                is_interface: bool = False,
+                is_abstract: bool = False,
+                is_synthetic: bool = False,
+                is_annotation: bool = False,
+                is_enum: bool = False,
+        ) -> None:
+            self.inner_class = inner_class
+            self.outer_class = outer_class
+            self.inner_name = inner_name
+
+            self.access_flags = 0
+
+            self.is_public = is_public
+            self.is_private = is_private
+            self.is_protected = is_protected
+            self.is_static = is_static
+            self.is_final = is_final
+            self.is_interface = is_interface
+            self.is_abstract = is_abstract
+            self.is_synthetic = is_synthetic
+            self.is_annotation = is_annotation
+            self.is_enum = is_enum
 
         def __repr__(self) -> str:
             return "<InnerClass(inner=%r, outer=%r, inner_name=%r) at %x>" % (
                 self.inner_class, self.outer_class, self.inner_name, id(self),
             )
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             """
             Writes this inner class info to an output buffer.
 
@@ -442,21 +489,29 @@ class EnclosingMethod(AttributeInfo):
 
     name_ = "EnclosingMethod"
     since = Version(49, 0)
-    locations = (ClassFile,)
+    locations = ("ClassFile",)
 
-    def __init__(self, parent: ClassFile) -> None:  # TODO: Constructor
+    def __init__(self, parent: "ClassFile", class_: None | Class = None, method: None | NameAndType = None) -> None:
+        """
+        :param class_: The class enclosing this class.
+        :param method: The method enclosing this class, if any.
+        """
+
         super().__init__(parent, EnclosingMethod.name_)
+
+        self.class_ = class_
+        self.method = method
 
     def __repr__(self) -> str:
         return "<EnclosingMethod(class=%r, method=%r) at %x>" % (self.class_, self.method, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         class_index, method_index = unpack_HH(buffer.read(4))
         # No type information? Thanks Iska, really helpful!
         self.class_ = class_file.constant_pool[class_index]
         self.method = class_file.constant_pool[method_index] if method_index else None
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_HH(
             class_file.constant_pool.add(self.class_),
             0 if self.method is None else class_file.constant_pool.add(self.method),
@@ -472,29 +527,29 @@ class Record(AttributeInfo):
 
     name_ = "Record"
     since = Version(60, 0)
-    locations = (ClassFile,)
+    locations = ("ClassFile",)
 
-    def __init__(self, parent: ClassFile, components: Optional[Iterable["Record.ComponentInfo"]] = None) -> None:
+    def __init__(self, parent: "ClassFile", components: None | Iterable["Record.ComponentInfo"] = None) -> None:
         """
         :param components: The components of the record.
         """
 
         super().__init__(parent, Record.name_)
 
-        self.components: List[Record.ComponentInfo] = []
+        self.components: list[Record.ComponentInfo] = []
         if components is not None:
             self.components.extend(components)
 
     def __repr__(self) -> str:
         return "<Record(components=%r) at %x>" % (self.components, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         self.components.clear()
         components_count, = unpack_H(buffer.read(2))
         for index in range(components_count):
             self.components.append(Record.ComponentInfo.read(class_file, buffer, fail_fast))
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(len(self.components)))
         for component in self.components:
             component.write(class_file, buffer)
@@ -504,10 +559,10 @@ class Record(AttributeInfo):
         Information about a component in a record.
         """
 
-        __slots__ = ("name", "descriptor", "attributes")
+        __slots__ = ("__weakref__", "name", "descriptor", "attributes")
 
         @classmethod
-        def read(cls, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool) -> "Record.ComponentInfo":
+        def read(cls, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool) -> "Record.ComponentInfo":
             """
             Reads a single component info from a buffer.
 
@@ -537,12 +592,12 @@ class Record(AttributeInfo):
             self.name = name
             self.descriptor = descriptor
 
-            self.attributes: Dict[str, Tuple[AttributeInfo, ...]] = {}
+            self.attributes: dict[str, tuple[AttributeInfo, ...]] = {}
 
         def __repr__(self) -> str:
             return "<ComponentInfo(name=%r, descriptor=%r) at %x>" % (self.name, self.descriptor, id(self))
 
-        def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+        def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
             """
             Writes this component info to an output buffer.
 
@@ -573,9 +628,9 @@ class SourceFile(AttributeInfo):
 
     name_ = "SourceFile"
     since = Version(45, 0)
-    locations = (ClassFile,)
+    locations = ("ClassFile",)
 
-    def __init__(self, parent: ClassFile, source_file: Optional[UTF8] = None) -> None:
+    def __init__(self, parent: "ClassFile", source_file: None | UTF8 = None) -> None:
         """
         :param source_file: The name of the source file that generated the class.
         """
@@ -585,11 +640,14 @@ class SourceFile(AttributeInfo):
         self.source_file = source_file
 
     def __repr__(self) -> str:
-        return "<SourceFile(%r) at %x>" % (self.source_file, id(self))
+        return "<SourceFile(source_file=%r) at %x>" % (self.source_file, id(self))
 
-    def read(self, class_file: ClassFile, buffer: IO[bytes], fail_fast: bool = True) -> None:
+    def __eq__(self, other: Any) -> bool:
+        return type(other) is SourceFile and other.source_file == self.source_file
+
+    def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         source_file_index, = unpack_H(buffer.read(2))
         self.source_file = class_file.constant_pool[source_file_index]
 
-    def write(self, class_file: ClassFile, buffer: IO[bytes]) -> None:
+    def write(self, class_file: "ClassFile", buffer: IO[bytes]) -> None:
         buffer.write(pack_H(class_file.constant_pool.add(self.source_file)))

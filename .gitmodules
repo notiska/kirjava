@@ -1,0 +1,3 @@
+[submodule "tests/samples/cfr"]
+	path = tests/samples/cfr
+	url = https://github.com/leibnitz27/cfr_tests.git

@@ -1,10 +1,36 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "ATTRIBUTES",
+    "AttributeInfo",
+    "ConstantValue",
+    "Code",
+    "StackMapTable",
+    "BootstrapMethods",
+    "NestHost",
+    "NestMembers",
+    "PermittedSubclasses",
+    "Exceptions",
+    "InnerClasses",
+    "EnclosingMethod",
+    "Synthetic",
+    "Signature",
+    "Record",
+    "SourceFile",
+    "LineNumberTable",
+    "LocalVariableTable",
+    "LocalVariableTypeTable",
+    "Annotations",
+    "RuntimeVisibleAnnotations",
+    "RuntimeInvisibleAnnotations",
+)
+
 import logging
 import typing
+import weakref
 from typing import Any, IO
 
-from .._struct import *
+from ..._struct import *
 from ...version import Version
 
 if typing.TYPE_CHECKING:
@@ -24,13 +50,13 @@ class AttributeInfo:
     locations = ()
 
     def __init__(self, parent: Any, name: str) -> None:
-        self.parent = parent
+        self.parent = weakref.proxy(parent)
 
         self.name = name
         self.data = b""  # Fallback attribute data if we can't read it
 
     def __repr__(self) -> str:
-        return "<%s()> at %x" % (self.__class__.__name__, id(self))
+        return "<%s()> at %x" % (type(self).__name__, id(self))
 
     def read(self, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> None:
         """
@@ -107,10 +133,7 @@ def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes], fail
     if name in _attribute_map:
         attribute = _attribute_map[name]
         version_valid = attribute.since <= class_file.version
-        location_valid = (
-            type(parent) in attribute.locations or
-            type(parent).__name__ in attribute.locations  # To avoid circular import nightmares
-        )
+        location_valid = type(parent).__name__ in attribute.locations  # To avoid circular import nightmares
         if version_valid and location_valid:
             try:
                 attribute_info = attribute(parent)

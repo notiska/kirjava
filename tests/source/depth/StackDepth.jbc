@@ -1,0 +1,32 @@
+version 11;
+public class StackDepth extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            iconst_1
+            iconst_3
+
+            iconst_0 // Don't exit on the first round
+            iconst_2
+
+        middle:
+            getstatic java.lang.System#java.io.PrintStream out
+            swap // Top item on the stack will be the integer to print
+            invokevirtual java.io.PrintStream#void println(int)
+
+            iconst_1
+            if_icmpeq exit
+            goto middle
+
+        exit:
+            return
+    }
+
+    public void <init>() {
+        entry:
+            aload_0
+            invokespecial java.lang.Object#void <init>()
+            return
+    }
+}
+

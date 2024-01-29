@@ -1,279 +1,567 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "class_", "array",
-    "void_t",
-    "byte_t", "short_t", "char_t", "bool_t",
-    "int_t", "long_t",
+    "descriptor", "signature",
+
+    "primitive_t",
+    "reference_t",
+    "top_t",
+    "void_t", "reserved_t",
+
+    "boolean_t", "byte_t", "short_t", "char_t", "int_t", "long_t",
     "float_t", "double_t",
     "return_address_t",
-    "object_t", "cloneable_t", "serializable_t", 
-    "throwable_t", "exception_t",
-    "string_t",
-    "abstractmethoderror_t",
-    "arithmeticexception_t",
-    "arrayindexoutofboundsexception_t",
-    "arraystoreexception_t",
-    "classcastexception_t",
-    "illegalaccesserror_t",
-    "illegalmonitorstateexception_t",
-    "incompatibleclasschangeerror_t",
-    "negativearraysizeexception_t",
-    "nullpointerexception_t",
-    "unsatisfiedlinkerror_t",
-    "byte_array_t", "short_array_t", "int_array_t",
-    "long_array_t",
-    "char_array_t",
+
+    "uninitialized_t", "uninitialized_this_t",
+
+    "object_t", "class_t", "throwable_t", "string_t",
+    "method_type_t", "method_handle_t",
+
+    "boxed_boolean_t", "boxed_byte_t", "boxed_short_t", "boxed_char_t", "boxed_int_t", "boxed_long_t",
+    "boxed_float_t", "boxed_double_t",
+
+    "null_t",
+
+    "array_t",
+    "boolean_array_t",
+    "byte_array_t", "short_array_t", "char_array_t", "int_array_t", "long_array_t",
     "float_array_t", "double_array_t",
-    "bool_array_t",
-    "object_array_t",
-    "string_array_t",
-    "top_t", "null_t",
-    "this_t", "uninit_this_t",
-    "VerificationType", "BaseType", "PrimitiveType", "ReferenceType",
-    "ArrayType", "ClassOrInterfaceType",
+
+    "Type", "Invalid", "Verification",
+    "Primitive", "Reference",
+    "OneWord", "TwoWord",
+    "ReturnAddress",
+    "Uninitialized",
+    "Array", "Class", "Interface",
 )
 
 """
-JVM types, (somewhat loosely) from the Oracle specification.
+JVM, verification and (some) JLS types.
+ - https://docs.oracle.com/javase/specs/jvms/se20/html/jvms-2.html#jvms-2.2
+ - https://docs.oracle.com/javase/specs/jvms/se20/html/jvms-4.html#jvms-4.10.1.2
 """
 
-from abc import ABC, abstractmethod
-from typing import Any, Iterable
+from functools import cached_property
+from typing import Any, Optional
+from weakref import WeakValueDictionary
+
+from ..abc import Source
 
 
-class VerificationType(ABC):
+class Type:
     """
-    A verification type as seen in the stack map table.
-    """
-
-    __slots__ = ()
-
-    internal_size = 1
-
-    @abstractmethod
-    def can_merge(self, other: "VerificationType") -> bool:
-        """
-        :return: Can this type merge with the other given type?
-        """
-
-        ...
-
-
-class BaseType(ABC):
-    """
-    A base Java type.
+    Base type class.
     """
 
-    internal_size = 1  # For wide types
+    __slots__ = ("__weakref__", "name", "wide", "abstract", "_hash")
 
-    @abstractmethod
-    def to_verification_type(self) -> VerificationType:
-        """
-        Converts this base type into a verification type.
-        
-        :return: The verification type.
-        """
+    def __init__(self, name: str, *, wide: bool = False, abstract: bool = False) -> None:
+        self.name = name
+        self.wide = wide
+        self.abstract = abstract
 
-        ...
-
-
-class TypeBound(ABC):
-    """
-    Something that bounds type variables.
-    """
-
-    ...
-
-
-class TypeArgument(ABC):
-    """
-    A type parameter is used to declare a type variable for generics.
-    """
-
-    ...
-
-
-class TypeArgumentList:
-    """
-    A list of type arguments.
-    """
-
-    __slots__ = ("arguments",)
-
-    def __init__(self, arguments: Iterable[TypeArgument]) -> None:
-        """
-        :param arguments: The type arguments.
-        """
-
-        self.arguments = tuple(arguments)
+        self._hash = hash((name, wide, abstract))
 
     def __repr__(self) -> str:
-        return "<TypeArgumentList(arguments=%r) at %x>" % (self.arguments, id(self))
-
-    def __str__(self) -> str:
-        return "<%s>" % (", ".join(map(str, self.arguments)))
-
-    def __eq__(self, other: Any) -> bool:
-        if other is self:
-            return True
-        return isinstance(other, TypeArgumentList) and other.arguments == self.arguments
-
-    def __hash__(self) -> int:
-        return hash(self.arguments)
-
-    def __bool__(self) -> bool:
-        return bool(self.arguments)
-
-
-class InvalidType(BaseType):
-    """
-    Used when parsing descriptors, indicates that an invalid descriptor is present.
-    """
-
-    __slots__ = ("descriptor",)
-
-    name = "invalid"
-
-    def __init__(self, descriptor: str) -> None:
-        self.descriptor = descriptor
-
-    def __repr__(self) -> str:
-        return "<InvalidType(%r) at %x>" % (self.descriptor, id(self))
-
-    def __str__(self) -> str:
-        return "invalid"
-
-    def __eq__(self, other: Any) -> bool:
-        return type(other) is InvalidType and other.descriptor == self.descriptor
-
-    def __hash__(self) -> int:
-        return hash(self.descriptor)
-
-    def to_verification_type(self) -> VerificationType:
-        raise TypeError("Cannot create verification type from %r." % self)
-
-
-class PrimitiveType(BaseType, ABC):
-    """
-    A Java primitive type.
-    """
-
-    name = "base"
-    byte_size = 1
-
-    def __repr__(self) -> str:
-        return "<%s() at %x>" % (self.__class__.__name__, id(self))
+        return "<%s(name=%r)>" % (type(self).__name__, self.name)
 
     def __str__(self) -> str:
         return self.name
 
     def __eq__(self, other: Any) -> bool:
-        return other is self or type(other) is self.__class__
+        return self is other
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def mergeable(self, other: "Type") -> bool:
+        """
+        :return: Can this type be merged with the other type?
+        """
+
+        # top_t.mergeable(int_t) -> True
+        # int_t.mergeable(top_t) -> False
+        return self == other or (self.abstract and type(other) is not type(self) and isinstance(other, type(self)))
+
+    def as_vtype(self) -> "Verification":
+        """
+        :return: The verification type corresponding to this type.
+        """
+
+        raise TypeError("Cannot convert %r to a verification type." % self)
 
 
-class ReferenceType(BaseType, ABC):
+class Invalid(Type):
     """
-    A Java reference type.
+    A way of representing invalid/raw descriptors.
     """
+
+    __slots__ = ("descriptor",)
+
+    def __init__(self, descriptor: str) -> None:
+        super().__init__("invalid")
+        self.descriptor = descriptor
 
     def __repr__(self) -> str:
-        return "<%s() at %x>" % (self.__class__.__name__, id(self))
+        return "<Invalid(descriptor=%r)>" % self.descriptor
+
+    def mergeable(self, other: Type) -> bool:
+        return False
+
+
+class Verification(Type):
+    """
+    Verification types. These are used in the bytecode verifier, and (may) not actually exist.
+    """
+
+    __slots__ = ()
+
+    def as_vtype(self) -> "Verification":
+        return self
+
+
+class Primitive(Verification):
+    """
+    Primitive types.
+    """
+
+    __slots__ = ("boxed",)
+
+    def __init__(self, name: str, boxed: Optional[Type] = None, *, wide: bool = False, abstract: bool = False) -> None:
+        super().__init__(name, wide=wide)
+        self.boxed = boxed
+
+
+class Reference(Verification):
+    """
+    Reference types.
+    """
+
+    __slots__ = ()
+
+
+# Verification type hierarchy:
+#
+#                              top
+#                  ____________/\____________
+#                 /                          \
+#                /                            \
+#             oneWord                       twoWord
+#            /   |   \                     /       \
+#           /    |    \                   /         \
+#         int  float  reference        long        double
+#                      /     \
+#                     /       \_____________
+#                    /                      \
+#                   /                        \
+#            uninitialized                    +------------------+
+#             /         \                     |  Java reference  |
+#            /           \                    |  type hierarchy  |
+# uninitializedThis  uninitialized(Offset)    +------------------+
+#                                                      |
+#                                                      |
+#                                                     null
+
+
+class _Top(Verification):
+    """
+    The top type. Used for the bytecode verifier.
+    """
+
+    __slots__ = ()
+
+
+class OneWord(_Top):
+    """
+    A one-word type. Used for the bytecode verifier.
+    """
+
+    __slots__ = ()
+
+    def __init__(self, name: str = "oneWord", *, wide: bool = False, abstract: bool = False) -> None:
+        super().__init__(name, wide=False, abstract=abstract)
+
+
+class TwoWord(_Top):
+    """
+    A two-word type. Used for the bytecode verifier.
+    """
+
+    __slots__ = ()
+
+    def __init__(self, name: str = "twoWord", *, wide: bool = True, abstract: bool = False) -> None:
+        super().__init__(name, wide=True, abstract=abstract)
+
+
+class _Integer(Primitive, OneWord):
+    """
+    Integer types, these include types that under-the-hood are integers.
+    """
+
+    __slots__ = ()
+
+    def mergeable(self, other: "Type") -> bool:
+        # byte_t.mergeable(int_t) -> True
+        # int_t.mergeable(byte_t) -> False
+        return other is int_t  # self is int_t and isinstance(other, _Integer)
+
+    def as_vtype(self) -> "_Integer":
+        return int_t
+
+
+class _Long(Primitive, TwoWord):
+    """
+    The long type.
+    """
+
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        super().__init__("long", Class("java/lang/Long"))
+
+
+class _Float(Primitive, OneWord):
+    """
+    The float (32-bit) type.
+    """
+
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        super().__init__("float", Class("java/lang/Float"))
+
+
+class _Double(Primitive, TwoWord):
+    """
+    The double (64-bit) type.
+    """
+
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        super().__init__("double", Class("java/lang/Double"))
+
+
+class ReturnAddress(Primitive, OneWord):
+    """
+    A returnAddress type. Deprecated now.
+    """
+
+    __slots__ = ("source",)
+
+    def __init__(self, source: Optional[Source]) -> None:
+        super().__init__("returnAddress")
+        self.source = source
+
+        self._hash = hash((self._hash, self.source))
+
+    def __repr__(self) -> str:
+        return "<ReturnAddress(source=%r)>" % self.source
 
     def __eq__(self, other: Any) -> bool:
-        return other is self or type(other) is self.__class__
+        return type(other) is ReturnAddress and self.source == other.source
 
-    @abstractmethod
-    def rename(self, name: str) -> "ReferenceType":
+    def __hash__(self) -> int:
+        return self._hash
+
+    def mergeable(self, other: "Type") -> bool:
+        return type(other) is ReturnAddress and (self.source is None or self.source == other.source)
+
+
+class Uninitialized(Reference, OneWord):
+    """
+    An uninitialized reference type.
+    """
+
+    __slots__ = ("source",)
+
+    # _cached: WeakValueDictionary[Source, "Uninitialized"] = WeakValueDictionary()
+    #
+    # def __new__(cls, source: Optional[Source]) -> "Uninitialized":
+    #     if source is None:
+    #         return super().__new__(cls)
+    #
+    #     cached = cls._cached.get(source)
+    #     if cached is not None:
+    #         return cached
+    #
+    #     self = super().__new__(cls)
+    #     cls._cached[source] = self
+    #     return self
+
+    def __init__(self, source: Optional[Source]) -> None:
+        super().__init__("uninitialized")
+        self.source = source
+
+        self._hash = hash((self._hash, self.source))
+
+    def __repr__(self) -> str:
+        return "<Uninitialized(source=%r)>" % self.source
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, Uninitialized) and (self.source is None or self.source == other.source)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+
+class _UninitializedThis(Uninitialized):  # Not fully true to the spec, note.
+    """
+    An uninitialized reference type for the current class.
+    """
+
+    __slots__ = ()
+
+    # def __new__(cls) -> "_UninitializedThis":
+    #     return super().__new__(cls, None)
+
+    def __init__(self) -> None:
+        super().__init__(None)
+        self.name = "uninitializedThis"
+
+        self._hash = hash(self.name)
+
+    def __eq__(self, other: Any) -> bool:
+        return type(other) is _UninitializedThis
+
+    def __hash__(self) -> int:
+        return self._hash
+
+
+class _JavaReference(Reference, OneWord):
+    """
+    A Java reference type, i.e. it exists within the actual Java type hierarchy.
+    """
+
+    __slots__ = ()
+
+    def mergeable(self, other: Type) -> bool:
+        return isinstance(other, _JavaReference)
+
+
+class Array(_JavaReference):
+    """
+    An array type.
+    """
+
+    __slots__ = ("__dict__", "element")
+
+    _cached: WeakValueDictionary[Type, "Array"] = WeakValueDictionary()
+
+    @classmethod
+    def from_dimension(cls, element: Type, dimension: int) -> "Array":
         """
-        Returns the renamed reference type. This may vary based on the reference type in question, some many not change
-        at all.
+        Creates an array type from a dimension and element type.
 
-        :param name: The new name.
-        :return: The new reference type, renamed (if applicable).
+        :param element: The element type.
+        :param dimension: The dimension.
+        :return: The array type.
         """
 
-        ...
+        if not dimension:
+            raise ValueError("Invalid dimension 0.")
+
+        type_ = cls(element)
+        for _ in range(dimension - 1):
+            type_ = cls(type_)
+        return type_
+
+    @cached_property  # Possible because we know this is immutable.
+    def lowest_element(self) -> Type:
+        """
+        :return: The lowest element type of this array type.
+        """
+
+        element = self.element
+        while type(element) is Array:
+            element = element.element
+
+        return element
+
+    @cached_property
+    def dimensions(self) -> int:
+        """
+        :return: The dimensions of this array type.
+        """
+
+        dimension = 1
+
+        element = self.element
+        while type(element) is Array:
+            dimension += 1
+            element = element.element
+
+        return dimension
+
+    @cached_property
+    def primitive(self) -> bool:
+        """
+        :return: Is this array type a primitive array type?
+        """
+
+        return isinstance(self.element, Primitive)  # and not self.element.abstract
+
+    def __new__(cls, element: Type) -> "Array":
+        cached = cls._cached.get(element)
+        if cached is not None:
+            return cached
+
+        self = super().__new__(cls)
+        self._cached[element] = self
+        return self
+
+    def __init__(self, element: Type) -> None:
+        super().__init__(element.name + "[]", abstract=element.abstract)
+        self.element = element
+
+        self._hash = hash((self._hash, self.element))
+
+    def __repr__(self) -> str:
+        return "<Array(element=%r)>" % self.element
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, Array) and self.element == other.element
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    # We won't get into specifics here as it causes issues in the assembler. It's notable that arrays can just be
+    # generified to java/lang/Object, making this technically valid. If a more precise comparison is needed the element
+    # field is accessible.
+    # def mergeable(self, other: Type) -> bool:
+    #     if isinstance(other, Array):
+    #         return self.element.mergeable(other.element)
+    #     return super().mergeable(other)
 
 
-from .primitive import *
-from .reference import *
+class Class(_JavaReference):
+    """
+    A class type.
+    """
 
-# Aliases for easier API usage
-array = ArrayType
-class_ = ClassOrInterfaceType
+    __slots__ = ()
 
-# ------------------------------ Primitives ------------------------------ #
+    _cached: WeakValueDictionary[str, "Class"] = WeakValueDictionary()
 
-void_t = VoidType()
+    def __new__(cls, name: str) -> "Class":
+        cached = cls._cached.get(name)
+        if cached is not None:
+            return cached
 
-byte_t = ByteType()
-short_t = ShortType()
-int_t = IntegerType()
+        self = super().__new__(cls)
+        cls._cached[name] = self
+        return self
 
-long_t = LongType()
-
-char_t = CharacterType()
-
-float_t = FloatType()
-double_t = DoubleType()
-
-bool_t = BooleanType()
-
-return_address_t = ReturnAddressType()
+    def as_interface(self) -> "Interface":
+        return Interface(self.name)
 
 
-# ------------------------------ Reference ------------------------------ #
+# Although this is distinct from a class according to the spec, it's not always possible to distinguish between a class
+# and an interface if we have an incomplete class hierarchy, so in terms of types, we treat them almost the same.
+class Interface(Class):
+    """
+    An interface type.
+    """
 
-# Bases
-object_t = ClassOrInterfaceType("java/lang/Object")
-class_t = ClassOrInterfaceType("java/lang/Class")
+    __slots__ = ()
 
-throwable_t = ClassOrInterfaceType("java/lang/Throwable")
-exception_t = ClassOrInterfaceType("java/lang/Exception")
+    _cached: WeakValueDictionary[str, "Interface"] = WeakValueDictionary()
 
-cloneable_t = ClassOrInterfaceType("java/lang/Cloneable")
-serializable_t = ClassOrInterfaceType("java/io/Serializable")
+    def __new__(cls, name: str) -> "Interface":
+        cached = cls._cached.get(name)
+        if cached is not None:
+            return cached
 
-string_t = ClassOrInterfaceType("java/lang/String")
+        self = super().__new__(cls, name)
+        cls._cached[name] = self
+        return self
 
-# Exceptions
-abstractmethoderror_t = ClassOrInterfaceType("java/lang/AbstractMethodError")
-arithmeticexception_t = ClassOrInterfaceType("java/lang/ArithmeticException")
-arrayindexoutofboundsexception_t = ClassOrInterfaceType("java/lang/ArrayIndexOutOfBoundsException")  # Lollll idk
-arraystoreexception_t = ClassOrInterfaceType("java/lang/ArrayStoreException")
-classcastexception_t = ClassOrInterfaceType("java/lang/ClassCastException")
-illegalaccesserror_t = ClassOrInterfaceType("java/lang/IllegalAccessError")
-illegalmonitorstateexception_t = ClassOrInterfaceType("java/lang/IllegalMonitorStateException")
-incompatibleclasschangeerror_t = ClassOrInterfaceType("java/lang/IncompatibleClassChangeError")
-negativearraysizeexception_t = ClassOrInterfaceType("java/lang/NegativeArraySizeException")
-nullpointerexception_t = ClassOrInterfaceType("java/lang/NullPointerException")
-unsatisfiedlinkerror_t = ClassOrInterfaceType("java/lang/UnsatisfiedLinkError")
+    def as_interface(self) -> "Interface":
+        return self
 
-# Arrays
-byte_array_t = ArrayType(byte_t)
-short_array_t = ArrayType(short_t)
-int_array_t = ArrayType(int_t)
 
-long_array_t = ArrayType(long_t)
+# Another slight inaccuracy as this should really extend (Array, Class, Interface). That's not done here to avoid all
+# the extra attributes that this would gain. Instead, we just emulate the behaviour with the mergeable method.
+class _Null(_JavaReference):
+    """
+    The null type.
+    """
 
-char_array_t = ArrayType(char_t)
+    __slots__ = ()
 
-float_array_t = ArrayType(float_t)
-double_array_t = ArrayType(double_t)
+    def __init__(self) -> None:
+        super().__init__("null")
+        self._hash = hash(self.name)
 
-bool_array_t = ArrayType(bool_t)
+    def __eq__(self, other: Any) -> bool:
+        return self is other
 
-object_array_t = ArrayType(object_t)
-class_array_t = ArrayType(class_t)
-string_array_t = ArrayType(string_t)
+    def __hash__(self) -> int:
+        return self._hash
 
-# ------------------------------ Verification ------------------------------ #
+    def mergeable(self, other: Type) -> bool:
+        return self is other or isinstance(other, _JavaReference)
 
-from .verification import *
 
-top_t = Top()
-null_t = Null()
-this_t = This()
-# uninit_t = Uninitialized()
-uninit_this_t = UninitializedThis()
+primitive_t = Primitive("primitive", abstract=True)
+reference_t = Reference("reference", abstract=True)
+
+top_t = _Top("top", abstract=True)
+
+void_t = Primitive("void")
+# The second half of a long or double. Not a Primitive as we want to be able to merge it into a top type in certain
+# cases (https://discord.com/channels/443258489146572810/887649798918909972/1118900676764897280). Credits to xxDark for
+# this insight.
+reserved_t = OneWord("__reserved")
+
+# Integer types
+boolean_t = _Integer("boolean", Class("java/lang/Boolean"))
+byte_t    = _Integer("byte",    Class("java/lang/Byte"))
+char_t    = _Integer("char",    Class("java/lang/Character"))
+short_t   = _Integer("short",   Class("java/lang/Short"))
+int_t     = _Integer("int",     Class("java/lang/Integer"))
+
+long_t  = _Long()
+
+float_t = _Float()
+double_t = _Double()
+
+return_address_t = ReturnAddress(None)
+
+uninitialized_t = Uninitialized(None)
+uninitialized_this_t = _UninitializedThis()
+
+# Important class types
+object_t    = Class("java/lang/Object")
+class_t     = Class("java/lang/Class")
+throwable_t = Class("java/lang/Throwable")
+string_t    = Class("java/lang/String")
+
+method_type_t   = Class("java/lang/invoke/MethodType")
+method_handle_t = Class("java/lang/invoke/MethodHandle")
+
+# Boxed primitive types
+boxed_boolean_t = boolean_t.boxed
+boxed_byte_t    = byte_t.boxed
+boxed_char_t    = char_t.boxed
+boxed_short_t   = short_t.boxed
+boxed_int_t     = int_t.boxed
+boxed_long_t    = long_t.boxed
+boxed_float_t   = float_t.boxed
+boxed_double_t  = double_t.boxed
+
+null_t = _Null()
+
+array_t = Array(top_t)
+
+# Basic array types
+boolean_array_t = Array(boolean_t)
+byte_array_t    = Array(byte_t)
+char_array_t    = Array(char_t)
+short_array_t   = Array(short_t)
+int_array_t     = Array(int_t)
+long_array_t    = Array(long_t)
+float_array_t   = Array(float_t)
+double_array_t  = Array(double_t)
+
+from . import descriptor, signature
