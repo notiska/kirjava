@@ -5,8 +5,6 @@ Artwork by [Lou](https://www.instagram.com/devils_destination/).
 
 A pure-Python Java bytecode manipulation library with decent obfuscation resilience.  
 
-**Warning: This is the development branch so not all information may always be up to date!**
-
 Documentation is planned for in the future, but as of right now, a quickstart guide has been provided below.  
 For more usage, see [examples](examples/).
 
