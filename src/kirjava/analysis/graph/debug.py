@@ -47,7 +47,7 @@ class LocalVariable(_ReservedInstruction):
 
     __slot__ = ("index", "name", "descriptor", "signature", "_hash")
 
-    def __init__(self, index: int, name: str, descriptor: str, signature: None | str = None) -> None:
+    def __init__(self, index: int, name: str, descriptor: str, signature: str | None = None) -> None:
         """
         :param index: The index of the local variable.
         :param name: The name of the local variable.

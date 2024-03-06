@@ -61,7 +61,7 @@ class Environment:
         self._lock.acquire()
         return self
 
-    def __exit__(self, exc_type: None | type, exc_value: None | Exception, traceback: None | TracebackType) -> None:
+    def __exit__(self, exc_type: type | None, exc_value: Exception | None, traceback: TracebackType | None) -> None:
         self._lock.release()
 
     def release_refs(self) -> None:

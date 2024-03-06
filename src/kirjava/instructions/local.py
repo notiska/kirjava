@@ -136,7 +136,7 @@ class StoreLocalInstruction(Instruction):
             context.constrain(entry, self.type)
             context.set(self.index, entry, self.type)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None | SetLocalStatement:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> SetLocalStatement | None:
     #     if not self.index in delta.overwrites:
     #         return None
     #

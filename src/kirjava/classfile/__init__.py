@@ -232,24 +232,24 @@ class ClassFile(Class):
         self._this = constants.Class(value)
 
     @property
-    def super(self) -> None | Class:
+    def super(self) -> Class | None:
         if self._super is None:
             return None
         return self.environment.find_class(self._super.name)
 
     @super.setter
-    def super(self, value: None | Class) -> None:
+    def super(self, value: Class | None) -> None:
         if value is None:
             self._super = None
         else:
             self._super = constants.Class(value.name)
 
     @property
-    def super_name(self) -> None | str:
+    def super_name(self) -> str | None:
         return None if self._super is None else self._super.name
 
     @super_name.setter
-    def super_name(self, value: None | str) -> None:
+    def super_name(self, value: str | None) -> None:
         if value is None:
             self._super = None
         else:
@@ -302,98 +302,98 @@ class ClassFile(Class):
             self._fields.append(field)
 
     @property
-    def bootstrap_methods(self) -> None | BootstrapMethods:
+    def bootstrap_methods(self) -> BootstrapMethods | None:
         for attribute in self.attributes.get(BootstrapMethods.name_, ()):
             if type(attribute) is BootstrapMethods:
                 return attribute
         return None
 
     @bootstrap_methods.setter
-    def bootstrap_methods(self, value: None | BootstrapMethods) -> None:
+    def bootstrap_methods(self, value: BootstrapMethods | None) -> None:
         if value is None:
             self.attributes.pop(BootstrapMethods.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def inner_classes(self) ->  None | InnerClasses:
+    def inner_classes(self) ->  InnerClasses | None:
         for attribute in self.attributes.get(InnerClasses.name_, ()):
             if type(attribute) is InnerClasses:
                 return attribute
         return None
 
     @inner_classes.setter
-    def inner_classes(self, value: None | InnerClasses) -> None:
+    def inner_classes(self, value: InnerClasses | None) -> None:
         if value is None:
             self.attributes.pop(InnerClasses.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def enclosing_method(self) -> None | EnclosingMethod:
+    def enclosing_method(self) -> EnclosingMethod | None:
         for attribute in self.attributes.get(EnclosingMethod.name_, ()):
             if type(attribute) is EnclosingMethod:
                 return attribute
         return None
 
     @enclosing_method.setter
-    def enclosing_method(self, value: None | EnclosingMethod) -> None:
+    def enclosing_method(self, value: EnclosingMethod | None) -> None:
         if value is None:
             self.attributes.pop(EnclosingMethod.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def source_file(self) -> None | SourceFile:
+    def source_file(self) -> SourceFile | None:
         for attribute in self.attributes.get(SourceFile.name_, ()):
             if type(attribute) is SourceFile:
                 return attribute
         return None
 
     @source_file.setter
-    def source_file(self, value: None | SourceFile) -> None:
+    def source_file(self, value: SourceFile | None) -> None:
         if value is None:
             self.attributes.pop(SourceFile.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def signature(self) -> None | Signature:
+    def signature(self) -> Signature | None:
         for attribute in self.attributes.get(Signature.name_, ()):
             if type(attribute) is Signature:
                 return attribute
         return None
 
     @signature.setter
-    def signature(self, value: None | Signature) -> None:
+    def signature(self, value: Signature | None) -> None:
         if value is None:
             self.attributes.pop(Signature.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def runtime_visible_annotations(self) -> None | RuntimeVisibleAnnotations:
+    def runtime_visible_annotations(self) -> RuntimeVisibleAnnotations | None:
         for attribute in self.attributes.get(RuntimeVisibleAnnotations.name_, ()):
             if type(attribute) is RuntimeVisibleAnnotations:
                 return attribute
         return None
 
     @runtime_visible_annotations.setter
-    def runtime_visible_annotations(self, value: None | RuntimeVisibleAnnotations) -> None:
+    def runtime_visible_annotations(self, value: RuntimeVisibleAnnotations | None) -> None:
         if value is None:
             self.attributes.pop(RuntimeVisibleAnnotations.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def runtime_invisible_annotations(self) -> None | RuntimeInvisibleAnnotations:
+    def runtime_invisible_annotations(self) -> RuntimeInvisibleAnnotations | None:
         for attribute in self.attributes.get(RuntimeInvisibleAnnotations.name_, ()):
             if type(attribute) is RuntimeInvisibleAnnotations:
                 return attribute
         return None
 
     @runtime_invisible_annotations.setter
-    def runtime_invisible_annotations(self, value: None | RuntimeInvisibleAnnotations) -> None:
+    def runtime_invisible_annotations(self, value: RuntimeInvisibleAnnotations | None) -> None:
         if value is None:
             self.attributes.pop(RuntimeInvisibleAnnotations.name_, None)
         else:
@@ -403,9 +403,9 @@ class ClassFile(Class):
             self,
             name: str,
             super_: _argument.ClassConstant = types.object_t,
-            interfaces: None | list[_argument.ClassConstant] = None,
+            interfaces: list[_argument.ClassConstant] | None = None,
             version: Version = Version(52, 0),
-            environment: None | Environment = environment.DEFAULT,
+            environment: Environment | None = environment.DEFAULT,
             *,
             is_public: bool = False,
             is_final: bool = False,
@@ -448,7 +448,7 @@ class ClassFile(Class):
         self.is_enum = is_enum
         self.is_module = is_module
 
-        self.constant_pool: None | ConstantPool = None
+        self.constant_pool: ConstantPool | None = None
 
         self._methods: list[MethodInfo] = []
         self._fields: list[FieldInfo] = []
@@ -500,7 +500,7 @@ class ClassFile(Class):
             self._methods.remove(name_or_method)
         return name_or_method
 
-    def get_field(self, name: str, descriptor: None | _argument.FieldDescriptor = None) -> "FieldInfo":
+    def get_field(self, name: str, descriptor: _argument.FieldDescriptor | None = None) -> "FieldInfo":
         if descriptor is not None:
             descriptor = _argument.get_field_descriptor(descriptor)
 
@@ -517,7 +517,7 @@ class ClassFile(Class):
             ))
         raise LookupError("Field %r was not found." % ("%s#%s" % (self.name, name)))
 
-    def has_field(self, name: str, descriptor: None | _argument.FieldDescriptor = None) -> bool:
+    def has_field(self, name: str, descriptor: _argument.FieldDescriptor | None = None) -> bool:
         try:
             self.get_field(name, descriptor)
         except LookupError:
@@ -525,12 +525,12 @@ class ClassFile(Class):
         return True
 
     def add_field(
-            self, name: str, descriptor: None | _argument.FieldDescriptor = None, **access_flags: bool,
+            self, name: str, descriptor: _argument.FieldDescriptor | None = None, **access_flags: bool,
     ) -> "FieldInfo":
         return FieldInfo(self, name, descriptor, **access_flags)
 
     def remove_field(
-            self, name_or_field: Union[str, "FieldInfo"], descriptor: None | _argument.FieldDescriptor = None,
+            self, name_or_field: Union[str, "FieldInfo"], descriptor: _argument.FieldDescriptor | None = None,
     ) -> "FieldInfo":
         if not isinstance(name_or_field, FieldInfo):
             name_or_field = self.get_field(name_or_field, descriptor)

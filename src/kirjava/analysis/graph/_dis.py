@@ -109,7 +109,7 @@ def disassemble(
     ending:   dict[InsnBlock, int] = {}
     forward_jumps: dict[int, list[InsnEdge]] = defaultdict(list)  # Forward reference jump targets
 
-    previous: None | InsnBlock = None
+    previous: InsnBlock | None = None
     block = graph.entry_block
 
     # We do this so that we always create a new block if offset 0 is a jump target because by definition the entry block

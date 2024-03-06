@@ -29,7 +29,7 @@ class InsnEdge(Edge):
     from_: "InsnBlock"
     to: "InsnBlock"
 
-    def __init__(self, from_: "InsnBlock", to: "InsnBlock", instruction: None | Instruction = None) -> None:
+    def __init__(self, from_: "InsnBlock", to: "InsnBlock", instruction: Instruction | None = None) -> None:
         """
         :param instruction: The instruction that this edge contains.
         """
@@ -191,8 +191,8 @@ class RetEdge(JumpEdge):
         # The following code is not the prettiest I've ever written, I'll admit :p.
 
         origin_block:     Optional["InsnBlock"] = None
-        jump_edge:        None | JsrJumpEdge = None
-        fallthrough_edge: None | JsrFallthroughEdge = None
+        jump_edge:        JsrJumpEdge | None = None
+        fallthrough_edge: JsrFallthroughEdge | None = None
 
         # Trying to find the source of the subroutine lol. It (might) have been messed with by the user?
         if type(entry.generic.source) is JsrJumpEdge:
@@ -238,7 +238,7 @@ class SwitchEdge(JumpEdge):
             from_: "InsnBlock",
             to: "InsnBlock",
             instruction: SwitchInstruction,
-            value: None | int = None,
+            value: int | None = None,
     ) -> None:
         """
         :param instruction: The switch instruction that created this edge.
@@ -304,7 +304,7 @@ class ExceptionEdge(InsnEdge):
             from_: "InsnBlock",
             to: "InsnBlock",
             priority: int,
-            throwable: None | Class = None,
+            throwable: Class | None = None,
             inline_coverage: bool = False,
     ) -> None:
         """

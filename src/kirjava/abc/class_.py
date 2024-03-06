@@ -40,8 +40,8 @@ class Class:
 
     name: str
 
-    super: Optional["Class"]  # TODO: Any way to do None | "Class"?
-    super_name: None | str
+    super: Optional["Class"]  # TODO: Any way to do "Class" | None?
+    super_name: str | None
 
     interfaces: tuple["Class", ...]
     interface_names: tuple[str, ...]

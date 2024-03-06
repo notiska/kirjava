@@ -72,7 +72,7 @@ class ComparisonInstruction(BinaryOperationInstruction):
 
         context.push(types.int_t)
 
-    def apply(self, value_a: Constant, value_b: Constant) -> None | Constant:
+    def apply(self, value_a: Constant, value_b: Constant) -> Constant | None:
         ...  # TODO
 
 

@@ -200,7 +200,7 @@ class ConstantPool:
 
     # ------------------------------ Public API ------------------------------ #
 
-    def get(self, index: int, default: None | ConstantInfo = None, do_raise: bool = False) -> ConstantInfo:
+    def get(self, index: int, default: ConstantInfo | None = None, do_raise: bool = False) -> ConstantInfo:
         """
         Gets the constant at a given index.
 
@@ -224,7 +224,7 @@ class ConstantPool:
 
         return Index(index)
 
-    def get_utf8(self, index: int, default: None | str = None, *, do_raise: bool = True) -> str:
+    def get_utf8(self, index: int, default: str | None = None, *, do_raise: bool = True) -> str:
         """
         Gets a UTF-8 value at the given index.
 

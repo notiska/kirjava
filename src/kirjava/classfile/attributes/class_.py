@@ -82,7 +82,7 @@ class BootstrapMethods(AttributeInfo):
 
             return bootstrap_method
 
-        def __init__(self, method_handle: MethodHandle, arguments: None | Iterable[ConstantInfo] = None) -> None:
+        def __init__(self, method_handle: MethodHandle, arguments: Iterable[ConstantInfo] | None = None) -> None:
             """
             :param method_handle: The method handle for this bootstrap method.
             :param arguments: The bootstrap arguments used to resolve the call site.
@@ -121,7 +121,7 @@ class NestHost(AttributeInfo):
     since = Version(55, 0)
     locations = ("ClassFile",)
     
-    def __init__(self, parent: "ClassFile", host_class: None | Class = None) -> None:
+    def __init__(self, parent: "ClassFile", host_class: Class | None = None) -> None:
         """
         :param host_class: The host class of the nest that this class/interface belongs to.
         """
@@ -152,7 +152,7 @@ class NestMembers(AttributeInfo):
     since = Version(55, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", classes: None | Iterable[Class] = None) -> None:
+    def __init__(self, parent: "ClassFile", classes: Iterable[Class] | None = None) -> None:
         """
         :param classes: The classes/interfaces that belong to the nest that this class hosts.
         """
@@ -190,7 +190,7 @@ class PermittedSubclasses(AttributeInfo):
     since = Version(61, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", classes: None | Iterable[Class] = None) -> None:
+    def __init__(self, parent: "ClassFile", classes: Iterable[Class] | None = None) -> None:
         """
         :param classes: The list of permitted subclasses.
         """
@@ -229,7 +229,7 @@ class InnerClasses(AttributeInfo):
     since = Version(45, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", classes: None | Iterable["InnerClasses.InnerClass"] = None) -> None:
+    def __init__(self, parent: "ClassFile", classes: Iterable["InnerClasses.InnerClass"] | None = None) -> None:
         """
         :param classes: Information about inner classes.
         """
@@ -428,8 +428,8 @@ class InnerClasses(AttributeInfo):
         def __init__(
                 self,
                 inner_class: Class,
-                outer_class: None | Class,
-                inner_name: None | UTF8,
+                outer_class: Class | None,
+                inner_name: UTF8 | None,
                 *,
                 is_public: bool = False,
                 is_private: bool = False,
@@ -491,7 +491,7 @@ class EnclosingMethod(AttributeInfo):
     since = Version(49, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", class_: None | Class = None, method: None | NameAndType = None) -> None:
+    def __init__(self, parent: "ClassFile", class_: Class | None = None, method: NameAndType | None = None) -> None:
         """
         :param class_: The class enclosing this class.
         :param method: The method enclosing this class, if any.
@@ -529,7 +529,7 @@ class Record(AttributeInfo):
     since = Version(60, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", components: None | Iterable["Record.ComponentInfo"] = None) -> None:
+    def __init__(self, parent: "ClassFile", components: Iterable["Record.ComponentInfo"] | None = None) -> None:
         """
         :param components: The components of the record.
         """
@@ -630,7 +630,7 @@ class SourceFile(AttributeInfo):
     since = Version(45, 0)
     locations = ("ClassFile",)
 
-    def __init__(self, parent: "ClassFile", source_file: None | UTF8 = None) -> None:
+    def __init__(self, parent: "ClassFile", source_file: UTF8 | None = None) -> None:
         """
         :param source_file: The name of the source file that generated the class.
         """

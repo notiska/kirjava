@@ -31,7 +31,7 @@ class ConstantValue(AttributeInfo):
     since = Version(45, 0)
     locations = ("FieldInfo",)
 
-    def __init__(self, parent: "FieldInfo", value: None | ConstantInfo = None) -> None:
+    def __init__(self, parent: "FieldInfo", value: ConstantInfo | None = None) -> None:
         super().__init__(parent, ConstantValue.name_)
 
         self.value = value

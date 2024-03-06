@@ -51,7 +51,7 @@ class DupInstruction(Instruction):
     def trace(self, context: "Context") -> None:
         context.frame.dup()
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None | DeclareStatement:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> DeclareStatement | None:
     #     if not delta.dups:
     #         return None
     #
@@ -99,7 +99,7 @@ class Dup2Instruction(Instruction):
     def trace(self, context: "Context") -> None:
         context.frame.dup(2)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None | CompoundStatement | DeclareStatement:
+    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> CompoundStatement | DeclareStatement | None:
     #     if not delta.dups:
     #         return None
     #

@@ -148,7 +148,7 @@ class Error:
 
     __slots__ = ("message", "source", "_hash")
 
-    def __init__(self, message: str, source: None | Source = None) -> None:
+    def __init__(self, message: str, source: Source | None = None) -> None:
         self.message = message
         self.source = source
 

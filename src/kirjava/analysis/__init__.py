@@ -8,6 +8,7 @@ __all__ = (
     "JsrJumpEdge", "JsrFallthroughEdge", "RetEdge",
     "ExceptionEdge",
     "InsnGraph",
+    "Generifier",
     "Trace", "Context",
 )
 
@@ -20,9 +21,10 @@ from collections import defaultdict
 from typing import Any
 
 from . import frame
+from ._generify import *
 from .frame import *
 from ..abc import Method, Source
-from ..types import reserved_t, Type, Verification
+from ..types import reserved_t, Type
 
 if typing.TYPE_CHECKING:
     from .graph import InsnBlock, InsnGraph, JsrJumpEdge, RetEdge
@@ -44,7 +46,13 @@ class Trace:
     )
 
     @classmethod
-    def from_graph(cls, graph: "InsnGraph", *, do_raise: bool = True, merge_non_live: bool = True) -> "Trace":
+    def from_graph(
+            cls, graph: "InsnGraph",
+            *,
+            do_raise: bool = True,
+            merge_non_live: bool = True,
+            make_params_live: bool = False,
+    ) -> "Trace":
         """
         Creates a trace from an instruction graph.
 
@@ -53,11 +61,13 @@ class Trace:
         :param merge_non_live: Attempts to merge non-live locals, can be slower but may result in more insightful
                                analysis, though it does assume that locals aren't reused (which may not be default
                                behaviour in some samples).
+        :param make_params_live: Makes the parameters appear live in the initial frame. This is useful for generating
+                                 stackmap frames, though may not be entirely accurate.
         :return: The trace information.
         """
 
         self = cls(graph)
-        trace(self, graph, do_raise, merge_non_live)
+        trace(self, graph, do_raise, merge_non_live, make_params_live)
         return self
 
     def __init__(self, graph: "InsnGraph") -> None:
@@ -92,7 +102,7 @@ class Trace:
 
         __slots__ = ("entry", "expected", "source", "_hash")
 
-        def __init__(self, entry: Entry, expected: Type, source: None | Source) -> None:
+        def __init__(self, entry: Entry, expected: Type, source: Source | None) -> None:
             self.entry = entry
             self.expected = expected
             self.source = source
@@ -160,8 +170,8 @@ class Context:
 
         self.do_raise = do_raise
 
-        self.frame: None | Frame = None
-        self.source: None | Source = None  # The source of the current tracing instruction
+        self.frame: Frame | None = None
+        self.source: Source | None = None  # The source of the current tracing instruction
 
         self.returned: set[Entry] = set()
         self.conflicts: set[Trace.Conflict] = set()
@@ -197,7 +207,7 @@ class Context:
 
     # ------------------------------ Stack operations ------------------------------ #
 
-    def push(self, entry_or_type: Entry | Type, constraint: None | Type = None) -> Entry:
+    def push(self, entry_or_type: Entry | Type, constraint: Type | None = None) -> Entry:
         """
         Pushes an entry or type onto the top of the stack.
         This also handles wide types automatically.
@@ -262,7 +272,7 @@ class Context:
 
     # ------------------------------ Locals operations ------------------------------ #
 
-    def set(self, index: int, entry_or_type: Entry | Type, constraint: None | Type = None) -> None:
+    def set(self, index: int, entry_or_type: Entry | Type, constraint: Type | None = None) -> None:
         """
         Sets the local at the given index to the given entry or type.
         This also handles wide types automatically.

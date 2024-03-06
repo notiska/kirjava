@@ -518,7 +518,7 @@ class FieldRef(ConstantInfo):
             return None
         elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type: None | NameAndType = lookups.get(info[1])
+        name_and_type: NameAndType | None = lookups.get(info[1])
         if name_and_type is None:
             return None
         elif type(name_and_type) is not NameAndType:
@@ -592,7 +592,7 @@ class MethodRef(ConstantInfo):
             return None
         elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type: None | NameAndType = lookups.get(info[1])
+        name_and_type: NameAndType | None = lookups.get(info[1])
         if name_and_type is None:
             return None
         elif type(name_and_type) is not NameAndType:
@@ -670,7 +670,7 @@ class InterfaceMethodRef(MethodRef):
             return None
         elif type(class_) is not Class:
             raise TypeError("Expected type %r, got %r." % (Class, type(class_)))
-        name_and_type: None | NameAndType = lookups.get(info[1])
+        name_and_type: NameAndType | None = lookups.get(info[1])
         if name_and_type is None:
             return None
         elif type(name_and_type) is not NameAndType:
@@ -769,7 +769,7 @@ class MethodHandle(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: dict[int, ConstantInfo], info: tuple[int, int]) -> Optional["MethodHandle"]:
-        reference: None | FieldRef | MethodRef = lookups.get(info[1])
+        reference: FieldRef | MethodRef | None = lookups.get(info[1])
         if reference is None:
             return None
         elif type(reference) is not FieldRef and not isinstance(reference, MethodRef):
@@ -846,7 +846,7 @@ class Dynamic(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: dict[int, ConstantInfo], info: tuple[int, int]) -> Optional["Dynamic"]:
-        name_and_type: None | NameAndType = lookups.get(info[1])
+        name_and_type: NameAndType | None = lookups.get(info[1])
         if name_and_type is None:  # Can't dereference it yet
             return None
         elif type(name_and_type) is not NameAndType:
@@ -911,7 +911,7 @@ class InvokeDynamic(ConstantInfo):
 
     @classmethod
     def dereference(cls, lookups: dict[int, ConstantInfo], info: tuple[int, int]) -> Optional["InvokeDynamic"]:
-        name_and_type: None | NameAndType = lookups.get(info[1])
+        name_and_type: NameAndType | None = lookups.get(info[1])
         if name_and_type is None:  # Can't dereference it yet
             return None
         elif type(name_and_type) is not NameAndType:

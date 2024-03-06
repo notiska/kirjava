@@ -61,7 +61,7 @@ class Signature(AttributeInfo):
     def __init__(
             self,
             parent: Union["ClassFile", "FieldInfo", "MethodInfo", Record.ComponentInfo],
-            signature: None | UTF8 = None,
+            signature: UTF8 | None = None,
     ) -> None:
         super().__init__(parent, Signature.name_)
 
@@ -116,7 +116,7 @@ class Annotations(AttributeInfo):
             self,
             parent: Union["ClassFile", "FieldInfo", "MethodInfo"],
             name: str,
-            annotations: None | Iterable["Annotations.Annotation"] = None,
+            annotations: Iterable["Annotations.Annotation"] | None = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.
@@ -282,7 +282,7 @@ class Annotations(AttributeInfo):
             return annotation
 
         def __init__(
-                self, descriptor: UTF8, elements: None | Iterable[tuple[UTF8, "Annotations.Element"]] = None,
+                self, descriptor: UTF8, elements: Iterable[tuple[UTF8, "Annotations.Element"]] | None = None,
         ) -> None:
             """
             :param descriptor: The type descriptor for this element.
@@ -347,7 +347,7 @@ class RuntimeVisibleAnnotations(Annotations):
     def __init__(
             self,
             parent: Union["ClassFile", "FieldInfo", "MethodInfo"],
-            annotations: None | Iterable["RuntimeVisibleAnnotations.Annotation"] = None,
+            annotations: Iterable["RuntimeVisibleAnnotations.Annotation"] | None = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.
@@ -366,7 +366,7 @@ class RuntimeInvisibleAnnotations(Annotations):
     def __init__(
             self,
             parent: Union["ClassFile", "FieldInfo", "MethodInfo"],
-            annotations: None | Iterable["RuntimeInvisibleAnnotations.Annotation"] = None,
+            annotations: Iterable["RuntimeInvisibleAnnotations.Annotation"] | None = None,
     ) -> None:
         """
         :param annotations: The annotations present in this attribute.

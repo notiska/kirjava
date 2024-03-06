@@ -19,7 +19,7 @@ from ..error import MergeError
 logger = logging.getLogger("kirjava.analysis._trace")
 
 
-def trace(trace: Trace, graph: InsnGraph, do_raise: bool, merge_non_live: bool) -> None:
+def trace(trace: Trace, graph: InsnGraph, do_raise: bool, merge_non_live: bool, make_params_live: bool) -> None:
     logger.debug("Computing trace information for %s:" % graph.method)
 
     context = Context(graph.method, graph, do_raise)
@@ -33,7 +33,7 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool, merge_non_live: bool) 
     pre_liveness = trace.pre_liveness
     post_liveness = trace.post_liveness
 
-    trace_stack: deque[tuple[Frame, InsnBlock, None | InsnEdge]] = deque()
+    trace_stack: deque[tuple[Frame, InsnBlock, InsnEdge | None]] = deque()
     liveness_stack: deque[InsnEdge] = deque()
     branches: deque[tuple[Frame, InsnBlock, InsnEdge]] = []
     retraces: list[tuple[Frame, InsnBlock, InsnEdge]] = []
@@ -45,8 +45,11 @@ def trace(trace: Trace, graph: InsnGraph, do_raise: bool, merge_non_live: bool) 
     trace.max_locals = initial.max_locals
     trace_stack.append((initial, graph.entry_block, None))
 
+    if make_params_live:
+        uses[graph.entry_block] = set(initial.locals.keys())
+
     # Not actually sure how many passes are needed for some methods, most tend to be 1 to 2 and some cleverly crafted
-    # methods (mainly using subroutines) cause up to 5 but I'll put this to a max of 100 to be on the safe side.
+    # methods (mainly using subroutines) cause up to 5, but I'll put this to a max of 100 to be on the safe side.
     for pass_ in range(100):
 
     # ------------------------------------------------------------ #
