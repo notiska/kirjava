@@ -19,8 +19,7 @@ Just as a note, this is *very much* a hobby project so my maintenance schedule w
 `python>=3.10` is required, any other versions are untested.  
 
 You can install this library by either:
- 1. Installing via pip: `pip3 install git+https://github.com/node3112/kirjava.git`.  
-   **Sidenote:** This library will not be published on [PyPI](https://pypi.org/project/kirjava/) as the name `kirjava` is already taken.
+ 1. Installing via pip: `pip3 install kirjava-jvm`.
  2. Cloning this repository and installing it manually:  
     - `git clone https://github.com/node3112/kirjava.git kirjava`
     - `cd kirjava`
