@@ -5,3 +5,5 @@ __pycache__
 /build/
 /dist/
 /src/kirjava.egg-info/
+/src/kirjava-jvm.egg-info/
+
