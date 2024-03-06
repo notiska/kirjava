@@ -49,7 +49,7 @@ class Block(Source):
     def __hash__(self) -> int:
         return id(self)
 
-    def copy(self, label: None | int = None, deep: bool = False) -> "Block":
+    def copy(self, label: int | None = None, deep: bool = False) -> "Block":
         """
         Creates a copy of this block.
 
@@ -105,7 +105,7 @@ class Edge(Source):
     __slots__ = ("from_", "to", "_hash")
 
     # Limits how many of this certain type of edge can occur at a block. If None, there is no limit.
-    limit: None | int = None
+    limit: int | None = None
 
     def __init__(self, from_: Block, to: Block) -> None:
         """
@@ -132,7 +132,7 @@ class Edge(Source):
     def __hash__(self) -> int:
         return self._hash
 
-    def copy(self, from_: None | Block = None, to: None | Block = None, deep: bool = True) -> "Edge":
+    def copy(self, from_: Block | None = None, to: Block | None = None, deep: bool = True) -> "Edge":
         """
         Creates a copy of this edge with the new to/from blocks.
 
@@ -162,7 +162,7 @@ class Graph:
 
     @property
     def edges(self) -> tuple[Edge, ...]:
-        edges = []
+        edges: list[Edge] = []
         for edges_ in self._forward_edges.values():
             edges.extend(edges_)
         return tuple(edges)

@@ -226,7 +226,7 @@ class Instruction(Source):
         ...
 
     # @abstractmethod
-    # def lift(self, delta: "FrameDelta", scope: "Scope", associations: dict["Entry", Value]) -> None | Statement:
+    # def lift(self, delta: "FrameDelta", scope: "Scope", associations: dict["Entry", Value]) -> Statement | None:
     #     """
     #     Generates IR code from this instruction.
     #
@@ -280,10 +280,10 @@ class _ReservedInstruction(Instruction):
 def new_instruction(
         opcode: int,
         mnemonic: str,
-        base: None | type[Instruction] = None,
-        operands: None | dict[str, str] = None,
-        operands_wide: None | dict[str, str] = None,
-        throws: None | tuple[Class, ...] = None,
+        base: type[Instruction] | None = None,
+        operands: dict[str, str] | None = None,
+        operands_wide: dict[str, str] | None = None,
+        throws: tuple[Class, ...] | None = None,
         **namespace: object,
 ) -> type[Instruction]:
     """

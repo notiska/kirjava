@@ -203,7 +203,7 @@ class Code(AttributeInfo):
 
             return handler
 
-        def __init__(self, start_pc: int, end_pc: int, handler_pc: int, catch_type: None | Class) -> None:
+        def __init__(self, start_pc: int, end_pc: int, handler_pc: int, catch_type: Class | None) -> None:
             """
             :param start_pc: The starting bytecode offset of the exception handler.
             :param end_pc The ending bytecode offset of the exception handler.
@@ -248,7 +248,7 @@ class Exceptions(AttributeInfo):
     since = Version(45, 0)
     locations = ("MethodInfo",)
 
-    def __init__(self, parent: "MethodInfo", exceptions: None | Iterable[Class] = None) -> None:
+    def __init__(self, parent: "MethodInfo", exceptions: Iterable[Class] | None = None) -> None:
         super().__init__(parent, Exceptions.name_)
 
         self.exceptions: list[Class] = []

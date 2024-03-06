@@ -179,7 +179,7 @@ class FieldInfo(Field):
             self.access_flags &= ~FieldInfo.ACC_ENUM
 
     @property
-    def value(self) -> None | ConstantValue:
+    def value(self) -> ConstantValue | None:
         """
         :return: The value in the ConstantValue attribute of this field, if it has one.
         """
@@ -190,49 +190,49 @@ class FieldInfo(Field):
         return None
 
     @value.setter
-    def value(self, value: None | ConstantValue) -> None:
+    def value(self, value: ConstantValue | None) -> None:
         if value is None:
             self.attributes.pop(ConstantValue.name_, None)
         else:
             self.attributes[ConstantValue.name_] = (value,)
 
     @property
-    def signature(self) -> None | Signature:
+    def signature(self) -> Signature | None:
         for attribute in self.attributes.get(Signature.name_, ()):
             if type(attribute) is Signature:
                 return attribute
         return None
 
     @signature.setter
-    def signature(self, value: None | Signature) -> None:
+    def signature(self, value: Signature | None) -> None:
         if value is None:
             self.attributes.pop(Signature.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def runtime_visible_annotations(self) -> None | RuntimeVisibleAnnotations:
+    def runtime_visible_annotations(self) -> RuntimeVisibleAnnotations | None:
         for attribute in self.attributes.get(RuntimeVisibleAnnotations.name_, ()):
             if type(attribute) is RuntimeVisibleAnnotations:
                 return attribute
         return None
 
     @runtime_visible_annotations.setter
-    def runtime_visible_annotations(self, value: None | RuntimeVisibleAnnotations) -> None:
+    def runtime_visible_annotations(self, value: RuntimeVisibleAnnotations | None) -> None:
         if value is None:
             self.attributes.pop(RuntimeVisibleAnnotations.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def runtime_invisible_annotations(self) -> None | RuntimeInvisibleAnnotations:
+    def runtime_invisible_annotations(self) -> RuntimeInvisibleAnnotations | None:
         for attribute in self.attributes.get(RuntimeInvisibleAnnotations.name_, ()):
             if type(attribute) is RuntimeInvisibleAnnotations:
                 return attribute
         return None
 
     @runtime_invisible_annotations.setter
-    def runtime_invisible_annotations(self, value: None | RuntimeInvisibleAnnotations) -> None:
+    def runtime_invisible_annotations(self, value: RuntimeInvisibleAnnotations | None) -> None:
         if value is None:
             self.attributes.pop(RuntimeInvisibleAnnotations.name_, None)
         else:
@@ -531,70 +531,70 @@ class MethodInfo(Method):
             self.access_flags &= ~MethodInfo.ACC_SYNTHETIC
 
     @property
-    def code(self) -> None | Code:
+    def code(self) -> Code | None:
         for attribute in self.attributes.get(Code.name_, ()):
             if type(attribute) is Code:  # Find the first valid Code attribute.
                 return attribute
         return None
 
     @code.setter
-    def code(self, value: None | Code) -> None:
+    def code(self, value: Code | None) -> None:
         if value is None:
             self.attributes.pop(Code.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def exceptions(self) -> None | Exceptions:
+    def exceptions(self) -> Exceptions | None:
         for attribute in self.attributes.get(Exceptions.name_, ()):
             if type(attribute) is Exceptions:
                 return attribute
         return None
 
     @exceptions.setter
-    def exceptions(self, value: None | Exceptions) -> None:
+    def exceptions(self, value: Exceptions | None) -> None:
         if value is None:
             self.attributes.pop(Exceptions.name_, None)
         else:
             self.attributes[value.name] = value
 
     @property
-    def signature(self) -> None | Signature:
+    def signature(self) -> Signature | None:
         for attribute in self.attributes.get(Signature.name_, ()):
             if type(attribute) is Signature:
                 return attribute
         return None
 
     @signature.setter
-    def signature(self, value: None | Signature) -> None:
+    def signature(self, value: Signature | None) -> None:
         if value is None:
             self.attributes.pop(Signature.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def runtime_visible_annotations(self) -> None | RuntimeVisibleAnnotations:
+    def runtime_visible_annotations(self) -> RuntimeVisibleAnnotations | None:
         for attribute in self.attributes.get(RuntimeVisibleAnnotations.name_, ()):
             if type(attribute) is RuntimeVisibleAnnotations:
                 return attribute
         return None
 
     @runtime_visible_annotations.setter
-    def runtime_visible_annotations(self, value: None | RuntimeVisibleAnnotations) -> None:
+    def runtime_visible_annotations(self, value: RuntimeVisibleAnnotations | None) -> None:
         if value is None:
             self.attributes.pop(RuntimeVisibleAnnotations.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def runtime_invisible_annotations(self) -> None | RuntimeInvisibleAnnotations:
+    def runtime_invisible_annotations(self) -> RuntimeInvisibleAnnotations | None:
         for attribute in self.attributes.get(RuntimeInvisibleAnnotations.name_, ()):
             if type(attribute) is RuntimeInvisibleAnnotations:
                 return attribute
         return None
 
     @runtime_invisible_annotations.setter
-    def runtime_invisible_annotations(self, value: None | RuntimeInvisibleAnnotations) -> None:
+    def runtime_invisible_annotations(self, value: RuntimeInvisibleAnnotations | None) -> None:
         if value is None:
             self.attributes.pop(RuntimeInvisibleAnnotations.name_, None)
         else:

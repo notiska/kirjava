@@ -17,9 +17,9 @@ from collections import defaultdict
 from .block import *
 from .debug import *
 from .edge import *
-from .. import Entry, Trace
+from .. import Entry, Generifier, Trace
 from ... import instructions
-from ...abc import Class, Offset
+from ...abc import Class, Offset, Source
 from ...classfile import ConstantPool
 from ...classfile.attributes import Code, LineNumberTable, StackMapTable
 from ...constants import Class as ClassConstant
@@ -49,7 +49,7 @@ def assemble(
         adjust_wides: bool, adjust_ldcs: bool,
         adjust_jumps: bool, adjust_fallthroughs: bool,
         simplify_exception_ranges: bool,
-        compute_maxes: bool, compute_frames: bool, compress_frames: bool, add_checkcasts: bool,
+        compute_maxes: bool, compute_frames: bool, compress_frames: bool,
         add_lnt: bool, add_lvt: bool, add_lvtt: bool,
         remove_dead_blocks: bool,
 ) -> Code:
@@ -70,12 +70,12 @@ def assemble(
         logger.debug(" - skipping stackmap table generation as class version is %s." % classfile.version)
         compute_frames = False
 
-    trace: None | Trace = None
+    trace: Trace | None = None
 
     if compute_maxes or compute_frames:
         # As pointed out in comments in the trace code, we don't need to merge non-live locals for this as we're going
         # to replace those with `top`s so we can skip quite a bit of computation there.
-        trace = Trace.from_graph(graph, do_raise=do_raise, merge_non_live=False)
+        trace = Trace.from_graph(graph, do_raise=do_raise, merge_non_live=False, make_params_live=True)
         if do_raise and trace.conflicts:
             raise TypeConflictError(trace.conflicts)
         code.max_stack = trace.max_stack
@@ -337,16 +337,19 @@ def assemble(
     uninit_offset_edges:  dict[InsnEdge, list[tuple[list[Type], int]]] = {}
 
     if compute_frames:
+        generifier = Generifier(environment)
         # Caches the type inference for entries as it can be very expensive to compute, especially for larger methods
         # with many exception handlers.
         inference_cache: dict[Entry, set[Type]] = {}
-        supertype_cache: dict[tuple[ClassType, ClassType], Class] = {}  # :p
+        checkcasts_added: set[Source] = set()
+
+        uninit_resolved = 0
 
         for block in blocks.values():
             if block in skipped:
                 continue
-            entries = trace.entries.get(block)
-            if not entries:  # FIXME: Determine entry constraints or nop instructions (probably will do the latter).
+            entry_frames = trace.entries.get(block)
+            if not entry_frames:  # FIXME: Determine entry constraints or nop instructions (probably will do the latter).
                 if block in (graph.entry_block, graph.return_block, graph.rethrow_block):
                     continue
                 raise NotImplementedError("Can't yet deal with dead blocks.")  # continue
@@ -354,11 +357,11 @@ def assemble(
             skip = False
             live = trace.pre_liveness[block].copy()
 
-            stack_depth = len(entries[0].stack)  # As a sidenote, this is an arbitrary choice of frame to use.
+            stack_depth = len(entry_frames[0].stack)  # As a sidenote, this is an arbitrary choice of frame to use.
 
             # Initial pass through to determine if we need to skip this block and also to add any uninitialized_this_ts
             # to the live locals (explanation below).
-            for frame in entries:
+            for frame in entry_frames:
                 if len(frame.stack) != stack_depth:
                     # Again, another case where do_raise=True would've caught this earlier. We will have to skip over
                     # this frame fully though if we encounter this.
@@ -378,14 +381,16 @@ def assemble(
                 continue
 
             max_local = max(live, default=-1) + 1
-            stack = [{top_t} for index in range(stack_depth)]
+            stack   = [{top_t} for index in range(stack_depth)]
             locals_ = [{top_t} for index in range(max_local)]
 
-            for frame in entries:
+            for frame in entry_frames:
                 for index, entry in enumerate(frame.stack):
                     inference = inference_cache.get(entry)
                     if inference is None:
                         inference = inference_cache.setdefault(entry, entry.inference(no_nullable=True))
+                        for merge in entry.adjacent:  # FIXME: Is this always valid? Are there any edge cases?
+                            inference_cache[merge] = inference
                     stack[index].update(inference)
 
                 for index in range(max_local):
@@ -399,6 +404,8 @@ def assemble(
                     inference = inference_cache.get(entry)
                     if inference is None:
                         inference = inference_cache.setdefault(entry, entry.inference(no_nullable=True))
+                        for merge in entry.adjacent:
+                            inference_cache[merge] = inference
                     locals_[index].update(inference)
 
     # ------------------------------------------------------------ #
@@ -457,131 +464,12 @@ def assemble(
                         type_, = valid
                         array[index] = type_
                         if type(type_) is Uninitialized:
-                            uninitialised[entries[0].stack[index]].append((array, index))
+                            uninitialised[entry_frames[0].stack[index]].append((array, index))
                         continue
 
                     lowest = valid.pop()
-                    while valid:
-                        higher = valid.pop()
-
-                        common = supertype_cache.get((lowest, higher))
-                        if common is not None:
-                            lowest = common.get_type()
-                            continue
-
-                        # These are used if there's an array type and we need to merge the element classes.
-                        old_higher: None | Array = None
-                        old_lowest: None | Array = None
-
-                        error: None | Exception = None  # Might throw this later if needs be.
-                        supertypes: set[Class] = set()
-
-                        # Special handling for arrays. We need to try and merge their element types, this gets a little
-                        # more difficult with primitive and multi-dimensional arrays.
-                        if type(higher) is Array:
-                            if type(lowest) is not Array:
-                                lowest = object_t
-                                break
-
-                            higher_dim = higher.dimensions
-                            lowest_dim = lowest.dimensions
-
-                            if higher_dim != lowest_dim:
-                                lowest = Array.from_dimension(object_t, min(higher_dim, lowest_dim))
-                                continue
-
-                            old_higher = higher
-                            old_lowest = lowest
-                            higher = higher.lowest_element
-                            lowest = lowest.lowest_element
-
-                            # FIXME: Does the assembler get to this point? Array.mergeable() might handle this.
-                            # Handling primitive arrays here, we can try to merge them and if that's not possible then
-                            # we'll set the lowest to object_t (or an array with a lower dimension).
-                            # TODO: Profile, is this even faster?
-                            higher_primitive = isinstance(higher, Primitive)
-                            if (
-                                higher_primitive != isinstance(lowest, Primitive) or
-                                (higher_primitive and higher != lowest)
-                            ):
-                                higher_dim -= 1
-                                if not higher_dim:
-                                    lowest = object_t
-                                else:
-                                    lowest = Array.from_dimension(object_t, higher_dim - 1)  # Kinda a hack?
-                                continue
-
-                        # Try and get the type hierarchy for the higher type first. We'll check if we can find the lower
-                        # type directly. If not, we'll then go through the lower type's hierarchy.
-                        found = True
-                        try:
-                            class_ = environment.find_class(higher.name)
-                            # .super_name is a safer way of checking if the class has a superclass for classfiles
-                            # because .super can throw (great design, Iska!!).
-                            while class_.super_name is not None:
-                                class_ = class_.super
-                                class_type = class_.get_type()
-                                if lowest == class_type:  # lowest is class_type:
-                                    lowest = class_type
-                                    supertype_cache[lowest, higher] = class_
-                                    supertype_cache[higher, lowest] = class_  # Have to be careful here, lol.
-                                    break
-                                supertypes.add(class_)
-                            else:
-                                found = False
-
-                        except ClassNotFoundError as error_:
-                            # FIXME: I don't think we can assign directly to error, afaik there's an implicit `del error`?
-                            error = error_
-                            found = False
-
-                        if found:
-                            if old_higher is not None and old_lowest is not None:
-                                lowest = Array.from_dimension(lowest, old_higher.dimensions)
-                            continue
-
-                        # Going through the lower type's hierarchy now, as mentioned above.
-                        # TODO: Cache type hierarchies perhaps?
-                        found = True
-                        try:
-                            class_ = environment.find_class(lowest.name)
-                            while class_.super_name is not None:
-                                class_ = class_.super
-                                class_type = class_.get_type()
-                                if higher == class_type or class_ in supertypes:
-                                    lowest = class_type
-                                    supertype_cache[lowest, higher] = class_
-                                    supertype_cache[higher, lowest] = class_
-                                    break
-                            else:
-                                found = False
-
-                        except ClassNotFoundError as error_:
-                            error = error or error_  # Mhm, not sure which to raise but I guess this is fine, for now.
-                            found = False
-
-                        if found:
-                            if old_higher is not None and old_lowest is not None:
-                                lowest = Array.from_dimension(lowest, old_higher.dimensions)
-                            continue
-                        elif not add_checkcasts and do_raise and error is not None:
-                            raise error
-
-                        # Best we can do, this will still cause issues though (unless add_checkcasts=True).
-                        lowest = object_t
-
-                        if not add_checkcasts:
-                            if old_higher is not None and old_lowest is not None:
-                                lowest = Array.from_dimension(lowest, old_higher.dimensions)
-                            break
-
-    # ------------------------------------------------------------ #
-    #                        Add checkcasts                        #
-    # ------------------------------------------------------------ #
-
-                        # print("t")
-                        ...  # TODO: Add checkcasts.
-
+                    for higher in valid:
+                        lowest = generifier.generify(higher, lowest, do_raise=do_raise)
                     array[index] = lowest
 
             for entry, positions in uninitialised.items():
@@ -597,7 +485,15 @@ def assemble(
                 elif isinstance(source, InsnEdge):
                     uninit_offset_edges.setdefault(source, []).extend(positions)
 
+            uninit_resolved += len(uninitialised)
+
             frame_precalc[block] = (stack, locals_)
+
+        logger.debug(" - stackmap pre-generation (%i inference cache entries)" % len(inference_cache))
+        if checkcasts_added:
+            logger.debug("    - %i checkcast(s) added." % len(checkcasts_added))
+        if uninit_resolved:
+            logger.debug("    - %i uninitialised type source(s) resolved." % uninit_resolved)
 
     # ------------------------------------------------------------ #
     #                        Code generation                       #
@@ -662,10 +558,10 @@ def assemble(
             switch_edges: list[SwitchEdge] = []
             inline_edges: list[InsnEdge] = []
 
-            positions: None | list[tuple[list[Type], int]] = None
+            positions: list[tuple[list[Type], int]] | None = None
 
-            jump_edge:        None | JumpEdge = None
-            jump_instruction: None | Instruction = None
+            jump_edge:        JumpEdge | None = None
+            jump_instruction: Instruction | None = None
 
             for edge in forward_edges[block]:
                 if type(edge) is SwitchEdge:
@@ -859,7 +755,7 @@ def assemble(
             continue
 
         # Otherwise, we will attempt to merge the ranges of exception edges which have the same priority and throwable.
-        exception_edges: dict[tuple[int, None | Reference], dict[int, tuple[int, ExceptionEdge]]] = defaultdict(dict)
+        exception_edges: dict[tuple[int, Reference | None], dict[int, tuple[int, ExceptionEdge]]] = defaultdict(dict)
 
         for edge in in_edges:
             if type(edge) is ExceptionEdge and not edge.from_ in skipped:
@@ -879,7 +775,7 @@ def assemble(
         # range. Otherwise, we'll just have to split the exception range into multiple handlers.
         for (priority, throwable), edges in exception_edges.items():
             current_handlers = handlers[priority]
-            current_range: None | tuple[int, int] = None
+            current_range: tuple[int, int] | None = None
 
             for start, (end, edge) in sorted(edges.items(), key=operator.itemgetter(0)):
                 in_range = False
@@ -964,7 +860,7 @@ def assemble(
                     continue
 
             prev_offset = offset
-            offset_delta -= 1  # Another space saving measure by the JVM.
+            offset_delta -= 1  # Another space-saving measure by the JVM.
 
             stack, locals_ = frame_precalc[block]
 

@@ -33,7 +33,7 @@ class JumpInstruction(Instruction):
 
     __slots__ = ("offset",)
 
-    def __init__(self, offset: None | int = None) -> None:
+    def __init__(self, offset: int | None = None) -> None:
         self.offset = offset
 
     def __repr__(self) -> str:

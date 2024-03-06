@@ -34,7 +34,7 @@ _BACKWARD_BASE_TYPES = {
 
 def _find_enclosing(
         string: str, start_identifier: str, end_identifier: str,
-) -> tuple[None | str, None | str, None | str]:
+) -> tuple[str | None, str | None, str | None]:
     """
     Finds the enclosing arguments within the provided start and ending identifiers, as well as the string before and
     after the start and end.

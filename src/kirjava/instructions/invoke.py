@@ -144,7 +144,7 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction):
 
         # Unverified code can cause this not to be an uninitialized type
         elif isinstance(entry.generic, Uninitialized):
-            class_type: None | Class = None
+            class_type: Class | None = None
             source = entry.generic.source
 
             if isinstance(source, NewInstruction):

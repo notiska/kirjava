@@ -148,7 +148,6 @@ class InsnGraph(Graph):
             compute_maxes: bool = True,
             compute_frames: bool = True,
             compress_frames: bool = True,
-            add_checkcasts: bool = False,
             add_lnt: bool = True,
             add_lvt: bool = True,
             add_lvtt: bool = True,
@@ -167,7 +166,6 @@ class InsnGraph(Graph):
         :param compute_maxes: Computes the maximum stack size and maximum local.
         :param compute_frames: Computes stack map frames and adds the attribute to the code.
         :param compress_frames: Compresses the stack map frames. Only for compute_frames.
-        :param add_checkcasts: Adds checkcasts where necessary if supertypes cannot be resolved. Only for compute_frames.
         :param add_lnt: Adds the line number table debug attribute.
         :param add_lvt: Adds the local variable table debug attribute.
         :param add_lvtt: Adds the local variable type table debug attribute.
@@ -181,7 +179,7 @@ class InsnGraph(Graph):
             adjust_wides, adjust_ldcs,
             adjust_jumps, adjust_fallthroughs,
             simplify_exception_ranges,
-            compute_maxes, compute_frames, compress_frames, add_checkcasts,
+            compute_maxes, compute_frames, compress_frames,
             add_lnt, add_lvt, add_lvtt,
             remove_dead_blocks,
         )
@@ -245,7 +243,7 @@ class InsnGraph(Graph):
             self,
             from_: InsnBlock,
             to: InsnBlock,
-            jump: None | type[Instruction] | Instruction = None,
+            jump: type[Instruction] | Instruction | None = None,
             overwrite: bool = True,
     ) -> JumpEdge:
         """
@@ -274,7 +272,7 @@ class InsnGraph(Graph):
             self,
             from_: InsnBlock,
             to: InsnBlock,
-            priority: None | int = None,
+            priority: int | None = None,
             exception: _argument.ReferenceType = types.throwable_t,
     ) -> ExceptionEdge:
         """

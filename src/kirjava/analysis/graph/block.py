@@ -32,7 +32,7 @@ class InsnBlock(Block):
 
         return tuple(self._instructions)
 
-    def __init__(self, label: int, instructions_: None | Iterable[Instruction] = None) -> None:
+    def __init__(self, label: int, instructions_: Iterable[Instruction] | None = None) -> None:
         """
         :param label: The label of this block.
         :param instructions_: JVM instructions to initialise this block with.
@@ -71,7 +71,7 @@ class InsnBlock(Block):
         return self._instructions[item]
 
     def __setitem__(self, key: Any, value: Any) -> None:
-        if type(key) is int:
+        if type(key) is int or type(key) is slice:
             if type(value) is type:
                 value = value()
             if not isinstance(value, Instruction):
@@ -82,12 +82,12 @@ class InsnBlock(Block):
         else:
             raise TypeError("Expected int, got %r." % type(key))
 
+    def __delitem__(self, item: Any) -> None:
+        if type(item) is int or type(item) is slice:
+            del self._instructions[item]
+
     def __contains__(self, item: Any) -> bool:
         return item in self._instructions
-
-    # def __delitem__(self, item: Any) -> None:
-    #     if type(item) is int or type(item) is slice:
-    #         del self._instructions[item]
 
     def __len__(self) -> int:
         return len(self._instructions)
@@ -95,7 +95,7 @@ class InsnBlock(Block):
     def __bool__(self) -> bool:
         return bool(self._instructions)
 
-    def copy(self, label: None | int = None, deep: bool = True) -> "InsnBlock":
+    def copy(self, label: int | None = None, deep: bool = True) -> "InsnBlock":
         block = InsnBlock(label or self.label)
         block.inline = self.inline
 
@@ -230,7 +230,7 @@ class InsnReturnBlock(ReturnBlock, InsnBlock):
     def __repr__(self) -> str:
         return "<InsnReturnBlock() at %x>" % id(self)
 
-    def copy(self, label: None | int = None, deep: bool = True) -> "InsnReturnBlock":
+    def copy(self, label: int | None = None, deep: bool = True) -> "InsnReturnBlock":
         return InsnReturnBlock()
 
 
@@ -242,5 +242,5 @@ class InsnRethrowBlock(RethrowBlock, InsnBlock):
     def __repr__(self) -> str:
         return "<InsnRethrowBlock() at %x>" % id(self)
 
-    def copy(self, label: None | int = None, deep: bool = True) -> "InsnRethrowBlock":
+    def copy(self, label: int | None = None, deep: bool = True) -> "InsnRethrowBlock":
         return InsnRethrowBlock()

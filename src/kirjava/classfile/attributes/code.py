@@ -116,7 +116,7 @@ class StackMapTable(AttributeInfo):
         else:
             raise TypeError("Invalid verification type %r." % type_)
 
-    def __init__(self, parent: "Code", frames: None | Iterable["StackMapTable.StackMapFrame"] = None) -> None:
+    def __init__(self, parent: "Code", frames: Iterable["StackMapTable.StackMapFrame"] | None = None) -> None:
         """
         :param frames: The stackmap frames in this table.
         """
@@ -555,7 +555,7 @@ class LineNumberTable(AttributeInfo):
     since = Version(45, 3)
     locations = ("Code",)
 
-    def __init__(self, parent: "Code", entries: None | Iterable["LineNumberTable.LineNumberEntry"] = None) -> None:
+    def __init__(self, parent: "Code", entries: Iterable["LineNumberTable.LineNumberEntry"] | None = None) -> None:
         """
         :param entries: The line number entries.
         """
@@ -648,7 +648,7 @@ class LocalVariableTable(AttributeInfo):
     locations = ("Code",)
 
     def __init__(
-            self, parent: "Code", entries: None | Iterable["LocalVariableTable.LocalVariableEntry"] = None,
+            self, parent: "Code", entries: Iterable["LocalVariableTable.LocalVariableEntry"] | None = None,
     ) -> None:
         """
         :param entries: The local variable entries.
@@ -785,7 +785,7 @@ class LocalVariableTypeTable(AttributeInfo):
     locations = ("Code",)
 
     def __init__(
-            self, parent: "Code", entries: None | Iterable["LocalVariableTypeTable.LocalVariableTypeEntry"] = None,
+            self, parent: "Code", entries: Iterable["LocalVariableTypeTable.LocalVariableTypeEntry"] | None = None,
     ) -> None:
         """
         :param entries: The local variable type entries.

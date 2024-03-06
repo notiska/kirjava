@@ -43,6 +43,14 @@ class Entry:
             return type_
 
     @property
+    def adjacent(self) -> tuple["Entry", ...]:
+        """
+        :return: All adjacent entries (also called merges) to this entry.
+        """
+
+        return tuple(self._iter_merges())
+
+    @property
     def parents(self) -> tuple["Entry", ...]:
         """
         :return: All the parents of this entry.
@@ -132,7 +140,7 @@ class Entry:
 
         return vtype, set()
 
-    def __init__(self, type_: Type, source: None | Source = None, parent: Optional["Entry"] = None) -> None:
+    def __init__(self, type_: Type, source: Source | None = None, parent: Optional["Entry"] = None) -> None:
         """
         :param type_: The type of this entry.
         :param source: The source that created this entry.
@@ -273,7 +281,7 @@ class Entry:
 
     # ------------------------------ Trace methods ------------------------------ #
 
-    def constrain(self, type_: Type, source: None | Source = None, *, original: bool = False) -> bool:
+    def constrain(self, type_: Type, source: Source | None = None, *, original: bool = False) -> bool:
         """
         Adds a type constraint to this entry.
 
@@ -290,7 +298,7 @@ class Entry:
         self._constraints.add(constraint)
         return True
 
-    def cast(self, type_: Type, source: None | Source = None) -> "Entry":
+    def cast(self, type_: Type, source: Source | None = None) -> "Entry":
         """
         Casts this entry to another type.
 
@@ -324,7 +332,7 @@ class Entry:
 
         __slots__ = ("type", "source", "original", "_hash")
 
-        def __init__(self, type_: Type, source: None | Source = None, original: bool = False) -> None:
+        def __init__(self, type_: Type, source: Source | None = None, original: bool = False) -> None:
             self.type = type_
             self.source = source
             self.original = original
@@ -361,7 +369,7 @@ class Entry:
 #             pushes: Iterable[Union[Entry, "Delta.Identity"]],
 #             pops: Iterable[Union[Entry, "Delta.Identity"]],
 #             # Excellent typing...
-#             overwrites: Iterable[tuple[int, None | Union[Entry, "Delta.Identity"], None | Union[Entry, "Delta.Identity"]]],
+#             overwrites: Iterable[tuple[int, Union[Entry, "Delta.Identity"] | None, Union[Entry, "Delta.Identity"] | None]],
 #     ) -> None:
 #         """
 #         :param pushes: The entries pushed to the stack.
@@ -402,7 +410,7 @@ class Entry:
 #
 #         __slots__ = ("id", "expect",)
 #
-#         def __init__(self, id_: int, expect: None | Type = None) -> None:
+#         def __init__(self, id_: int, expect: Type | None = None) -> None:
 #             """
 #             :param id_: An ID to represent this identity, unique to the delta it's in.
 #             :param expect: The expected type of this entry.
@@ -537,7 +545,7 @@ class Frame:
             self,
             other: "Frame",
             edge: "InsnEdge",
-            live_locals: None | set[int] = None,
+            live_locals: set[int] | None = None,
             check_depth: bool = True,
             merge_non_live: bool = True,
     ) -> bool:
