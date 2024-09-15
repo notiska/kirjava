@@ -225,19 +225,6 @@ class Instruction(Source):
 
         ...
 
-    # @abstractmethod
-    # def lift(self, delta: "FrameDelta", scope: "Scope", associations: dict["Entry", Value]) -> Statement | None:
-    #     """
-    #     Generates IR code from this instruction.
-    #
-    #     :param delta: The frame delta this instruction produced when traced.
-    #     :param scope: The current scope to declare variables in.
-    #     :param associations: The associations between stack entries and IR values.
-    #     :return: The generated IR statement, or None if there was no effect.
-    #     """
-    #
-    #     ...
-
 
 class _ReservedInstruction(Instruction):
     """

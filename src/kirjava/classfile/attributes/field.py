@@ -14,7 +14,7 @@ from typing import IO
 from . import AttributeInfo
 from ..._struct import *
 from ...constants import ConstantInfo
-from ...version import Version
+from ...version import JAVA_1_0_2
 
 if typing.TYPE_CHECKING:
     from .. import ClassFile, FieldInfo
@@ -28,7 +28,7 @@ class ConstantValue(AttributeInfo):
     __slots__ = ("value",)
 
     name_ = "ConstantValue"
-    since = Version(45, 0)
+    since = JAVA_1_0_2
     locations = ("FieldInfo",)
 
     def __init__(self, parent: "FieldInfo", value: ConstantInfo | None = None) -> None:

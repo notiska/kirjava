@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 __all__ = (
+    "JAVA_1_0_2",
     "JAVA_1_1",
     "JAVA_1_2",
     "JAVA_1_3",
@@ -21,6 +22,10 @@ __all__ = (
     "JAVA_18",
     "JAVA_19",
     "JAVA_20",
+    "JAVA_21",
+    "JAVA_22",
+    # "JAVA_23",
+    # "JAVA_24",
     "Version",
 )
 
@@ -34,8 +39,11 @@ class Version:
 
     __slots__ = ("name", "major", "minor")
 
-    NAMES = {  # A map of major versions to names
-        45: "1.1",  # Note: 1.0.2 is also 45, but we'll discount it
+    NAMES = {  # A map of major and/or minor versions to names.
+        (45, 0): "1.0.2",  # Annoying special case for 1.0.2.
+        (45, 1): "1.0.2",
+        (45, 2): "1.0.2",
+        (45, 3): "1.1",
         46: "1.2",
         47: "1.3",
         48: "1.4",
@@ -55,6 +63,8 @@ class Version:
         62: "18",
         63: "19",
         64: "20",
+        65: "21",
+        66: "22",
     }
 
     @classmethod
@@ -104,12 +114,14 @@ class Version:
         return self.major >= 56 and self.minor == 65535
 
     def __init__(self, major: int, minor: int) -> None:
-        self.name = self.NAMES[major]
+        self.name = Version.NAMES.get((major, minor))
+        if self.name is None:
+            self.name = Version.NAMES.get(major) or "unknown"
         self.major = major
         self.minor = minor
 
     def __repr__(self) -> str:
-        return "<Version(name=%r, major=%i)>" % (self.name, self.major)
+        return "<Version(name=%r, major=%i, minor=%i)>" % (self.name, self.major, self.minor)
 
     def __str__(self) -> str:
         return self.name
@@ -156,23 +168,26 @@ class Version:
         return self == other or self < other
 
 
-JAVA_1_1 = Version(45, 3)
-JAVA_1_2 = Version(46, 0)
-JAVA_1_3 = Version(47, 0)
-JAVA_1_4 = Version(48, 0)
-JAVA_5 = Version(49, 0)
-JAVA_6 = Version(50, 0)
-JAVA_7 = Version(51, 0)
-JAVA_8 = Version(52, 0)
-JAVA_9 = Version(53, 0)
-JAVA_10 = Version(54, 0)
-JAVA_11 = Version(55, 0)
-JAVA_12 = Version(56, 0)
-JAVA_13 = Version(57, 0)
-JAVA_14 = Version(58, 0)
-JAVA_15 = Version(59, 0)
-JAVA_16 = Version(60, 0)
-JAVA_17 = Version(61, 0)
-JAVA_18 = Version(62, 0)
-JAVA_19 = Version(63, 0)
-JAVA_20 = Version(64, 0)
+JAVA_1_0_2 = Version(45, 0)
+JAVA_1_1   = Version(45, 3)
+JAVA_1_2   = Version(46, 0)
+JAVA_1_3   = Version(47, 0)
+JAVA_1_4   = Version(48, 0)
+JAVA_5     = Version(49, 0)
+JAVA_6     = Version(50, 0)
+JAVA_7     = Version(51, 0)
+JAVA_8     = Version(52, 0)
+JAVA_9     = Version(53, 0)
+JAVA_10    = Version(54, 0)
+JAVA_11    = Version(55, 0)
+JAVA_12    = Version(56, 0)
+JAVA_13    = Version(57, 0)
+JAVA_14    = Version(58, 0)
+JAVA_15    = Version(59, 0)
+JAVA_16    = Version(60, 0)
+JAVA_17    = Version(61, 0)
+JAVA_18    = Version(62, 0)
+JAVA_19    = Version(63, 0)
+JAVA_20    = Version(64, 0)
+JAVA_21    = Version(65, 0)
+JAVA_22    = Version(66, 0)

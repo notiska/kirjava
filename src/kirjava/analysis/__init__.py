@@ -2,13 +2,13 @@
 
 __all__ = (
     "frame", "graph",
+    "Generifier",
     "Entry", "Frame",
     "InsnBlock", "InsnReturnBlock", "InsnRethrowBlock",
     "FallthroughEdge", "JumpEdge",
     "JsrJumpEdge", "JsrFallthroughEdge", "RetEdge",
     "ExceptionEdge",
     "InsnGraph",
-    "Generifier",
     "Trace", "Context",
 )
 
@@ -18,7 +18,7 @@ Bytecode analysis stuff.
 
 import typing
 from collections import defaultdict
-from typing import Any
+from typing import Any, Iterator
 
 from . import frame
 from ._generify import *
@@ -78,13 +78,13 @@ class Trace:
         self.graph = graph
 
         self.entries: dict["InsnBlock", list[Frame]] = defaultdict(list)
-        self.exits: dict["InsnBlock", list[Frame]] = defaultdict(list)
+        self.exits:   dict["InsnBlock", list[Frame]] = defaultdict(list)
 
         self.conflicts: set[Trace.Conflict] = set()
         self.returned: set[Entry] = set()
         self.subroutines: list[Trace.Subroutine] = []
 
-        self.pre_liveness: dict["InsnBlock", set[int]] = {}
+        self.pre_liveness:  dict["InsnBlock", set[int]] = {}
         self.post_liveness: dict["InsnBlock", set[int]] = {}
 
         self.max_stack = 0
@@ -94,6 +94,27 @@ class Trace:
         return "<Trace(entries=%i, exits=%i, conflicts=%i, subroutines=%i, max_stack=%i, max_locals=%i) at %x>" % (
             len(self.entries), len(self.exits), len(self.conflicts), len(self.subroutines), self.max_stack, self.max_locals, id(self),
         )
+
+    def retrace(self, block: "InsnBlock", frame: Frame, *, do_raise: bool = True) -> Iterator["Context"]:
+        """
+        Retraces a block, yielding the contextual trace information at each instruction.
+
+        :param block: The block to retrace.
+        :param frame: The frame to start tracing with. Must be contained within the entry frames for the block.
+        :param do_raise: Raises an exception if an error occurs.
+        """
+
+        # TODO: Improve the retrace API via frame deltas.
+
+        entries = self.entries.get(block)
+        if entries is None:
+            raise ValueError("Block %r was not traced." % block)
+        elif not frame in entries:
+            raise ValueError("Frame %r was not traced for block %r." % (frame, block))
+
+        context = Context(self.graph.method, self.graph, do_raise)
+        context.frame = frame
+        yield from block.trace_iter(context)
 
     class Conflict:
         """
@@ -184,17 +205,18 @@ class Context:
     def __repr__(self) -> str:
         return "<Context(method=%r, frame=%r) at %x>" % (self.method, self.frame, id(self))
 
-    def replace(self, entry: Entry, type_: Type) -> None:
+    def replace(self, entry: Entry, type_: Type) -> Entry:
         """
         Replaces all occurrences of an entry with a new type.
 
         :param entry: The old entry to replace.
         :param type_: The new type.
+        :return: The new entry that was created.
         """
 
         new = entry.cast(type_, self.source)
         if new is entry:
-            return
+            return entry
         old = entry
 
         for index, entry in enumerate(self.frame.stack):
@@ -204,6 +226,8 @@ class Context:
             if entry is old:
                 self.frame.locals[index] = new
         self.frame.tracked.add(new)
+
+        return new
 
     # ------------------------------ Stack operations ------------------------------ #
 
@@ -260,7 +284,7 @@ class Context:
         else:
             entries = self.frame.pop(count)
 
-        if self.source is not None:  # FIXME: When will this really ever be the case? Remove probably.
+        if self.source is not None:
             for entry in entries:
                 if entry is Frame.TOP:
                     break
@@ -346,12 +370,12 @@ class Context:
     def constrain(self, entry: Entry, constraint: Type, *, original: bool = False) -> None:
         """
         Constrains an entry to a given type. This is only a "passive" constraint, and will only be checked after the
-        has been completed fully.
+        trace has been completed fully.
         """
 
-        # We don't want to add constraints to these as they are class fields.
         if entry is Frame.TOP:
-            # TODO: Maybe do something else with this?
+            # TODO: Although we don't add constraints to tops, we may be able to figure out some information about what
+            #       type we should be expecting. Perhaps when the analysis is more advanced this could be accomplished.
             return
 
         added = entry.constrain(constraint, self.source, original=original)

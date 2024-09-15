@@ -105,14 +105,6 @@ class InvokeVirtualInstruction(InvokeInstruction):
         context.constrain(context.pop(), self.reference.class_.class_type)
         self._trace_return(context)
 
-    # def lift(
-    #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
-    # ) -> InvokeStatement | AssignStatement:
-    #     ...
-    #
-    #     # if self.reference.return_type == types.void_t:
-    #     #     return InvokeStatement()
-
 
 class InvokeSpecialInstruction(InvokeVirtualInstruction):
     """
@@ -164,11 +156,6 @@ class InvokeSpecialInstruction(InvokeVirtualInstruction):
             ...  # TODO: Raise error?
         self._trace_return(context)
 
-    # def lift(
-    #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
-    # ) -> InvokeStatement | AssignStatement:
-    #     ...
-
 
 class InvokeStaticInstruction(InvokeInstruction):
     """
@@ -180,11 +167,6 @@ class InvokeStaticInstruction(InvokeInstruction):
     def trace(self, context: "Context") -> None:
         self._trace_arguments(context)
         self._trace_return(context)
-
-    # def lift(
-    #         self, delta: FrameDelta, scope: Scope, associations: Dict[Entry, Value],
-    # ) -> InvokeStaticStatement | AssignStatement:
-    #     ...
 
 
 class InvokeInterfaceInstruction(InvokeVirtualInstruction):

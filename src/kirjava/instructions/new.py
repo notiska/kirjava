@@ -66,10 +66,6 @@ class NewInstruction(Instruction):
         #     ))
         context.push(Uninitialized(context.source))
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
-    #     associations[delta.pushes[0]] = NewExpression(self.type)
-    #     # Technically this has no side effects (invoking the constructor does), so there's no need to return anything.
-
 
 class NewArrayInstruction(Instruction):
     """
@@ -136,9 +132,6 @@ class NewArrayInstruction(Instruction):
         context.constrain(context.pop(), int_t)
         context.push(self.type)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
-    #     associations[delta.pushes[0]] = NewArrayExpression(self.type, (associations[delta.pops[-1]],))
-
 
 class ANewArrayInstruction(Instruction):
     """
@@ -184,9 +177,6 @@ class ANewArrayInstruction(Instruction):
     def trace(self, context: "Context") -> None:
         context.constrain(context.pop(), int_t)
         context.push(self.type)
-
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
-    #     associations[delta.pushes[0]] = NewArrayExpression(self.type, (associations[delta.pops[-1]],))
 
 
 class MultiANewArrayInstruction(Instruction):
@@ -249,6 +239,3 @@ class MultiANewArrayInstruction(Instruction):
         for entry in context.pop(self.dimension):
             context.constrain(entry, int_t)
         context.push(self.type)
-
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
-    #     associations[delta.pushes[-1]] = NewArrayExpression(self.type, tuple(map(associations.get, delta.pops)))

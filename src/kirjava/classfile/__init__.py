@@ -20,7 +20,7 @@ from ._constant import *
 from .attributes import *
 from .. import _argument, constants, environment, types
 from .._struct import *
-from ..abc import Class
+from ..abc import Class, Source
 from ..environment import Environment
 from ..error import ClassFormatError
 from ..version import Version
@@ -30,7 +30,7 @@ from ..version import Version
 logger = logging.getLogger("kirjava.classfile")
 
 
-class ClassFile(Class):
+class ClassFile(Class, Source):
     """
     Represents a Java class file.
     """
@@ -42,12 +42,20 @@ class ClassFile(Class):
     )
 
     @classmethod
-    def read(cls, buffer: IO[bytes], *, fail_fast: bool = True, min_deref: bool = False) -> "ClassFile":
+    def read(
+            cls,
+            buffer: IO[bytes],
+            *,
+            do_raise: bool = True,
+            force_descriptor: bool = False,
+            min_deref: bool = False,
+    ) -> "ClassFile":
         """
         Reads a class file from the given buffer.
 
         :param buffer: The binary data buffer.
-        :param fail_fast: If the classfile is obviously invalid, an exception will be raised ASAP.
+        :param do_raise: Raise an exception if a non-critical parsing error occurs.
+        :param force_descriptor: Force descriptor parsing for invalid descriptors.
         :param min_deref: Only dereference required constant pool entries?
         :return: The class file that was read.
         """
@@ -63,17 +71,17 @@ class ClassFile(Class):
         constant_pool = ConstantPool.read(version, buffer)
 
         access_flags, this_class_index, super_class_index = unpack_HHH(buffer.read(6))
-        this = constant_pool.get(this_class_index, do_raise=fail_fast)
-        super_ = None if super_class_index < 1 else constant_pool.get(super_class_index, do_raise=fail_fast)
+        this = constant_pool.get(this_class_index, do_raise=do_raise)
+        super_ = None if super_class_index < 1 else constant_pool.get(super_class_index, do_raise=do_raise)
 
         try:
             interfaces_count, = unpack_H(buffer.read(2))
             interfaces = [ 
-                constant_pool.get(unpack_H(buffer.read(2))[0], do_raise=fail_fast)
+                constant_pool.get(unpack_H(buffer.read(2))[0], do_raise=do_raise)
                 for index in range(interfaces_count)
             ]
         except Exception as error:
-            if fail_fast:
+            if do_raise:
                 raise error
             interfaces = []
 
@@ -86,28 +94,28 @@ class ClassFile(Class):
         try:
             fields_count, = unpack_H(buffer.read(2))
             for index in range(fields_count):
-                FieldInfo.read(class_file, buffer, fail_fast)
+                FieldInfo.read(class_file, buffer, do_raise, force_descriptor)
         except Exception as error:
-            if fail_fast:
+            if do_raise:
                 raise error
 
         try:
             methods_count, = unpack_H(buffer.read(2))
             for index in range(methods_count):
-                MethodInfo.read(class_file, buffer, fail_fast)
+                MethodInfo.read(class_file, buffer, do_raise, force_descriptor)
         except Exception as error:
-            if fail_fast:
+            if do_raise:
                 raise error
 
         try:
             attributes_count, = unpack_H(buffer.read(2))
             for index in range(attributes_count):
-                attribute_info = attributes.read_attribute(class_file, class_file, buffer, fail_fast)
+                attribute_info = attributes.read_attribute(class_file, class_file, buffer, do_raise)
                 class_file.attributes[attribute_info.name] = (
                     class_file.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
                 )
         except Exception as error:
-            if fail_fast:
+            if do_raise:
                 raise error
 
         logger.debug("Read classfile %r in %.1fms." % (class_file.name, (time.perf_counter_ns() - start) / 1_000_000))

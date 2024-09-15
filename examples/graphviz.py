@@ -45,10 +45,8 @@ if __name__ == "__main__":
         for edge in edges.copy():
             if type(edge) is kirjava.analysis.RetEdge or type(edge) is kirjava.analysis.JsrFallthroughEdge:
                 edges.remove(edge)
-        for ret_edges in trace.subroutines.values():
-            for ret_edge in ret_edges:
-                if not ret_edge in edges:
-                    edges.append(ret_edge)
+        for subroutine in trace.subroutines:
+            edges.append(subroutine.ret_edge.copy(to=subroutine.exit_block))
 
     for edge in edges:
         from_label = str(edge.from_).replace(" ", "_")

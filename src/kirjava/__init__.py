@@ -1,19 +1,10 @@
 #!/usr/bin/env python3
 
-# FIXME
-# __all__ = (
-#     "abc", "analysis", "classfile", "environment", "jarfile", "skeleton", "types",
-#     "Class", "Field", "Method",
-#     "ClassFile",
-#     "Environment",
-#     "Version",
-# )
-
 """
 kirjava - a Java bytecode library for Python.
 """
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 from . import (
     abc,

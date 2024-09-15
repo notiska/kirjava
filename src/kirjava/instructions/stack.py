@@ -51,21 +51,6 @@ class DupInstruction(Instruction):
     def trace(self, context: "Context") -> None:
         context.frame.dup()
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> DeclareStatement | None:
-    #     if not delta.dups:
-    #         return None
-    #
-    #     entry = tuple(delta.dups.keys())[0]
-    #     if entry.type == types.top_t:  # Don't accept these as valid types, and therefore don't lift them
-    #         return None
-    #
-    #     value = associations[entry]
-    #     variable = Variable(scope.variable_id, entry.type)
-    #     scope.declare(variable)
-    #     associations[entry] = variable
-    #
-    #     return DeclareStatement(variable, value)
-
 
 class DupX1Instruction(DupInstruction):
     """
@@ -98,26 +83,6 @@ class Dup2Instruction(Instruction):
 
     def trace(self, context: "Context") -> None:
         context.frame.dup(2)
-
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> CompoundStatement | DeclareStatement | None:
-    #     if not delta.dups:
-    #         return None
-    #
-    #     statements = []
-    #     for entry in delta.dups.keys():
-    #         if entry.type == types.top_t:
-    #             continue
-    #         value = associations[entry]
-    #         variable = Variable(scope.variable_id, entry.type)
-    #         scope.declare(variable)
-    #         associations[entry] = variable
-    #         statements.append(DeclareStatement(variable, value))
-    #
-    #     if len(statements) == 1:
-    #         return statements[0]
-    #     elif statements:
-    #         return CompoundStatement(statements)
-    #     return None
 
 
 class Dup2X1Instruction(Dup2Instruction):

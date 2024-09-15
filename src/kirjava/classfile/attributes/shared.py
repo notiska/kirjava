@@ -17,7 +17,7 @@ from . import AttributeInfo
 from .class_ import Record
 from ..._struct import *
 from ...constants import ConstantInfo, UTF8
-from ...version import Version
+from ...version import JAVA_1_0_2, JAVA_5
 
 if typing.TYPE_CHECKING:
     from .. import ClassFile, FieldInfo, MethodInfo
@@ -31,7 +31,7 @@ class Synthetic(AttributeInfo):
     """
 
     name_ = "Synthetic"
-    since = Version(45, 0)
+    since = JAVA_1_0_2
     locations = ("ClassFile", "FieldInfo", "MethodInfo")
 
     def __init__(self, parent: Union["ClassFile", "FieldInfo", "MethodInfo"]) -> None:
@@ -55,7 +55,7 @@ class Signature(AttributeInfo):
     __slots__ = ("signature",)
 
     name_ = "Signature"
-    since = Version(49, 0)
+    since = JAVA_5
     locations = ("ClassFile", "FieldInfo", "MethodInfo", "ComponentInfo")
 
     def __init__(
@@ -109,7 +109,7 @@ class Annotations(AttributeInfo):
 
     __slots__ = ("annotations",)
 
-    since = Version(49, 0)
+    since = JAVA_5
     locations = ("ClassFile", "FieldInfo", "MethodInfo")
 
     def __init__(

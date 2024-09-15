@@ -79,12 +79,6 @@ class GetFieldInstruction(FieldInstruction):
         if isinstance(field_type, Reference):
             context.constrain(entry, null_t, original=True)
 
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
-    #     if self.static:
-    #         associations[delta.pushes[0]] = GetStaticFieldExpression(self.reference)
-    #     else:
-    #         associations[delta.pushes[0]] = GetFieldExpression(associations[delta.pops[-1]], self.reference)
-
 
 class PutFieldInstruction(FieldInstruction):
     """
@@ -108,13 +102,3 @@ class PutFieldInstruction(FieldInstruction):
                 return  # Don't add the constraint as it will create a type conflict.
 
             context.constrain(entry, self.reference.class_.class_type)
-
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> SetFieldStatement | SetStaticFieldStatement:
-    #     if self.static:
-    #         return SetStaticFieldStatement(associations[delta.pops[-1]], self.reference)
-    #     else:
-    #         entry = delta.pops[0]
-    #         # TODO: Check if the class reference is the supertype of the current class and substitute it for the super variable
-    #         # if entry.type == types.this_t or entry.type == types.uninit_this_t:
-    #         #     if self.class_ ==
-    #         return SetFieldStatement(associations[entry], associations[delta.pops[-1]], self.reference)

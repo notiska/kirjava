@@ -16,7 +16,7 @@ from . import AttributeInfo
 from .. import attributes
 from ..._struct import *
 from ...constants import ConstantInfo, Class, MethodHandle, NameAndType, UTF8
-from ...version import Version
+from ...version import JAVA_1_0_2, JAVA_1_1, JAVA_5, JAVA_7, JAVA_11, JAVA_16, JAVA_17
 
 if typing.TYPE_CHECKING:
     from .. import ClassFile
@@ -30,7 +30,7 @@ class BootstrapMethods(AttributeInfo):
     __slots__ = ("methods",)
 
     name_ = "BootstrapMethods"
-    since = Version(51, 0)
+    since = JAVA_7
     locations = ("ClassFile",)
 
     def __init__(self, parent: "ClassFile") -> None:
@@ -118,7 +118,7 @@ class NestHost(AttributeInfo):
     __slots__ = ("host_class",)
 
     name_ = "NestHost"
-    since = Version(55, 0)
+    since = JAVA_11
     locations = ("ClassFile",)
     
     def __init__(self, parent: "ClassFile", host_class: Class | None = None) -> None:
@@ -149,7 +149,7 @@ class NestMembers(AttributeInfo):
     __slots__ = ("classes",)
 
     name_ = "NestMembers"
-    since = Version(55, 0)
+    since = JAVA_11
     locations = ("ClassFile",)
 
     def __init__(self, parent: "ClassFile", classes: Iterable[Class] | None = None) -> None:
@@ -187,7 +187,7 @@ class PermittedSubclasses(AttributeInfo):
     __slots__ = ("classes",)
 
     name_ = "PermittedSubclasses"
-    since = Version(61, 0)
+    since = JAVA_17
     locations = ("ClassFile",)
 
     def __init__(self, parent: "ClassFile", classes: Iterable[Class] | None = None) -> None:
@@ -226,7 +226,7 @@ class InnerClasses(AttributeInfo):
     __slots__ = ("classes",)
 
     name_ = "InnerClasses"
-    since = Version(45, 0)
+    since = JAVA_1_1  # FIXME: Can't find any mention of this in the HotJava VMSpec? Could be 1.0.2, need more testing.
     locations = ("ClassFile",)
 
     def __init__(self, parent: "ClassFile", classes: Iterable["InnerClasses.InnerClass"] | None = None) -> None:
@@ -488,7 +488,7 @@ class EnclosingMethod(AttributeInfo):
     __slots__ = ("class_", "method")
 
     name_ = "EnclosingMethod"
-    since = Version(49, 0)
+    since = JAVA_5
     locations = ("ClassFile",)
 
     def __init__(self, parent: "ClassFile", class_: Class | None = None, method: NameAndType | None = None) -> None:
@@ -526,7 +526,7 @@ class Record(AttributeInfo):
     __slots__ = ("components",)
 
     name_ = "Record"
-    since = Version(60, 0)
+    since = JAVA_16
     locations = ("ClassFile",)
 
     def __init__(self, parent: "ClassFile", components: Iterable["Record.ComponentInfo"] | None = None) -> None:
@@ -627,7 +627,7 @@ class SourceFile(AttributeInfo):
     __slots__ = ("source_file",)
 
     name_ = "SourceFile"
-    since = Version(45, 0)
+    since = JAVA_1_0_2
     locations = ("ClassFile",)
 
     def __init__(self, parent: "ClassFile", source_file: UTF8 | None = None) -> None:

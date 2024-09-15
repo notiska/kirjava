@@ -32,7 +32,6 @@ class ConstantInstruction(Instruction):
         :param constant: The constant that this instruction holds.
         """
 
-        # TODO: Might be nice to have it automatically work out constant types from the value passed?
         self.constant = constant
 
     def __repr__(self) -> str:
@@ -59,9 +58,6 @@ class ConstantInstruction(Instruction):
 
         entry = context.push(type_.as_vtype())
         context.constrain(entry, type_, original=True)
-
-    # def lift(self, delta: FrameDelta, scope: Scope, associations: dict[Entry, Value]) -> None:
-    #     associations[delta.pushes[0]] = ConstantValue(self.constant)
 
 
 class FixedConstantInstruction(ConstantInstruction):

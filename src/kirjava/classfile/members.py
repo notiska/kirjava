@@ -31,27 +31,27 @@ class FieldInfo(Field):
     __slots__ = ("_class", "name", "type", "access_flags", "attributes")
 
     @classmethod
-    def read(cls, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> "FieldInfo":
+    def read(
+            cls,
+            class_file: "ClassFile",
+            buffer: IO[bytes],
+            do_raise: bool = True,
+            force_descriptor: bool = False,
+    ) -> "FieldInfo":
         """
         Reads a field info from the buffer, given the class file it belongs too as well.
 
         :param class_file: The class file that the field belongs to.
         :param buffer: The binary buffer to read from.
-        :param fail_fast: If the field is obviously invalid, should we just throw an exception?
+        :param do_raise: Raise an exception if a non-critical parsing error occurs.
+        :param force_descriptor: Forces descriptor reading even if it is invalid.
         :return: The field info that was read.
         """
 
         access_flags, name_index, descriptor_index = unpack_HHH(buffer.read(6))
-        name = class_file.constant_pool.get_utf8(name_index, do_raise=fail_fast)
-        descriptor_ = class_file.constant_pool.get_utf8(descriptor_index, do_raise=fail_fast)
-
-        try:
-            type_ = descriptor.parse_field_descriptor(descriptor_)
-        except Exception as error:
-            type_ = descriptor.parse_field_descriptor(descriptor_, do_raise=fail_fast)
-
-            # logger.warning("Invalid descriptor %r in class %r: %r" % (descriptor_, class_file.name, error.args[0]))
-            logger.debug("Invalid descriptor on field %r." % ("%s#%s" % (class_file.name, name)), exc_info=True)
+        name = class_file.constant_pool.get_utf8(name_index, do_raise=do_raise)
+        descriptor_ = class_file.constant_pool.get_utf8(descriptor_index, do_raise=do_raise)
+        type_ = descriptor.parse_field_descriptor(descriptor_, do_raise=do_raise, force_read=force_descriptor)
 
         field_info = cls(class_file, name, type_)
         field_info.access_flags = access_flags
@@ -59,12 +59,12 @@ class FieldInfo(Field):
         try:
             attributes_count, = unpack_H(buffer.read(2))
             for index in range(attributes_count):
-                attribute_info = attributes.read_attribute(field_info, class_file, buffer, fail_fast)
+                attribute_info = attributes.read_attribute(field_info, class_file, buffer, do_raise)
                 field_info.attributes[attribute_info.name] = (
                         field_info.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
                 )
         except Exception as error:
-            if fail_fast:
+            if do_raise:
                 raise error
 
         return field_info
@@ -338,36 +338,29 @@ class MethodInfo(Method):
     __slots__ = ("name", "argument_types", "return_type", "access_flags", "attributes")
 
     @classmethod
-    def read(cls, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = True) -> "MethodInfo":
+    def read(
+            cls,
+            class_file: "ClassFile",
+            buffer: IO[bytes],
+            do_raise: bool = True,
+            force_descriptor: bool = False,
+    ) -> "MethodInfo":
         """
         Reads a method info from the buffer.
 
         :param class_file: The class file that the method belongs to.
         :param buffer: The binary buffer to read from.
-        :param fail_fast: If the method is obviously invalid, should we just throw an exception?
+        :param force_descriptor: Forces descriptor parsing, even if it is invalid.
+        :param do_raise: Raises an exception if a non-critical parsing error occurs.
         :return: The method info that was read.
         """
 
         access_flags, name_index, descriptor_index = unpack_HHH(buffer.read(6))
-        name = class_file.constant_pool.get_utf8(name_index, do_raise=fail_fast)
-        descriptor_ = class_file.constant_pool.get_utf8(descriptor_index, do_raise=fail_fast)
-
-        try:
-            type_ = descriptor.parse_method_descriptor(descriptor_)
-            argument_types, return_type = type_
-
-        except Exception as error:
-            type_ = descriptor.parse_method_descriptor(descriptor_, do_raise=fail_fast)
-
-            if type(type_) is not tuple or len(type_) != 2:
-                argument_types = (type_,)
-                return_type = type_
-            else:
-                argument_types, return_type = type_
-
-            # TODO: Proper warnings
-            # logger.warning("Invalid descriptor %r in class %r: %r" % (descriptor_, class_file.name, error))
-            logger.debug("Invalid descriptor on method %r." % ("%s#%s" % (class_file.name, name)), exc_info=True)
+        name = class_file.constant_pool.get_utf8(name_index, do_raise=do_raise)
+        descriptor_ = class_file.constant_pool.get_utf8(descriptor_index, do_raise=do_raise)
+        argument_types, return_type = descriptor.parse_method_descriptor(
+            descriptor_, do_raise=do_raise, force_read=force_descriptor,
+        )
 
         method_info = cls(class_file, name, argument_types, return_type)
         method_info.access_flags = access_flags
@@ -375,12 +368,12 @@ class MethodInfo(Method):
         try:
             attributes_count, = unpack_H(buffer.read(2))
             for index in range(attributes_count):
-                attribute_info = attributes.read_attribute(method_info, class_file, buffer, fail_fast)
+                attribute_info = attributes.read_attribute(method_info, class_file, buffer, do_raise)
                 method_info.attributes[attribute_info.name] = (
                     method_info.attributes.setdefault(attribute_info.name, ()) + (attribute_info,)
                 )
         except Exception as error:
-            if fail_fast:
+            if do_raise:
                 raise error
 
         return method_info

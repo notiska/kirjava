@@ -60,6 +60,13 @@ class Block(Source):
 
         return Block(self.label if label is None else label)
 
+    def summary(self) -> str:
+        """
+        :return: A print-friendly summary of this block.
+        """
+
+        return str(self)
+
 
 class ReturnBlock(Block):
     """
@@ -144,6 +151,13 @@ class Edge(Source):
 
         return Edge(self.from_ if from_ is None else from_, self.to if to is None else to)
 
+    def summary(self) -> str:
+        """
+        :return: A print-friendly summary of this edge.
+        """
+
+        return str(self)
+
 
 class Graph:
     """
@@ -215,9 +229,17 @@ class Graph:
 
     # ------------------------------ Public API ------------------------------ #
 
-    def new(self) -> Block:
+    def summary(self) -> str:
         """
-        Creates a new block with the correct label.
+        :return: A print-friendly summary of this graph.
+        """
+
+        summary = self.entry_block.summary() + "\n"
+        ...  # TODO
+
+    def block(self) -> Block:
+        """
+        Creates a new block with the next available label.
         """
 
         ...

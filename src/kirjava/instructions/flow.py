@@ -191,18 +191,6 @@ class BinaryComparisonJumpInstruction(ConditionalJumpInstruction):
         *_, entry_b = context.pop(1 + self.type.wide, as_tuple=True)
         context.constrain(entry_b, self.type)
 
-    # @abstractmethod
-    # def compare(self, entry_a: Entry, entry_b: Entry) -> JumpInstruction.Troolean:
-    #     """
-    #     Compares the two entries provided to this instruction and returns whether this jump will occur.
-    #
-    #     :param entry_a: The first entry.
-    #     :param entry_b: The second entry.
-    #     :return: The troolean indicating whether this jump will occur.
-    #     """
-    #
-    #     ...
-
 
 class TableSwitchInstruction(SwitchInstruction):
     """

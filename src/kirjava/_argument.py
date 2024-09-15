@@ -16,7 +16,6 @@ from .abc import Class
 from .types import descriptor, Reference, Type
 
 
-# FIXME: Cleanup!!
 ClassConstant = Union[Reference, "constants.Class", Class, str]
 FieldDescriptor = Type | str
 #                                 argument types              return type      full descriptor

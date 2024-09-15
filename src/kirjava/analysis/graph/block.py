@@ -15,6 +15,7 @@ from ...source import InstructionInBlock
 
 if typing.TYPE_CHECKING:
     from .. import Context
+    from ..frame import Frame
 
 
 class InsnBlock(Block):
@@ -22,17 +23,9 @@ class InsnBlock(Block):
     A block containing Java instructions.
     """
 
-    __slots__ = ("_instructions", "inline", "_hash")
+    __slots__ = ("instructions", "inline", "_hash")
 
-    @property
-    def instructions(self) -> tuple[Instruction, ...]:
-        """
-        :return: A tuple of the instructions in this block, cos I keep forgetting this is iterable.
-        """
-
-        return tuple(self._instructions)
-
-    def __init__(self, label: int, instructions_: Iterable[Instruction] | None = None) -> None:
+    def __init__(self, label: int, instructions_: Iterable[Instruction] | "InsnBlock" | None = None) -> None:
         """
         :param label: The label of this block.
         :param instructions_: JVM instructions to initialise this block with.
@@ -40,18 +33,18 @@ class InsnBlock(Block):
 
         super().__init__(label)
 
-        self._instructions: list[Instruction] = []
+        self.instructions: list[Instruction] = []
         self.inline = False  # Can this block be inlined?
 
         if instructions_ is not None:
-            self._instructions.extend(instructions_)
+            self.instructions.extend(instructions_)
 
         self._hash = id(self)
 
     def __repr__(self) -> str:
         # TODO: Pretty printing compatibility?
         return "<InsnBlock(label=%s, instructions=[%s]) at %x>" % (
-            self.label, ", ".join(map(str, self._instructions)), id(self),
+            self.label, ", ".join(map(str, self.instructions)), id(self),
         )
 
     def __eq__(self, other: Any) -> bool:
@@ -61,14 +54,13 @@ class InsnBlock(Block):
         # 42.9ns -> 14.5ns
         # 209ms (5.8%) -> 71ms (2.1%)
         # Funnily enough this is faster than the default behaviour, lol. I'll take an extra 2.7%.
-        # TODO: Need to be checking for future versions of Python to see if they improve this behaviour.
         return self._hash  # id(self)
 
     def __iter__(self) -> Iterator[Instruction]:
-        return iter(self._instructions)
+        return iter(self.instructions)
 
     def __getitem__(self, item: Any) -> tuple[Instruction, ...] | Instruction:
-        return self._instructions[item]
+        return self.instructions[item]
 
     def __setitem__(self, key: Any, value: Any) -> None:
         if type(key) is int or type(key) is slice:
@@ -78,38 +70,58 @@ class InsnBlock(Block):
                 raise ValueError("Expected an instruction, got %r." % value)
 
             self._check_instruction(value)
-            self._instructions[key] = value
+            self.instructions[key] = value
         else:
             raise TypeError("Expected int, got %r." % type(key))
 
     def __delitem__(self, item: Any) -> None:
         if type(item) is int or type(item) is slice:
-            del self._instructions[item]
+            del self.instructions[item]
 
     def __contains__(self, item: Any) -> bool:
-        return item in self._instructions
+        return item in self.instructions
 
     def __len__(self) -> int:
-        return len(self._instructions)
+        return len(self.instructions)
 
     def __bool__(self) -> bool:
-        return bool(self._instructions)
+        return bool(self.instructions)
 
     def copy(self, label: int | None = None, deep: bool = True) -> "InsnBlock":
         block = InsnBlock(label or self.label)
         block.inline = self.inline
 
         if not deep:
-            block._instructions.extend(self._instructions)
+            block.instructions.extend(self.instructions)
         else:
-            block._instructions.extend([instruction.copy() for instruction in self._instructions])
+            block.instructions.extend([instruction.copy() for instruction in self.instructions])
 
         return block
 
+    # ------------------------------ Trace ------------------------------ #
+
     def trace(self, context: "Context") -> None:
-        for index, instruction in enumerate(self._instructions):
+        """
+        Traces stack frame states for all instructions in the block.
+
+        :param context: The trace context to use.
+        """
+
+        for index, instruction in enumerate(self.instructions):
             context.source = InstructionInBlock(index, self, instruction)
             instruction.trace(context)
+
+    def trace_iter(self, context: "Context") -> Iterator["Context"]:
+        """
+        Iteratively traces stack frame states for all instructions in the block.
+
+        :param context: The trace context to use.
+        """
+
+        for index, instruction in enumerate(self.instructions):
+            context.source = InstructionInBlock(index, self, instruction)
+            instruction.trace(context)
+            yield context
 
     # ------------------------------ Utility ------------------------------ #
 
@@ -149,7 +161,7 @@ class InsnBlock(Block):
 
         if do_raise:
             self._check_instruction(instruction)
-        self._instructions.append(instruction)
+        self.instructions.append(instruction)
 
         return instruction
 
@@ -170,7 +182,7 @@ class InsnBlock(Block):
 
         if do_raise:
             self._check_instruction(instruction)
-        self._instructions.insert(index, instruction)
+        self.instructions.insert(index, instruction)
 
         return instruction
 
@@ -182,7 +194,7 @@ class InsnBlock(Block):
         :return: The same instruction.
         """
 
-        self._instructions.remove(instruction)
+        self.instructions.remove(instruction)
         return instruction
 
     def pop(self, index: int) -> Instruction:
@@ -193,14 +205,14 @@ class InsnBlock(Block):
         :return: The removed instruction.
         """
 
-        return self._instructions.pop(index)
+        return self.instructions.pop(index)
 
     def clear(self) -> None:
         """
         Clears all instructions from this block.
         """
 
-        self._instructions.clear()
+        self.instructions.clear()
 
     def strip(self, line_numbers: bool = True, local_variables: bool = True) -> None:
         """
@@ -212,14 +224,14 @@ class InsnBlock(Block):
 
         to_remove = []
 
-        for instruction in self._instructions:
+        for instruction in self.instructions:
             if line_numbers and type(instruction) is LineNumber:
                 to_remove.append(instruction)
             elif local_variables and type(instruction) is LocalVariable:
                 to_remove.append(instruction)
 
         for instruction in to_remove:
-            self._instructions.remove(instruction)
+            self.instructions.remove(instruction)
 
 
 class InsnReturnBlock(ReturnBlock, InsnBlock):

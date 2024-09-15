@@ -18,7 +18,7 @@ from .code import LineNumberTable, LocalVariableTable, LocalVariableTypeTable, S
 from .. import _instructions, attributes
 from ..._struct import *
 from ...constants import Class
-from ...version import Version
+from ...version import JAVA_1_0_2, JAVA_1_1
 
 if typing.TYPE_CHECKING:
     from .. import ClassFile, MethodInfo
@@ -35,70 +35,78 @@ class Code(AttributeInfo):
     __slots__ = ("__weakref__", "max_stack", "max_locals", "instructions", "exception_table", "attributes")
 
     name_ = "Code"
-    since = Version(45, 0)
+    since = JAVA_1_0_2
     locations = ("MethodInfo",)
 
-    _LEGACY_VERSION = Version(45, 3)
+    _LEGACY_VERSION = JAVA_1_1
 
     @property
-    def stackmap_table(self) -> Optional["StackMapTable"]:
+    def stackmap_table(self) -> StackMapTable | None:
         """
         :return: The stackmap table in this code, or None if there isn't one.
         """
 
-        stackmap_table, *_ = self.attributes.get(StackMapTable.name_, (None,))
-        return stackmap_table
+        for attribute in self.attributes.get(StackMapTable.name_, ()):
+            if type(attribute) is StackMapTable:
+                return attribute
+        return None
 
     @stackmap_table.setter
-    def stackmap_table(self, value: Optional["StackMapTable"]) -> None:
+    def stackmap_table(self, value: StackMapTable | None) -> None:
         if value is None:
             self.attributes.pop(StackMapTable.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def line_number_table(self) -> Optional["LineNumberTable"]:
+    def line_number_table(self) -> LineNumberTable | None:
         """
         :return: The line number table in this code, or None if there isn't one.
         """
 
-        line_number_table, *_ = self.attributes.get(LineNumberTable.name_, (None,))
-        return line_number_table
+        for attribute in self.attributes.get(LineNumberTable.name_, ()):
+            if type(attribute) is LineNumberTable:
+                return attribute
+        return None
 
     @line_number_table.setter
-    def line_number_table(self, value: Optional["LineNumberTable"]) -> None:
+    def line_number_table(self, value: LineNumberTable | None) -> None:
         if value is None:
             self.attributes.pop(LineNumberTable.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def local_variable_table(self) -> Optional["LocalVariableTable"]:
+    def local_variable_table(self) -> LocalVariableTable | None:
         """
         :return: The local variable table in this code, or None if there isn't one.
         """
 
-        local_variable_table, *_ = self.attributes.get(LocalVariableTable.name_, (None,))
-        return local_variable_table
+        for attribute in self.attributes.get(LocalVariableTable.name_, ()):
+            if type(attribute) is LocalVariableTable:
+                return attribute
+        return None
 
     @local_variable_table.setter
-    def local_variable_table(self, value: Optional["LocalVariableTable"]) -> None:
+    def local_variable_table(self, value: LocalVariableTable | None) -> None:
         if value is None:
             self.attributes.pop(LocalVariableTable.name_, None)
         else:
             self.attributes[value.name] = (value,)
 
     @property
-    def local_variable_type_table(self) -> Optional["LocalVariableTypeTable"]:
+    def local_variable_type_table(self) -> LocalVariableTypeTable | None:
         """
         :return: The local variable type table in this code, or None if there isn't one.
         """
 
-        local_variable_type_table, *_ = self.attributes.get(LocalVariableTypeTable.name_, (None,))
-        return local_variable_type_table
+        for attribute in self.attributes.get(LocalVariableTypeTable.name_, ()):
+            if type(attribute) is LocalVariableTypeTable:
+                return attribute
+        return None
 
     @local_variable_type_table.setter
-    def local_variable_type_table(self, value: Optional["LocalVariableTypeTable"]) -> None:
+    def local_variable_type_table(self, value: LocalVariableTypeTable | None) -> None:
         if value is None:
             self.attributes.pop(LocalVariableTypeTable.name_, None)
         else:
@@ -245,7 +253,7 @@ class Exceptions(AttributeInfo):
     __slots__ = ("exceptions",)
 
     name_ = "Exceptions"
-    since = Version(45, 0)
+    since = JAVA_1_0_2
     locations = ("MethodInfo",)
 
     def __init__(self, parent: "MethodInfo", exceptions: Iterable[Class] | None = None) -> None:

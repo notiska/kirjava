@@ -47,6 +47,14 @@ class Environment:
 
     __slots__ = ("providers", "_refs", "_classes", "_lock")
 
+    @property
+    def count(self) -> int:
+        """
+        :return: The current number of loaded classes.
+        """
+
+        return len(self._classes)
+
     def __init__(self, inherit: Optional["Environment"] = None) -> None:
         self.providers: list[Provider] = []
 

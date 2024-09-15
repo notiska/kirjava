@@ -70,15 +70,17 @@ def to_descriptor(*values: tuple[Type, ...] | Type, do_raise: bool = True) -> st
         base_type = _BACKWARD_BASE_TYPES.get(value)
         if base_type is not None:
             descriptor += base_type
+        elif isinstance(value, Class):
+            descriptor += "L%s;" % value.name
         else:
             value_class = type(value)
 
-            if value_class is Class:
-                descriptor += "L%s;" % value.name
-            elif value_class is Array:
+            if value_class is Array:
                 descriptor += "[" + to_descriptor(value.element, do_raise=do_raise)
             elif value_class is tuple:
                 descriptor += "(%s)" % to_descriptor(*value, do_raise=do_raise)
+            elif value_class is Invalid:
+                descriptor += value.descriptor
             elif do_raise:
                 raise TypeError("Invalid type for descriptor: %r." % value)
 
@@ -103,7 +105,7 @@ def next_argument(descriptor: str) -> tuple[Type, str]:
         return Class(descriptor[1: end_index]), descriptor[end_index + 1:]
 
     elif descriptor[0] == "[":
-        element_type, descriptor = next_argument(descriptor[1:])  # FIXME: This could be done so much better
+        element_type, descriptor = next_argument(descriptor[1:])
         return Array(element_type), descriptor
 
     else:
@@ -116,8 +118,8 @@ def next_argument(descriptor: str) -> tuple[Type, str]:
 def parse_field_descriptor(
         descriptor: str,
         *,
-        force_read: bool = False,
         do_raise: bool = True,
+        force_read: bool = False,
         reference_only: bool = False,
 ) -> Type:
     """
@@ -125,8 +127,8 @@ def parse_field_descriptor(
     Note: This cannot parse signatures, use the signature parser instead.
 
     :param descriptor: The field descriptor.
-    :param force_read: Force the already parsed field descriptor to be returned, even if there is an error.
     :param do_raise: Raises an exception if the descriptor is invalid. Otherwise, returns an InvalidType.
+    :param force_read: Force the already parsed field descriptor to be returned, even if there is an error.
     :param reference_only: Expect only a reference type.
     :return: The parsed field type.
     """
@@ -160,23 +162,23 @@ def parse_field_descriptor(
 def parse_method_descriptor(
         descriptor: str,
         *,
-        force_read: bool = False,
         do_raise: bool = True,
-) -> tuple[tuple[Type, ...], Type] | Invalid:
+        force_read: bool = False,
+) -> tuple[tuple[Type, ...], Type]:
     """
     Parses a method descriptor.
     Note: This cannot parse signatures, use the signature parser instead.
 
     :param descriptor: The method descriptor.
-    :param force_read: Force the already parsed method descriptor to be returned, even if there is an error.
     :param do_raise: Raises an exception if the descriptor is invalid. Otherwise, returns an invalid type.
+    :param force_read: Force the already parsed method descriptor to be returned, even if there is an error.
     :return: The parsed method types and the return type.
     """
 
     if not force_read and not descriptor:
         if do_raise:
             raise ValueError("Descriptor is empty.")
-        return Invalid(descriptor)
+        return (Invalid(descriptor),), Invalid(descriptor)
 
     # This is extra, but who cares :p, if it causes MAJOR issues I'll remove it later
     preceding, arguments_descriptor, remaining = _find_enclosing(descriptor, "(", ")")
@@ -187,31 +189,31 @@ def parse_method_descriptor(
         argument_types.append(type_)
 
     return_type, remaining = next_argument(remaining)
-    
+
     if not force_read:
         # Checking for leading / trailing data
         if preceding:
             if do_raise:
                 raise ValueError("Leading data %r in descriptor." % preceding)
-            return Invalid(descriptor)
+            return (Invalid(descriptor),), Invalid(descriptor)
 
         if remaining:
             if do_raise:
                 raise ValueError("Trailing data %r in descriptor." % remaining)
-            return Invalid(descriptor)
+            return (Invalid(descriptor),), Invalid(descriptor)
 
         # Check we have arguments
         if arguments_descriptor is None:
             if do_raise:
                 raise ValueError("No argument types found.")
-            return Invalid(descriptor)
+            return (Invalid(descriptor),), Invalid(descriptor)
 
         # Check the types in the arguments are valid (i.e. no void types)
         for argument_type in argument_types:
             if argument_type == void_t or type(argument_type) is Invalid:
                 if do_raise:
                     raise TypeError("Invalid argument type %r found." % argument_type)
-                return Invalid(descriptor)
+                return (Invalid(descriptor),), Invalid(descriptor)
 
         # Check the return type is valid
         if type(return_type) is Invalid:

@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
+__all__ = (
+    "Generifier",
+)
+
 """
-Type generification, used in the assembler.
+Type inference and generification.
 """
 
 from ..abc import Class
@@ -15,13 +19,20 @@ class Generifier:
     A reference type generifier.
     """
 
-    __slots__ = ("environment", "_cache",)
+    __slots__ = ("environment", "_cache")
 
     def __init__(self, environment: Environment) -> None:
         self.environment = environment
         self._cache: dict[tuple[Reference, Reference], Class] = {}
 
     def generify(self, type_a: Reference, type_b: Reference, *, do_raise: bool = True) -> Reference:
+        """
+        Attempts to find the lowest common supertype of two reference types.
+
+        :param do_raise: Raises an exception if required classes cannot be found.
+        :return: The lowest common supertype that was found, may be java/lang/Object in error cases.
+        """
+
         common = self._cache.get((type_a, type_b))
         if common is not None:
             return common.get_type()
@@ -37,10 +48,10 @@ class Generifier:
         error: Exception | None = None  # Might throw this later if needs be.
         supertypes: set[Class] = set()
 
-        # Special handling for arrays. We need to try and merge their element types, this gets a little
-        # more difficult with primitive and multi-dimensional arrays.
-        if type(type_a) is Array:
-            if type(type_b) is not Array:
+        # Special handling for arrays. We need to try and merge their element types, this gets a little more difficult
+        # with primitive and multi-dimensional arrays.
+        if type(type_a) is Array or type(type_b) is Array:
+            if type(type_a) is not type(type_b):
                 return object_t
 
             dim_a = type_a.dimensions
@@ -54,10 +65,8 @@ class Generifier:
             type_a = type_a.lowest_element
             type_b = type_b.lowest_element
 
-            # FIXME: Does the assembler get to this point? Array.mergeable() might handle this.
             # Handling primitive arrays here, we can try to merge them and if that's not possible then we'll set the
             # lowest to object_t (or an array with a lower dimension).
-            # TODO: Profile, is this even faster?
             a_primitive = isinstance(type_a, Primitive)
             if a_primitive != isinstance(type_b, Primitive) or (a_primitive and type_a != type_b):
                 dim_a -= 1
@@ -67,7 +76,6 @@ class Generifier:
 
         # Try and get the type hierarchy for the higher type first. We'll check if we can find the lower type directly.
         # If not, we'll then go through the lower type's hierarchy.
-        low = None
         try:
             class_ = self.environment.find_class(type_a.name)
             # .super_name is a safer way of checking if the class has a superclass for classfiles because .super can
@@ -85,8 +93,7 @@ class Generifier:
                 low = None
 
         except ClassNotFoundError as error_:
-            # FIXME: I don't think we can assign directly to error, afaik there's an implicit `del error`?
-            error = error_
+            error = error_  # Implicit `del error`?
             low = None
 
         if low is not None:
@@ -95,8 +102,6 @@ class Generifier:
             return low
 
         # Going through the lower type's hierarchy now, as mentioned above.
-        # TODO: Cache type hierarchies perhaps?
-        low = None
         try:
             class_ = self.environment.find_class(type_b.name)
             while class_.super_name is not None:

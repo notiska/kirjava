@@ -82,7 +82,6 @@ class InsnGraph(Graph):
 
     def __init__(self, method: "MethodInfo") -> None:
         super().__init__(method, InsnBlock(0), InsnReturnBlock(), InsnRethrowBlock())
-
         self.source_map: dict[int, InstructionInBlock | InsnEdge] = {}
 
     def __repr__(self) -> str:
@@ -96,42 +95,52 @@ class InsnGraph(Graph):
         :return: The copied graph.
         """
 
-        # Ugly but performant.
-        graph = InsnGraph.__new__(InsnGraph)
-        Graph.__init__(
-            graph, self.method,
-            self.entry_block.copy(deep=deep),
-            InsnReturnBlock(),
-            InsnRethrowBlock(),
-        )
+        graph = InsnGraph(self.method)
 
-        blocks = graph._blocks
-        forward_edges = graph._forward_edges
+        blocks         = graph._blocks
+        forward_edges  = graph._forward_edges
         backward_edges = graph._backward_edges
-        opaque_edges = graph._opaque_edges
+        opaque_edges   = graph._opaque_edges
+        source_map     = graph.source_map
 
         for label, block in self._blocks.items():
-            if block is self.entry_block or block is self.return_block or block is self.rethrow_block:
+            if block is self.return_block or block is self.rethrow_block:
                 continue
-            block = block.copy(deep=deep)
-            blocks[label] = block
+            blocks[label] = block.copy(deep=deep)
+        graph.entry_block = blocks[0]
 
-        for block, edges in self._forward_edges.items():
-            block = blocks[block.label]
-            new_edges = forward_edges[block]
+        for from_, edges in self._forward_edges.items():
+            from_ = blocks[from_.label]
+            new_edges = forward_edges[from_]
 
             for edge in edges:
                 if edge.to is not None:
-                    edge = edge.copy(from_=block, to=blocks[edge.to.label], deep=deep)
+                    edge = edge.copy(from_=from_, to=blocks[edge.to.label], deep=deep)
                     new_edges.add(edge)
                     backward_edges[edge.to].add(edge)
 
                 else:
-                    edge = edge.copy(from_=block, deep=deep)
+                    edge = edge.copy(from_=from_, deep=deep)
                     new_edges.add(edge)
                     opaque_edges.add(edge)
 
-        # TODO: Copy the source map too.
+        for offset, source in self.source_map.items():
+            if type(source) is InstructionInBlock:
+                block = blocks[source.block.label]
+                source_map[offset] = InstructionInBlock(source.index, block, block[source.index])
+            elif isinstance(source, InsnEdge):
+                from_ = blocks[source.from_.label]
+                if source.to is not None:
+                    to = blocks[source.to.label]
+                    for edge in forward_edges[from_].intersection(backward_edges[to]):
+                        if type(edge) is type(source):
+                            source_map[offset] = edge
+                            break
+                else:
+                    for edge in forward_edges[from_]:
+                        if edge.to is None and type(edge) is type(source):
+                            source_map[offset] = edge
+                            break
 
         return graph
 
@@ -197,7 +206,7 @@ class InsnGraph(Graph):
 
     # ------------------------------ Blocks ------------------------------ #
 
-    def new(self) -> InsnBlock:
+    def block(self) -> InsnBlock:
         block = InsnBlock(max(self._blocks, default=0) + 1)
         self.add(block, check=False)
         return block
@@ -215,7 +224,7 @@ class InsnGraph(Graph):
         if block_or_label is None or not block_or_label in self._blocks.values():
             raise ValueError("Provided block or label %r is not a valid block in this graph." % block_or_label)
 
-        instructions_ = list(block_or_label._instructions)
+        instructions_ = list(block_or_label.instructions)
         edge_instruction = False
         for out_edge in self._forward_edges.get(block_or_label, ()):
             if not edge_instruction and out_edge.instruction is not None:

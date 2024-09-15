@@ -115,17 +115,18 @@ ATTRIBUTES = (
 _attribute_map = {attribute.name_: attribute for attribute in ATTRIBUTES}
 
 
-def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes], fail_fast: bool = False) -> AttributeInfo:
+def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes], do_raise: bool = True) -> AttributeInfo:
     """
     Reads an attribute info from the buffer.
     
     :param parent: The parent (element in the class file, or the class file itself) that the attribute belongs to.
     :param class_file: The class file that the attribute belongs to.
     :param buffer: The buffer to read from.
-    :param fail_fast: Don't read the attribute if it's obvious that it isn't valid.
+    :param do_raise: Raise an exception if a non-critical parsing error occurs.
     :return: The attribute.
     """
 
+    # Note: Code, LNT and LVT report as u2 for length in <45.3...
     name_index, attribute_length = unpack_HI(buffer.read(6))
     name = class_file.constant_pool.get_utf8(name_index, "")
 
@@ -137,7 +138,7 @@ def read_attribute(parent: Any, class_file: "ClassFile", buffer: IO[bytes], fail
         if version_valid and location_valid:
             try:
                 attribute_info = attribute(parent)
-                attribute_info.read(class_file, buffer, fail_fast)
+                attribute_info.read(class_file, buffer, do_raise)
                 # logger.debug("Found attribute %r." % attribute_info)
 
                 difference = buffer.tell() - (offset + attribute_length)

@@ -158,14 +158,14 @@ def assemble(
 
         for block in blocks.values():
             index = 0
-            while index < len(block._instructions):  # We'll be modifying the list in place
-                instruction = block._instructions[index]
+            while index < len(block.instructions):  # We'll be modifying the list in place
+                instruction = block.instructions[index]
                 index += 1
 
                 if adjust_ldcs and instruction == instructions.ldc:
                     cp_index = classfile.constant_pool.add(instruction.constant)
                     if cp_index > 255:
-                        block._instructions[index] = instructions.ldc_w(instruction.constant)
+                        block.instructions[index] = instructions.ldc_w(instruction.constant)
                         adjusted_ldcs += 1
                     continue
 
@@ -174,14 +174,14 @@ def assemble(
 
                 # Check if we need to remove a stray wide instruction
                 if instruction == instructions.wide:
-                    next_instruction = block._instructions[index] if index < len(block._instructions) else None
+                    next_instruction = block.instructions[index] if index < len(block.instructions) else None
                     if (
                         not isinstance(next_instruction, LoadLocalInstruction) and
                         not isinstance(next_instruction, StoreLocalInstruction) and
                         not next_instruction in (instructions.iinc, instructions.ret)
                     ):
                         index -= 1
-                        block._instructions.pop(index)
+                        block.instructions.pop(index)
                         removed_wides += 1
                     continue
 
@@ -199,14 +199,14 @@ def assemble(
                     if not has_max_locals and local_index > code.max_locals:
                         code.max_locals = local_index
 
-                    previous_instruction = block._instructions[index - 2] if index > 1 else None
+                    previous_instruction = block.instructions[index - 2] if index > 1 else None
                     if previous_instruction == instructions.wide and index_valid and value_valid:
                         index -= 1
-                        block._instructions.pop(index)
+                        block.instructions.pop(index)
                         removed_wides += 1
                     elif previous_instruction != instructions.wide and (not index_valid or not value_valid):
                         index += 1  # Skip the wide instruction we're about to add
-                        block._instructions.insert(index, instructions.wide())
+                        block.instructions.insert(index, instructions.wide())
                         added_wides += 1
 
             if not adjust_wides:
@@ -220,12 +220,12 @@ def assemble(
                         code.max_locals = local_index
 
                     # Basically the same deal as above
-                    previous_instruction = block._instructions[-1] if block._instructions else None
+                    previous_instruction = block.instructions[-1] if block.instructions else None
                     if previous_instruction == instructions.wide and local_index <= 255:
-                        block._instructions.pop(-1)
+                        block.instructions.pop(-1)
                         removed_wides += 1
                     elif local_index > 255:
-                        block._instructions.append(instructions.wide())
+                        block.instructions.append(instructions.wide())
                         added_wides += 1
 
         has_max_locals = has_max_locals or adjust_wides
@@ -300,7 +300,7 @@ def assemble(
                 out_edges.remove(fallthrough_edge)
                 in_edges.remove(fallthrough_edge)
 
-                intermediary_block = graph.new()
+                intermediary_block = graph.block()
                 intermediary_block.inline = True
 
                 new_fallthrough_edge = FallthroughEdge(block, intermediary_block)
@@ -329,6 +329,8 @@ def assemble(
     #           Stackmap pre-generation (type inference)           #
     # ------------------------------------------------------------ #
 
+    # TODO: May want to move the type inference to a separate file?
+
     environment = classfile.environment or DEFAULT
     frame_precalc: dict[InsnBlock, tuple[list[Type], list[Type]]] = {}
 
@@ -341,27 +343,27 @@ def assemble(
         # Caches the type inference for entries as it can be very expensive to compute, especially for larger methods
         # with many exception handlers.
         inference_cache: dict[Entry, set[Type]] = {}
-        checkcasts_added: set[Source] = set()
 
         uninit_resolved = 0
 
         for block in blocks.values():
             if block in skipped:
                 continue
-            entry_frames = trace.entries.get(block)
-            if not entry_frames:  # FIXME: Determine entry constraints or nop instructions (probably will do the latter).
-                if block in (graph.entry_block, graph.return_block, graph.rethrow_block):
+            entries = trace.entries.get(block)
+            if not entries:  # FIXME: Determine entry constraints or nop instructions (probably will do the latter).
+                if block in (graph.entry_block, graph.return_block, graph.rethrow_block) or block.inline:
                     continue
                 raise NotImplementedError("Can't yet deal with dead blocks.")  # continue
 
             skip = False
             live = trace.pre_liveness[block].copy()
 
-            stack_depth = len(entry_frames[0].stack)  # As a sidenote, this is an arbitrary choice of frame to use.
+            stack_depths = [len(frame.stack) for frame in entries]
+            stack_depth = max(set(stack_depths), key=stack_depths.count)  # Choosing the most common stack depth.
 
             # Initial pass through to determine if we need to skip this block and also to add any uninitialized_this_ts
             # to the live locals (explanation below).
-            for frame in entry_frames:
+            for frame in entries:
                 if len(frame.stack) != stack_depth:
                     # Again, another case where do_raise=True would've caught this earlier. We will have to skip over
                     # this frame fully though if we encounter this.
@@ -384,7 +386,7 @@ def assemble(
             stack   = [{top_t} for index in range(stack_depth)]
             locals_ = [{top_t} for index in range(max_local)]
 
-            for frame in entry_frames:
+            for frame in entries:
                 for index, entry in enumerate(frame.stack):
                     inference = inference_cache.get(entry)
                     if inference is None:
@@ -464,7 +466,7 @@ def assemble(
                         type_, = valid
                         array[index] = type_
                         if type(type_) is Uninitialized:
-                            uninitialised[entry_frames[0].stack[index]].append((array, index))
+                            uninitialised[entries[0].stack[index]].append((array, index))
                         continue
 
                     lowest = valid.pop()
@@ -486,12 +488,9 @@ def assemble(
                     uninit_offset_edges.setdefault(source, []).extend(positions)
 
             uninit_resolved += len(uninitialised)
-
             frame_precalc[block] = (stack, locals_)
 
         logger.debug(" - stackmap pre-generation (%i inference cache entries)" % len(inference_cache))
-        if checkcasts_added:
-            logger.debug("    - %i checkcast(s) added." % len(checkcasts_added))
         if uninit_resolved:
             logger.debug("    - %i uninitialised type source(s) resolved." % uninit_resolved)
 
@@ -701,7 +700,7 @@ def assemble(
             forward_edges[edge.from_].remove(edge)
             backward_edges[edge.to].remove(edge)
 
-            intermediary_block = graph.new()
+            intermediary_block = graph.block()
             # block.inline = True
             order.insert(order.index(edge.to) + 1, intermediary_block)  # We want to write it immediately after
 

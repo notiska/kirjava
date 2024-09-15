@@ -10,7 +10,7 @@ Stack frames (and others).
 
 import operator
 import typing
-from typing import Any, Iterator, Optional
+from typing import Any, Iterable, Iterator, Optional, Union
 
 from ..abc import Method, Source
 from ..error import MergeDepthError, MergeMissingLocalError
@@ -239,6 +239,8 @@ class Entry:
 
     def inference(self, *, as_vtypes: bool = True, no_nullable: bool = False) -> set[Type]:
         """
+        Basic type inference given the constraints on this entry.
+
         :param as_vtypes: Turns all constraints into verification types.
         :param no_nullable: Removes the null_t in nullable types.
         :return: A set of types this entry could be.
@@ -357,73 +359,73 @@ class Entry:
             return self._hash
 
 
-# class Delta:
-#     """
-#     A delta between two frames.
-#     """
-#
-#     __slots__ = ("pushes", "pops", "overwrites", "_hash")
-#
-#     def __init__(
-#             self,
-#             pushes: Iterable[Union[Entry, "Delta.Identity"]],
-#             pops: Iterable[Union[Entry, "Delta.Identity"]],
-#             # Excellent typing...
-#             overwrites: Iterable[tuple[int, Union[Entry, "Delta.Identity"] | None, Union[Entry, "Delta.Identity"] | None]],
-#     ) -> None:
-#         """
-#         :param pushes: The entries pushed to the stack.
-#         :param pops: The entries popped from the stack.
-#         :param overwrites: The entries overwritten in the locals.
-#         """
-#
-#         self.pushes = tuple(pushes)
-#         self.pops = tuple(pops)
-#         self.overwrites = tuple(overwrites)
-#
-#         self._hash = hash((self.pushes, self.pops, self.overwrites))
-#
-#     def __repr__(self) -> str:
-#         return "<Delta(pushes=[%s], pops=[%s], overwrites={%s})>" % (
-#             ", ".join(map(str, self.pushes)), ", ".join(map(str, self.pops)),
-#             ", ".join(
-#                 "%i=%s->%s" % (index, old, new)
-#                 for index, old, new in sorted(self.overwrites, key=operator.itemgetter(0))
-#             ),
-#         )
-#
-#     def __eq__(self, other: Any) -> bool:
-#         return (
-#             type(other) is Delta and
-#             self.pushes == other.pushes and
-#             self.pops == other.pops and
-#             self.overwrites == other.overwrites
-#         )
-#
-#     def __hash__(self) -> int:
-#         return self._hash
-#
-#     class Identity:
-#         """
-#         A representation of a generalised entry.
-#         """
-#
-#         __slots__ = ("id", "expect",)
-#
-#         def __init__(self, id_: int, expect: Type | None = None) -> None:
-#             """
-#             :param id_: An ID to represent this identity, unique to the delta it's in.
-#             :param expect: The expected type of this entry.
-#             """
-#
-#             self.id = id_
-#             self.expect = expect
-#
-#         def __repr__(self) -> str:
-#             return "<Identity(id=%i, expect=%s)>" % (self.id, self.expect)
-#
-#         def __str__(self) -> str:
-#             return "id=%i" % self.id
+class Delta:
+    """
+    A delta between two frames.
+    """
+
+    __slots__ = ("pushes", "pops", "overwrites", "_hash")
+
+    def __init__(
+            self,
+            pushes: Iterable[Union[Entry, "Delta.Identity"]],
+            pops: Iterable[Union[Entry, "Delta.Identity"]],
+            # Excellent typing...
+            overwrites: Iterable[tuple[int, Union[Entry, "Delta.Identity"] | None, Union[Entry, "Delta.Identity"] | None]],
+    ) -> None:
+        """
+        :param pushes: The entries pushed to the stack.
+        :param pops: The entries popped from the stack.
+        :param overwrites: The entries overwritten in the locals.
+        """
+
+        self.pushes = tuple(pushes)
+        self.pops = tuple(pops)
+        self.overwrites = tuple(overwrites)
+
+        self._hash = hash((self.pushes, self.pops, self.overwrites))
+
+    def __repr__(self) -> str:
+        return "<Delta(pushes=[%s], pops=[%s], overwrites={%s})>" % (
+            ", ".join(map(str, self.pushes)), ", ".join(map(str, self.pops)),
+            ", ".join(
+                "%i=%s->%s" % (index, old, new)
+                for index, old, new in sorted(self.overwrites, key=operator.itemgetter(0))
+            ),
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            type(other) is Delta and
+            self.pushes == other.pushes and
+            self.pops == other.pops and
+            self.overwrites == other.overwrites
+        )
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    class Identity:
+        """
+        A representation of a generalised entry.
+        """
+
+        __slots__ = ("id", "expect",)
+
+        def __init__(self, id_: int, expect: Type | None = None) -> None:
+            """
+            :param id_: An ID to represent this identity, unique to the delta it's in.
+            :param expect: The expected type of this entry.
+            """
+
+            self.id = id_
+            self.expect = expect
+
+        def __repr__(self) -> str:
+            return "<Identity(id=%i, expect=%s)>" % (self.id, self.expect)
+
+        def __str__(self) -> str:
+            return "id=%i" % self.id
 
 
 class Frame:
@@ -486,23 +488,23 @@ class Frame:
     def __eq__(self, other: Any) -> bool:
         return type(other) is Frame and self.stack == other.stack and self.locals == other.locals
 
-    # def __add__(self, other: Any) -> "Frame":
-    #     if type(other) is not Delta:
-    #         raise TypeError("Unsupported operand type(s) for +: %r and %r." % (Frame, type(other)))
-    #
-    #     frame = Frame(self)
-    #     frame.add(other)
-    #     return frame
-    #
-    # def __sub__(self, other: Any) -> Union[Delta, "Frame"]:
-    #     if type(other) is Frame:
-    #         return self.delta(other)
-    #     elif type(other) is Delta:
-    #         frame = Frame(self)
-    #         frame.sub(other)
-    #         return frame
-    #     else:
-    #         raise TypeError("Unsupported operand type(s) for -: %r and %r." % (Frame, type(other)))
+    def __add__(self, other: Any) -> "Frame":
+        if type(other) is not Delta:
+            raise TypeError("Unsupported operand type(s) for +: %r and %r." % (Frame, type(other)))
+
+        frame = Frame()
+        frame.add(other)
+        return frame
+
+    def __sub__(self, other: Any) -> Union[Delta, "Frame"]:
+        if type(other) is Frame:
+            return self.delta(other)
+        elif type(other) is Delta:
+            frame = Frame()
+            frame.sub(other)
+            return frame
+        else:
+            raise TypeError("Unsupported operand type(s) for -: %r and %r." % (Frame, type(other)))
 
     # ------------------------------ Misc operations ------------------------------ #
 
@@ -607,127 +609,127 @@ class Frame:
 
         return True
 
-    # def add(self, delta: Delta) -> None:
-    #     """
-    #     Adds a frame delta to this frame, in place.
-    #     """
-    #
-    #     if len(delta.pops) > len(self.stack):
-    #         raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
-    #
-    #     identities = {}
-    #
-    #     for index, entry in enumerate(delta.pops):
-    #         actual = self.stack[-index]
-    #         if actual == entry:
-    #             continue
-    #         elif type(entry) is Delta.Identity and (entry.expect is None or entry.expect == actual.type):
-    #             identities[entry.id] = actual
-    #             continue
-    #         raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
-    #
-    #     for index, old, new in delta.overwrites:
-    #         actual = self.locals.get(index)
-    #         if actual == old:
-    #             continue
-    #         elif type(old) is Delta.Identity and actual is not None and (old.expect is None or old.expect == actual.type):
-    #             identities[old.id] = actual
-    #             continue
-    #         raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
-    #
-    #     for entry in delta.pops:
-    #         self.stack.pop()
-    #
-    #     for index, entry in enumerate(delta.pushes):
-    #         if type(entry) is Delta.Identity:
-    #             self.stack.append(identities[entry.id])
-    #         else:
-    #             self.stack.append(entry)
-    #
-    #     for index, old, new in delta.overwrites:
-    #         if new is None:
-    #             self.locals.pop(index)
-    #         elif type(new) is Delta.Identity:
-    #             self.locals[index] = identities[new.id]
-    #         else:
-    #             self.locals[index] = new
-    #
-    # def sub(self, delta: Delta) -> None:
-    #     """
-    #     Subtracts a frame delta from this frame, in place.
-    #     """
-    #
-    #     if len(delta.pushes) > len(self.stack):
-    #         raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
-    #
-    #     identities = {}
-    #
-    #     for index, entry in enumerate(delta.pushes):
-    #         actual = self.stack[-index]
-    #         if actual == entry:
-    #             continue
-    #         elif type(entry) is Delta.Identity and (entry.expect is None or entry.expect == actual.type):
-    #             identities[entry.id] = actual
-    #             continue
-    #         raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
-    #
-    #     for index, old, new in delta.overwrites:
-    #         actual = self.locals.get(index)
-    #         if actual == new:
-    #             continue
-    #         elif type(new) is Delta.Identity and actual is not None and (new.expect is None or new.expect == actual.type):
-    #             identities[new.id] = actual
-    #             continue
-    #         raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
-    #
-    #     for entry in delta.pushes:
-    #         self.stack.pop()
-    #
-    #     for entry in delta.pops:
-    #         if type(entry) is Delta.Identity:
-    #             self.stack.append(identities[entry.id])
-    #         else:
-    #             self.stack.append(entry)
-    #
-    #     for index, old, new in delta.overwrites:
-    #         if old is None:
-    #             self.locals.pop(index)
-    #             continue
-    #         elif type(old) is Delta.Identity:
-    #             old = identities[old.id]
-    #         else:
-    #             self.locals[index] = old
-    #
-    # def delta(self, other: "Frame") -> Delta:
-    #     """
-    #     Calculates the delta between this frame and another.
-    #
-    #     :param other: The other frame.
-    #     """
-    #
-    #     pushes = []
-    #     pops = []
-    #     overwrites = []
-    #
-    #     index = 0
-    #     for index, (entry_a, entry_b) in enumerate(zip(self.stack, other.stack)):
-    #         # Direct comparison because == checks for parents too, which may not be what we want in all cases
-    #         if entry_a is not entry_b and entry_a != self.TOP and entry_b != self.TOP:
-    #             break
-    #
-    #     for entry in self.stack[index:]:
-    #         pops.append(entry)
-    #     for entry in other.stack[index:]:
-    #         pushes.append(entry)
-    #
-    #     for index, entry in other.locals.items():
-    #         if not index in self.locals or entry != self.locals[index]:
-    #             overwrites.append((index, self.locals.get(index), entry))
-    #     for index, entry in self.locals.items():
-    #         if not index in other.locals:
-    #             overwrites.append((index, entry, None))
-    #
-    #     return Delta(pushes, pops, overwrites)
+    def add(self, delta: Delta) -> None:
+        """
+        Adds a frame delta to this frame, in place.
+        """
+
+        if len(delta.pops) > len(self.stack):
+            raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
+
+        identities = {}
+
+        for index, entry in enumerate(delta.pops):
+            actual = self.stack[-index]
+            if actual == entry:
+                continue
+            elif type(entry) is Delta.Identity and (entry.expect is None or entry.expect == actual.type):
+                identities[entry.id] = actual
+                continue
+            raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
+
+        for index, old, new in delta.overwrites:
+            actual = self.locals.get(index)
+            if actual == old:
+                continue
+            elif type(old) is Delta.Identity and actual is not None and (old.expect is None or old.expect == actual.type):
+                identities[old.id] = actual
+                continue
+            raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
+
+        for entry in delta.pops:
+            self.stack.pop()
+
+        for index, entry in enumerate(delta.pushes):
+            if type(entry) is Delta.Identity:
+                self.stack.append(identities[entry.id])
+            else:
+                self.stack.append(entry)
+
+        for index, old, new in delta.overwrites:
+            if new is None:
+                self.locals.pop(index)
+            elif type(new) is Delta.Identity:
+                self.locals[index] = identities[new.id]
+            else:
+                self.locals[index] = new
+
+    def sub(self, delta: Delta) -> None:
+        """
+        Subtracts a frame delta from this frame, in place.
+        """
+
+        if len(delta.pushes) > len(self.stack):
+            raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
+
+        identities = {}
+
+        for index, entry in enumerate(delta.pushes):
+            actual = self.stack[-index]
+            if actual == entry:
+                continue
+            elif type(entry) is Delta.Identity and (entry.expect is None or entry.expect == actual.type):
+                identities[entry.id] = actual
+                continue
+            raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
+
+        for index, old, new in delta.overwrites:
+            actual = self.locals.get(index)
+            if actual == new:
+                continue
+            elif type(new) is Delta.Identity and actual is not None and (new.expect is None or new.expect == actual.type):
+                identities[new.id] = actual
+                continue
+            raise ValueError("Delta %r cannot be applied to frame %r." % (delta, self))
+
+        for entry in delta.pushes:
+            self.stack.pop()
+
+        for entry in delta.pops:
+            if type(entry) is Delta.Identity:
+                self.stack.append(identities[entry.id])
+            else:
+                self.stack.append(entry)
+
+        for index, old, new in delta.overwrites:
+            if old is None:
+                self.locals.pop(index)
+                continue
+            elif type(old) is Delta.Identity:
+                old = identities[old.id]
+            else:
+                self.locals[index] = old
+
+    def delta(self, other: "Frame") -> Delta:
+        """
+        Calculates the delta between this frame and another.
+
+        :param other: The other frame.
+        """
+
+        pushes = []
+        pops = []
+        overwrites = []
+
+        index = 0
+        for index, (entry_a, entry_b) in enumerate(zip(self.stack, other.stack)):
+            # Direct comparison because == checks for parents too, which may not be what we want in all cases
+            if entry_a is not entry_b and entry_a != self.TOP and entry_b != self.TOP:
+                break
+
+        for entry in self.stack[index:]:
+            pops.append(entry)
+        for entry in other.stack[index:]:
+            pushes.append(entry)
+
+        for index, entry in other.locals.items():
+            if not index in self.locals or entry != self.locals[index]:
+                overwrites.append((index, self.locals.get(index), entry))
+        for index, entry in self.locals.items():
+            if not index in other.locals:
+                overwrites.append((index, entry, None))
+
+        return Delta(pushes, pops, overwrites)
 
     # ------------------------------ Stack operations ------------------------------ #
 

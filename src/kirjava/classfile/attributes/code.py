@@ -21,10 +21,10 @@ from ...constants import Class as ClassConstant, UTF8
 from ...source import InstructionAtOffset
 from ...types import (
     descriptor,
-    double_t, float_t, int_t, long_t, null_t, reserved_t, top_t, uninitialized_this_t,
+    double_t, float_t, int_t, long_t, null_t, object_t, reserved_t, top_t, uninitialized_this_t,
     Array, Class as ClassType, Uninitialized, Verification,
 )
-from ...version import Version
+from ...version import JAVA_1_0_2, JAVA_5, JAVA_6
 
 if typing.TYPE_CHECKING:
     from .method import Code
@@ -43,7 +43,7 @@ class StackMapTable(AttributeInfo):
     __slots__ = ("frames",)
 
     name_ = "StackMapTable"
-    since = Version(50, 0)
+    since = JAVA_6
     locations = ("Code",)
 
     @classmethod
@@ -61,7 +61,10 @@ class StackMapTable(AttributeInfo):
             # constant = class_file.constant_pool[class_index]
             # if type(constant) is ClassConstant:
             #     return constant.type
-            return class_file.constant_pool[class_index].class_type  # FIXME: Support invalid CP indices.
+            try:
+                return class_file.constant_pool[class_index].class_type
+            except AttributeError:
+                return object_t  # Best we can do if we've been given an invalid CP index.
         elif tag == 1:
             return int_t
         elif tag == 0:
@@ -552,7 +555,7 @@ class LineNumberTable(AttributeInfo):
     __slots__ = ("entries",)
 
     name_ = "LineNumberTable"
-    since = Version(45, 3)
+    since = JAVA_1_0_2
     locations = ("Code",)
 
     def __init__(self, parent: "Code", entries: Iterable["LineNumberTable.LineNumberEntry"] | None = None) -> None:
@@ -644,7 +647,7 @@ class LocalVariableTable(AttributeInfo):
     __slots__ = ("entries",)
 
     name_ = "LocalVariableTable"
-    since = Version(45, 3)
+    since = JAVA_1_0_2
     locations = ("Code",)
 
     def __init__(
@@ -781,7 +784,7 @@ class LocalVariableTypeTable(AttributeInfo):
     __slots__ = ("entries",)
 
     name_ = "LocalVariableTypeTable"
-    since = Version(49, 0)
+    since = JAVA_5
     locations = ("Code",)
 
     def __init__(

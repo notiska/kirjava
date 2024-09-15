@@ -53,12 +53,13 @@ class ConstantPool:
     __slots__ = ("min_deref", "_index", "_forward_entries", "_backward_entries")
 
     @classmethod
-    def read(cls, version: Version, buffer: IO[bytes]) -> "ConstantPool":
+    def read(cls, version: Version, buffer: IO[bytes], *, do_raise: bool = True) -> "ConstantPool":
         """
         Reads a constant pool from a buffer.
 
         :param version: The version of the classfile.
         :param buffer: The binary buffer to read from.
+        :param do_raise: Raise an exception if a non-critical parsing error occurs.
         :return: The constant pool that was read.
         """
 
@@ -95,7 +96,7 @@ class ConstantPool:
         # FIXME: Could cause an infinite loop, check for this
         while uncomputed:
             offset, constant, info = uncomputed.pop(0)
-            value = constant.dereference(constant_pool._forward_entries, info)
+            value = constant.dereference(constant_pool._forward_entries, info, do_raise)
             if value is None:
                 uncomputed.append((offset, constant, info))
                 continue

@@ -136,7 +136,7 @@ def disassemble(
 
         line_number = lnt.get(offset)
         if line_number is not None:
-            block._instructions.append(line_number)
+            block.instructions.append(line_number)
 
         if is_new_block:
             ending[previous] = offset
@@ -251,8 +251,7 @@ def disassemble(
         else:
             if gen_source_map:
                 source_map[offset] = InstructionInBlock(len(block), block, instruction)
-            # "So Iska, how did you get the disassembler so fast?" :doom:
-            block._instructions.append(instruction)
+            block.instructions.append(instruction)
 
     # Note down the ending offset of the final block(s), note that this is not actually a valid offset inside the code,
     # but it acts as a marker which is used when determining the exception handlers. It is important that we don't use a
@@ -262,14 +261,21 @@ def disassemble(
     if previous is not None:
         ending[previous] = -1
 
-    graph.entry_block.pop(0)  # Remove the nop that we added
+    graph.entry_block.pop(0)  # Remove the nop that we added.
+    if gen_source_map:
+        # Since we added a nop instruction to the entry block, the source map indices will now be off by one, so we
+        # need to correct those here. Very silly of me, I know.
+        for offset, source in source_map.items():
+            if type(source) is not InstructionInBlock or source.block is not graph.entry_block:
+                break
+            source_map[offset] = InstructionInBlock(source.index - 1, source.block, source.instruction)
 
     if forward_jumps:
         unbound = 0
         for edges in forward_jumps.values():
             for edge in edges:
                 if not isinstance(edge, SwitchEdge):
-                    edge.from_._instructions.append(edge.instruction)
+                    edge.from_.instructions.append(edge.instruction)
 
                 # Now generate a fallthrough edge to the next block, if it exists. This is done to maintain the original
                 # order of the instructions in the code. This code is invalid as it is, so it doesn't matter if this is
@@ -289,7 +295,6 @@ def disassemble(
                 unbound += 1
         if unbound:
             if do_raise:
-                # TODO: Specific exception types?
                 raise ValueError("Found %i unbound jump(s)! Use do_raise=False to ignore this." % unbound)
             logger.debug(" - %i unbound forward jump(s)!" % unbound)
 
