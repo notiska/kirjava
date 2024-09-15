@@ -8,7 +8,7 @@ from setuptools import setup
 if __name__ == "__main__":
     setup(
         name="kirjava-jvm",
-        version="0.1.7",
+        version="0.1.8",
         description="A Java bytecode library for Python.",
         long_description=(Path(__file__).parent / "README.md").read_text(),
         long_description_content_type="text/markdown",
