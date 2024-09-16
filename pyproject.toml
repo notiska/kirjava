@@ -1,2 +1,48 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kirjava-jvm"
+requires-python = ">=3.10"
+authors = [{name = "notiska / node3112 (Iska)", email="node3112@protonmail.com"}]
+description="A Java bytecode library for Python."
+readme = "README.md"
+license = {file = "LICENSE.txt"}
+keywords = ["java", "jvm", "bytecode", "assembler", "disassembler"]
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: File Formats",  # Maybe?
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Assemblers",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Disassemblers",
+    "Topic :: Software Development :: Libraries :: Java Libraries",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",  # TODO: Would be nice to support eariler versions.
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = ["typing-extensions>=4.6"]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/notiska/kirjava"
+# Documentation = "..."  # TODO: Documentation.
+Repository = "https://github.com/notiska/kirjava.git"
+Issues = "https://github.com/notiska/kirjava/issues"
+
+[project.optional-dependencies]
+backend = ["numpy"]
+
+[tool.setuptools.dynamic]
+version = {attr = "kirjava.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["kirjava*"]
+
+# [tool.pdm.scripts]
+# test = "python -m unittest discover tests"

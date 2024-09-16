@@ -1,0 +1,24 @@
+version 11;
+public class UninitSuperFieldTest extends UninitFieldTest {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            new UninitSuperFieldTest
+            invokespecial UninitSuperFieldTest#void <init>()
+        exit:
+            return
+    }
+
+    public void <init>() {
+        entry:
+            // This isn't valid btw.
+            aload_0
+            fconst_0
+            putfield UninitFieldTest#float testFloatField
+
+            aload_0
+            invokespecial UninitFieldTest#void <init>()
+        exit:
+            return
+    }
+}

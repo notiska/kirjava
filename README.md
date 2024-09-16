@@ -1,18 +1,16 @@
 # kirjava
 
-![](kirjava.png)
+![](https://raw.githubusercontent.com/notiska/kirjava/main/kirjava.png)
 Artwork by [Lou](https://www.instagram.com/devils_destination/).
 
-A pure-Python Java bytecode manipulation library with decent obfuscation resilience.  
+A Java bytecode library for Python, with decent resilience to obfuscation.  
 
-Documentation is planned for in the future, but as of right now, a quickstart guide has been provided below.  
-For more usage, see [examples](examples/).
-
-Just as a note, this is *very much* a hobby project so my maintenance schedule will fluctuate a lot. If you have any bug fixes, PRs are welcome.
-
-**Active development is mostly done on the `dev` branch, if you're curious about new features.**
+**Warning: `dev` branch rewrite currently in beta, the entire API is subject to change.**  
+Note: this is *very much* a hobby project, the maintenance schedule will fluctuate a lot. If you have any bug fixes, PRs are welcome.
 
 ## Quickstart
+
+For more usage, see [examples](examples/).
 
 ### Installing
 
@@ -21,11 +19,9 @@ Just as a note, this is *very much* a hobby project so my maintenance schedule w
 You can install this library by either:
  1. Installing via pip: `pip3 install kirjava-jvm`.
  2. Cloning this repository and installing it manually:  
-    - `git clone https://github.com/node3112/kirjava.git kirjava`
+    - `git clone https://github.com/notiska/kirjava.git kirjava`
     - `cd kirjava`
-    - `python3 setup.py install` or, if you lack permissions: `python3 setup.py install --user`
-
-*Additionally, [PyPy](https://www.pypy.org/) does appear to work and can result in significant performance gains.*
+    - `pip install .`
 
 ### Getting started
 
@@ -293,5 +289,5 @@ In [25]: with open("Test-edited.class", "wb") as stream:
 
 ## "Trivia"
 
-It's honestly not super interesting, but if anyone was wondering, it IS named after a certain character from a certain book series.  
+Yes, it is named after a character in HDM.  
 The name is not a Java-related pun, but it does help that "java" is in the name.
