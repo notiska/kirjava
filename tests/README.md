@@ -17,6 +17,7 @@ Note: if I have used any of your classes without permission, feel free to let me
 
 #### Current
  - [cfr](samples/cfr) (submodule) - [CFR tests](https://github.com/leibnitz27/cfr-tests) by [Lee Benfield](https://github.com/leibnitz27).
+ - [hotjava.jar](samples/hotjava.jar) - old HotJava standard library.
  - [ishterm-obf.jar](samples/ishterm-obf.jar) - old program made by me, obfuscated with BranchLock (lent to me).
  - [MathUtil.class](samples/MathUtil.class) - massive 20MB class, not sure where it came from.
  - [warsaw_crackme.class](samples/warsaw_crackme.class) - [crackmes.one reupload](https://crackmes.one/crackme/5ab77f5e33c5d40ad448c79b) by [Robert Grosse](https://github.com/Storyyeller).

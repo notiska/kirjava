@@ -12,7 +12,6 @@ __all__ = (
 )
 
 import typing
-from operator import itemgetter
 from typing import IO, Mapping
 
 from . import Instruction
@@ -59,6 +58,10 @@ class Jump(Instruction):
         return "<Jump(offset=%s, mnemonic=%s, delta=%s)>" % (self.offset, self.mnemonic, self.delta)
 
     def __str__(self) -> str:
+        if self.delta is None:
+            if self.offset is not None:
+                return "%i: %s" % (self.offset, self.mnemonic)
+            return self.mnemonic
         if self.offset is not None:
             return "%i: %s %+i,%i" % (self.offset, self.mnemonic, self.delta, self.offset + self.delta)
         return "%s %+i" % (self.mnemonic, self.delta)
@@ -97,6 +100,8 @@ class GotoWide(Jump):
     """
 
     __slots__ = ()
+
+    delta: int
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "GotoWide":
@@ -154,6 +159,8 @@ class Compare(Jump):
 
     comparison: int
     type: Type
+
+    delta: int
 
     def __repr__(self) -> str:
         return "<Compare(offset=%s, mnemonic=%s, delta=%i)>" % (self.offset, self.mnemonic, self.delta)
@@ -316,6 +323,8 @@ class Jsr(Jump):
 
     __slots__ = ()
 
+    delta: int
+
     def __repr__(self) -> str:
         return "<Jsr(offset=%s, delta=%i)>" % (self.offset, self.delta)
 
@@ -471,7 +480,7 @@ class Switch(Instruction):
     def __init__(self, default: int, offsets: Mapping[int, int] | None = None) -> None:
         super().__init__()
         self.default = default
-        self.offsets = {}
+        self.offsets: dict[int, int] = {}
         if offsets is not None:
             self.offsets.update(offsets)
 

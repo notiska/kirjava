@@ -748,7 +748,7 @@ class AppendFrame(StackMapFrame):
         #     raise ValueError("invalid tag %i for %r, should reflect locals count" % (tag, type(self)))
         self.tag = tag
         self.delta = delta
-        self.locals = []
+        self.locals: list[VerificationTypeInfo] = []
 
         if locals_ is not None:
             self.locals.extend(locals_)
@@ -818,8 +818,8 @@ class FullFrame(StackMapFrame):
             stack:   Iterable[VerificationTypeInfo] | None = None,
     ) -> None:
         self.delta = delta
-        self.locals = []
-        self.stack = []
+        self.locals: list[VerificationTypeInfo] = []
+        self.stack: list[VerificationTypeInfo] = []
 
         if locals_ is not None:
             self.locals.extend(locals_)

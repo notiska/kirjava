@@ -827,7 +827,7 @@ class InnerClasses(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InnerClasses) and self.classes == other.classes
 
-    def __getitem__(self, index: int) -> "InnerClasses.InnerCla":
+    def __getitem__(self, index: int) -> "InnerClasses.InnerClass":
         return self.classes[index]
 
     def __setitem__(self, index: int, value: "InnerClasses.InnerClass") -> None:

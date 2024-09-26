@@ -214,7 +214,7 @@ class Instruction:
         return type(mnemonic, (base or cls,), namespace)
 
     def __init__(self) -> None:
-        self.offset = None
+        self.offset: int | None = None
 
     def __repr__(self) -> str:
         # return "<Instruction(offset=%s, opcode=0x%x, mnemonic=%r)>" % (self.offset, self.opcode, self.mnemonic)

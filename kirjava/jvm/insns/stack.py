@@ -185,15 +185,12 @@ class LoadConstant(Instruction):
 
     __slots__ = ("info",)
 
+    throws = True  # If the constant wasn't resolved (classes, MHs, condys). Later specialisation can be done in IR.
+
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadConstant":
         index, = stream.read(1)
         return cls(pool[index])
-
-    @property
-    def throws(self) -> bool:
-        # FIXME: I'm not sure about this, more testing on condys please!!
-        return isinstance(self.info, (ClassInfo, MethodHandleInfo, DynamicInfo))
 
     def __init__(self, info: ConstInfo) -> None:
         super().__init__()

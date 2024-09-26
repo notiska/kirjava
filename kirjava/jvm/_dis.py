@@ -11,6 +11,7 @@ The JVM bytecode disassembler.
 from io import BytesIO
 from os import SEEK_SET
 from typing import IO
+from typing_extensions import Buffer
 
 
 class CodeIOWrapper(BytesIO):  # Extended only for type hinting, BufferedIOBase doesn't seem to work.
@@ -33,16 +34,18 @@ class CodeIOWrapper(BytesIO):  # Extended only for type hinting, BufferedIOBase 
         self.delegate = delegate
         self.base = base if base is not None else delegate.tell()  # base or delegate.tell()
 
-    def read(self, size: int | None = ...) -> bytes:
+    def read(self, size: int | None = -1) -> bytes:
+        if size is None:
+            size = -1
         return self.delegate.read(size)
 
     def tell(self) -> int:
         return self.delegate.tell() - self.base
 
-    def seek(self, offset: int, whence: int = ...) -> int:
+    def seek(self, offset: int, whence: int = SEEK_SET) -> int:
         if whence == SEEK_SET:
             offset += self.base
         return self.delegate.seek(offset, whence)
 
-    def write(self, data: bytes) -> int:
+    def write(self, data: Buffer) -> int:
         return self.delegate.write(data)

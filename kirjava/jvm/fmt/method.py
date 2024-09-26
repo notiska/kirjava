@@ -493,13 +493,9 @@ class Code(AttributeInfo):
         instructions = []
 
         wrapper = CodeIOWrapper(stream, base)
-        offset = wrapper.tell()
-
-        while offset < size:
+        while wrapper.tell() < size:
             instruction = Instruction.read(wrapper, pool)
-            instruction.offset = offset
             instructions.append(instruction)
-            offset = wrapper.tell()
 
         delta = stream.tell() - (base + size)
         if delta:
@@ -1102,7 +1098,7 @@ class LocalVariableTypeTable(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVariableTypeTable) and self.locals == other.locals
 
-    def __getitem__(self, index: int) -> "LocalVariableTable.LocalVariable":
+    def __getitem__(self, index: int) -> "LocalVariableTypeTable.LocalVariable":
         return self.locals[index]
 
     def __setitem__(self, index: int, value: "LocalVariableTypeTable.LocalVariable") -> None:
