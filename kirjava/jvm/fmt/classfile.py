@@ -516,6 +516,18 @@ class BootstrapMethods(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, BootstrapMethods) and self.methods == other.methods
 
+    def __getitem__(self, index: int) -> "BootstrapMethods.BootstrapMethod":
+        return self.methods[index]
+
+    def __setitem__(self, index: int, value: "BootstrapMethods.BootstrapMethod") -> None:
+        self.methods[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.methods[index]
+
+    def __len__(self) -> int:
+        return len(self.methods)
+
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_H(len(self.methods)))
         for method in self.methods:
@@ -644,7 +656,12 @@ class NestMembers(AttributeInfo):
     @classmethod
     def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["NestMembers", None]:
         count, = unpack_H(stream.read(2))
-        return cls([pool[index] for index, in iter_unpack_H(stream.read(count * 2))]), None
+        classes = [pool[index] for index, in iter_unpack_H(stream.read(count * 2))]
+        # Some explicit checks do need to be added for some attributes, as the stream.read(count * 2) may not read all
+        # required bytes which could result in a seemingly valid attribute read, which would not be correct.
+        if len(classes) != count:
+            raise ValueError("nest members underread")
+        return cls(classes), None
 
     def __init__(self, classes: Iterable[ConstInfo] | None = None) -> None:
         super().__init__()
@@ -660,6 +677,18 @@ class NestMembers(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NestMembers) and self.classes == other.classes
+
+    def __getitem__(self, index: int) -> ConstInfo:
+        return self.classes[index]
+
+    def __setitem__(self, index: int, value: ConstInfo) -> None:
+        self.classes[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.classes[index]
+
+    def __len__(self) -> int:
+        return len(self.classes)
 
     def write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None:
         stream.write(pack_HIH(
@@ -701,7 +730,10 @@ class PermittedSubclasses(AttributeInfo):
     @classmethod
     def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["PermittedSubclasses", None]:
         count, = unpack_H(stream.read(2))
-        return cls([pool[index] for index, in iter_unpack_H(stream.read(count * 2))]), None
+        classes = [pool[index] for index, in iter_unpack_H(stream.read(count * 2))]
+        if len(classes) != count:
+            raise ValueError("permitted subclasses underread")
+        return cls(classes), None
 
     def __init__(self, classes: Iterable[ConstInfo] | None = None) -> None:
         super().__init__()
@@ -717,6 +749,18 @@ class PermittedSubclasses(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PermittedSubclasses) and self.classes == other.classes
+
+    def __getitem__(self, index: int) -> ConstInfo:
+        return self.classes[index]
+
+    def __setitem__(self, index: int, value: ConstInfo) -> None:
+        self.classes[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.classes[index]
+
+    def __len__(self) -> int:
+        return len(self.classes)
 
     def write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None:
         stream.write(pack_HIH(
@@ -751,7 +795,7 @@ class InnerClasses(AttributeInfo):
     __slots__ = ("classes",)
 
     tag = b"InnerClasses"
-    since = JAVA_1_0_2
+    since = JAVA_1_1
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
@@ -782,6 +826,18 @@ class InnerClasses(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InnerClasses) and self.classes == other.classes
+
+    def __getitem__(self, index: int) -> "InnerClasses.InnerCla":
+        return self.classes[index]
+
+    def __setitem__(self, index: int, value: "InnerClasses.InnerClass") -> None:
+        self.classes[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.classes[index]
+
+    def __len__(self) -> int:
+        return len(self.classes)
 
     def write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None:
         stream.write(pack_HIH(
@@ -1139,6 +1195,18 @@ class Record(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Record) and self.components == other.components
 
+    def __getitem__(self, index: int) -> "Record.ComponentInfo":
+        return self.components[index]
+
+    def __setitem__(self, index: int, value: "Record.ComponentInfo") -> None:
+        self.components[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.components[index]
+
+    def __len__(self) -> int:
+        return len(self.components)
+
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_H(len(self.components)))
         for component in self.components:
@@ -1219,7 +1287,7 @@ class SourceFile(AttributeInfo):
     __slots__ = ("file",)
 
     tag = b"SourceFile"
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
@@ -1270,8 +1338,6 @@ class SourceDebugExtension(AttributeInfo):
 
     @classmethod
     def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["SourceDebugExtension", None]:
-        # Super silly, I know, but I don't want to be passing in an extra argument for every single attribute just to
-        # support this one "nicely".
         assert stream.seekable(), "stream is not seekable"
         stream.seek(-4, SEEK_CUR)
         length, = unpack_I(stream.read(4))
@@ -1385,6 +1451,8 @@ class Module(AttributeInfo):
         for _ in range(provide_count):
             provide_index, provides_with_count = unpack_HH(stream.read(4))
             provides_with = [pool[index] for index, in iter_unpack_H(stream.read(provides_with_count * 2))]
+            if len(provides_with) != provides_with_count:
+                raise ValueError("module underread")
             provides.append(cls.Provide(pool[provide_index], provides_with))
 
         self = cls(
@@ -1815,7 +1883,10 @@ class ModulePackages(AttributeInfo):
     @classmethod
     def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["ModulePackages", None]:
         count, = unpack_H(stream.read(2))
-        return cls([pool[index] for index, in iter_unpack_H(stream.read(count * 2))]), None
+        packages = [pool[index] for index, in iter_unpack_H(stream.read(count * 2))]
+        if len(packages) != count:
+            raise ValueError("module packages underread")
+        return cls(packages), None
 
     def __init__(self, packages: Iterable[ConstInfo] | None = None) -> None:
         super().__init__()
@@ -1831,6 +1902,18 @@ class ModulePackages(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ModulePackages) and self.packages == other.packages
+
+    def __getitem__(self, index: int) -> ConstInfo:
+        return self.packages[index]
+
+    def __setitem__(self, index: int, value: ConstInfo) -> None:
+        self.packages[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.packages[index]
+
+    def __len__(self) -> int:
+        return len(self.packages)
 
     def write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None:
         stream.write(pack_HIH(

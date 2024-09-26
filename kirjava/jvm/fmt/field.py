@@ -16,7 +16,7 @@ from .attribute import AttributeInfo
 from .constants import *
 from .._desc import parse_field_descriptor
 from .._struct import *
-from ..version import JAVA_1_0_2, Version
+from ..version import JAVA_1_0, Version
 from ...meta import Metadata
 from ...model.class_.field import Field
 from ...pretty import pretty_repr
@@ -356,7 +356,7 @@ class ConstantValue(AttributeInfo):
     __slots__ = ("value",)
 
     tag = b"ConstantValue"
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     locations = frozenset({AttributeInfo.LOC_FIELD})
 
     @classmethod

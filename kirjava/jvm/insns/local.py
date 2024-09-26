@@ -18,42 +18,52 @@ __all__ = (
     "iinc", "iinc_w",
 )
 
-import logging
 import typing
 from typing import IO
 
 from . import Instruction
+from .misc import wide
 from .._struct import *
 from ...model.types import *
-from ...model.values.constants import *
+# from ...model.values.constants import *
 
 if typing.TYPE_CHECKING:
-    from ..analyse.frame import Frame
-    from ..analyse.state import State
+    # from ..analyse.frame import Frame
+    # from ..analyse.state import State
     from ..fmt import ConstPool
-    from ..verify import Verifier
-
-logger = logging.getLogger("ijd.jvm.insns.local")
+    # from ..verify import Verifier
 
 
 class LoadLocal(Instruction):
+    """
+    A local variable load instruction base.
+
+    Loads a local variable from the provided index.
+
+    Attributes
+    ----------
+    type: Type
+        The expected type of the local variable.
+    index: int
+        The local variable array index to load from.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     type: Type
     index: int
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadLocal":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadLocal":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
-
     def __repr__(self) -> str:
-        return "<LoadLocal(offset=%s, index=%i)>" % (self.offset, self.index)
+        return "<LoadLocal(offset=%s, type=%r, index=%i)>" % (self.offset, self.type, self.index)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, LoadLocal) and self.opcode == other.opcode
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -66,23 +76,33 @@ class LoadLocal(Instruction):
 
 
 class StoreLocal(Instruction):
+    """
+    A local variable store instruction base.
+
+    Attributes
+    ----------
+    type: Type
+        The type of value to store.
+    index: int
+        The local variable array index to store to.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     type: Type
     index: int
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "StoreLocal":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "StoreLocal":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
-
     def __repr__(self) -> str:
-        return "<StoreLocal(offset=%s, index=%i)>" % (self.offset, self.index)
+        return "<StoreLocal(offset=%s, type=%r, index=%i)>" % (self.offset, self.type, self.index)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, StoreLocal) and self.opcode == other.opcode
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -103,13 +123,16 @@ class StoreLocal(Instruction):
 
 
 class LoadLocalAt(LoadLocal):
+    """
+    A local variable load instruction base, where the index is explicitly provided.
+    """
 
     __slots__ = ("index",)
 
     type: Type
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadLocalAt":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadLocalAt":
         index, = stream.read(1)
         return cls(index)
 
@@ -118,29 +141,35 @@ class LoadLocalAt(LoadLocal):
         self.index = index
 
     def __repr__(self) -> str:
-        return "<LoadLocalAt(offset=%s, index=%i)>" % (self.offset, self.index)
+        return "<LoadLocalAt(offset=%s, type=%r, index=%i)>" % (self.offset, self.type, self.index)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: %s %i" % (self.offset, self.mnemonic, self.index)
         return "%s %i" % (self.mnemonic, self.index)
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, LoadLocalAt) and self.opcode == other.opcode and self.index == other.index
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.index <= 255):
-            verifier.report("invalid local index", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (0 <= self.index <= 255):
+    #         verifier.report("invalid local index", instruction=self)
 
 
 class StoreLocalAt(StoreLocal):
+    """
+    A local variable store instruction base, where the index is explicitly provided.
+    """
 
     __slots__ = ("index",)
 
     type: Type
 
     @classmethod
-    def pool(cls, stream: IO[bytes], pool: "ConstPool") -> "StoreLocalAt":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "StoreLocalAt":
         index, = stream.read(1)
         return cls(index)
 
@@ -149,53 +178,71 @@ class StoreLocalAt(StoreLocal):
         self.index = index
 
     def __repr__(self) -> str:
-        return "<StoreLocalAt(offset=%s, index=%i)>" % (self.offset, self.index)
+        return "<StoreLocalAt(offset=%s, type=%r, index=%i)>" % (self.offset, self.type, self.index)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: %s %i" % (self.offset, self.mnemonic, self.index)
         return "%s %i" % (self.mnemonic, self.index)
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, StoreLocalAt) and self.opcode == other.opcode and self.index == other.index
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.index <= 255):
-            verifier.report("invalid local index", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (0 <= self.index <= 255):
+    #         verifier.report("invalid local index", instruction=self)
 
 
-class IncLocal(Instruction):
+class IInc(Instruction):
+    """
+    An `iinc` instruction.
+
+    Increments a local variable by a fixed amount.
+
+    Attributes
+    ----------
+    index: int
+        The index of the local variable to increment.
+    value: int
+        The signed amount to increment the local variable by.
+    """
 
     __slots__ = ("index", "value")
 
-    can_throw = False
+    throws = False
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "IncLocal":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "IInc":
         index, value = unpack_Bb(stream.read(2))
         return cls(index, value)
 
     def __init__(self, index: int, value: int) -> None:
-        self.offset = None
+        super().__init__()
         self.index = index
         self.value = value
 
     def __repr__(self) -> str:
-        return "<IncLocal(offset=%s, index=%i, value=%i)>" % (self.offset, self.index, self.value)
+        return "<IInc(offset=%s, index=%i, value=%i)>" % (self.offset, self.index, self.value)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: iinc %i by %i" % (self.offset, self.index, self.value)
         return "iinc %i by %i" % (self.index, self.value)
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, IInc) and self.index == other.index and self.value == other.value
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBb(self.opcode, self.index, self.value))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.index <= 255):
-            verifier.report("invalid local index", instruction=self)
-        if not (-128 <= self.value <= 127):
-            verifier.report("invalid increment value", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (0 <= self.index <= 255):
+    #         verifier.report("invalid local index", instruction=self)
+    #     if not (-128 <= self.value <= 127):
+    #         verifier.report("invalid increment value", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     value = frame.load(self.index, int_t, self)
@@ -216,76 +263,94 @@ class IncLocal(Instruction):
 
 
 class LoadLocalAtWide(LoadLocalAt):
+    """
+    A load local instruction with a wide mutation.
+    """
 
     __slots__ = ()
 
-    mutate_w = True
+    mutated = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadLocalAtWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadLocalAtWide":
         index, = unpack_H(stream.read(2))
         return cls(index)
 
     def __repr__(self) -> str:
-        return "<LoadLocalAtWide(offset=%s, index=%i)>" % (self.offset, self.index)
+        return "<LoadLocalAtWide(offset=%s, type=%r, index=%i)>" % (self.offset, self.type, self.index)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, LoadLocalAtWide) and self.opcode == other.opcode and self.index == other.index
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, self.index))
+        stream.write(pack_BBH(wide.opcode, self.opcode, self.index))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.index <= 65535):
-            verifier.report("invalid local index", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (0 <= self.index <= 65535):
+    #         verifier.report("invalid local index", instruction=self)
 
 
 class StoreLocalAtWide(StoreLocalAt):
+    """
+    A store local instruction with a wide mutation.
+    """
 
     __slots__ = ()
 
-    mutate_w = True
+    mutated = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "StoreLocalAtWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "StoreLocalAtWide":
         index, = unpack_H(stream.read(2))
         return cls(index)
 
     def __repr__(self) -> str:
         return "<StoreLocalAtWide(offset=%s, index=%i)>" % (self.offset, self.index)
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, StoreLocalAtWide) and self.opcode == other.opcode and self.index == other.index
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, self.index))
+        stream.write(pack_BBH(wide.opcode, self.opcode, self.index))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.index <= 65535):
-            verifier.report("invalid local index", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (0 <= self.index <= 65535):
+    #         verifier.report("invalid local index", instruction=self)
 
 
-class IncLocalWide(IncLocal):
+class IIncWide(IInc):
+    """
+    An `iinc` instruction with a wide mutation.
+    """
 
     __slots__ = ()
 
-    mutate_w = True
+    mutated = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "IncLocalWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "IIncWide":
         index, value = unpack_Hh(stream.read(4))
         return cls(index, value)
 
     def __repr__(self) -> str:
-        return "<IncLocalWide(offset=%s, index=%i, value=%i)>" % (self.offset, self.index, self.value)
+        return "<IIncWide(offset=%s, index=%i, value=%i)>" % (self.offset, self.index, self.value)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: iinc_w %i by %i" % (self.offset, self.index, self.value)
         return "iinc_w %i by %i" % (self.index, self.value)
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BHh(self.opcode, self.index, self.value))
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, IIncWide) and self.index == other.index and self.value == other.value
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.index <= 65535):
-            verifier.report("invalid local index", instruction=self)
-        if not (-32768 <= self.value <= 32767):
-            verifier.report("invalid increment value", instruction=self)
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BBHh(wide.opcode, self.opcode, self.index, self.value))
+
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (0 <= self.index <= 65535):
+    #         verifier.report("invalid local index", instruction=self)
+    #     if not (-32768 <= self.value <= 32767):
+    #         verifier.report("invalid increment value", instruction=self)
 
 
 iload = LoadLocalAt.make(0x15, "iload", type=int_t)
@@ -362,5 +427,5 @@ astore_1 = StoreLocal.make(0x4c, "astore_1", type=reference_t, index=1)
 astore_2 = StoreLocal.make(0x4d, "astore_2", type=reference_t, index=2)
 astore_3 = StoreLocal.make(0x4e, "astore_3", type=reference_t, index=3)
 
-iinc       = IncLocal.make(0x84, "iinc")
-iinc_w = IncLocalWide.make(0x84, "iinc_w")
+iinc       = IInc.make(0x84, "iinc")
+iinc_w = IIncWide.make(0x84, "iinc_w")

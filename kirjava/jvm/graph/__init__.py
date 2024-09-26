@@ -10,13 +10,12 @@ from collections import defaultdict
 from typing import IO
 
 from . import block, edge
-from ._dis import *
 from .block import Block
 from .edge import Edge
-from ..fmt.method import Code, MethodInfo
 
-if typing.TYPE_CHECKING:
-    from ..fmt import ClassFile
+# if typing.TYPE_CHECKING:
+#     from ..fmt import ClassFile
+#     from ..fmt.method import Code, MethodInfo
 
 
 class Graph:
@@ -42,8 +41,6 @@ class Graph:
 
     Methods
     -------
-    disassemble(method_info: MethodInfo, class_file: ClassFile, stream: IO[bytes] | None = None) -> Graph
-        Disassembles a method into a control flow graph.
     block(self) -> Block
         Creates a new block in this graph.
     """
@@ -54,51 +51,51 @@ class Graph:
         "_label",
     )
 
-    @classmethod
-    def disassemble(cls, method: MethodInfo, cf: "ClassFile", stream: IO[bytes] | None) -> "Graph":
-        """
-        Disassembles a method into a JVM control flow graph.
-
-        Parameters
-        ----------
-        method: MethodInfo
-            The method to disassemble.
-        cf: ClassFile
-            The class file containing the method.
-        stream: IO[bytes] | None
-            An optional class file stream to disassemble from.
-            Using this may result in more accurate disassembly, but is not required.
-
-        Returns
-        -------
-        Graph
-            The disassembled JVM control flow graph.
-
-        Raises
-        ------
-        ValueError
-            If the method has no code attribute.
-        """
-
-        assert not method.is_native, "cannot disassemble native methods"
-        assert not method.is_abstract, "cannot disassemble abstract methods"
-
-        code = None
-        for attribute in method.attributes:
-            if not isinstance(attribute, Code):
-                continue
-            elif code is not None:
-                # Not even allowed by the JVM with `-Xverify:none`.
-                raise ValueError("multiple code attributes in method")
-            code = attribute
-            # if context.skip_multiple_code_attrs:
-            #     break
-        if code is None:
-            raise ValueError("no code attribute in method")
-
-        self = cls()
-        disassemble(self, code, cf, stream)
-        return self
+    # @classmethod
+    # def disassemble(cls, method: MethodInfo, cf: "ClassFile", stream: IO[bytes] | None) -> "Graph":
+    #     """
+    #     Disassembles a method into a JVM control flow graph.
+    #
+    #     Parameters
+    #     ----------
+    #     method: MethodInfo
+    #         The method to disassemble.
+    #     cf: ClassFile
+    #         The class file containing the method.
+    #     stream: IO[bytes] | None
+    #         An optional class file stream to disassemble from.
+    #         Using this may result in more accurate disassembly, but is not required.
+    #
+    #     Returns
+    #     -------
+    #     Graph
+    #         The disassembled JVM control flow graph.
+    #
+    #     Raises
+    #     ------
+    #     ValueError
+    #         If the method has no code attribute.
+    #     """
+    #
+    #     assert not method.is_native, "cannot disassemble native methods"
+    #     assert not method.is_abstract, "cannot disassemble abstract methods"
+    #
+    #     code = None
+    #     for attribute in method.attributes:
+    #         if not isinstance(attribute, Code):
+    #             continue
+    #         elif code is not None:
+    #             # Not even allowed by the JVM with `-Xverify:none`.
+    #             raise ValueError("multiple code attributes in method")
+    #         code = attribute
+    #         # if context.skip_multiple_code_attrs:
+    #         #     break
+    #     if code is None:
+    #         raise ValueError("no code attribute in method")
+    #
+    #     self = cls()
+    #     disassemble(self, code, cf, stream)
+    #     return self
 
     def __init__(self) -> None:
         self.blocks: list[Block] = []

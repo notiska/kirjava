@@ -13,7 +13,7 @@ JVM class file shared attributes.
 
 import typing
 from functools import cache
-from os import SEEK_SET
+from os import SEEK_CUR, SEEK_SET
 from typing import IO, Iterable
 
 from .annotation import Annotation, TypeAnnotation
@@ -73,6 +73,7 @@ class AttributeInfo:
 
     tag: bytes
     since: Version
+    # TODO: Cutoff "until" version?
     locations: frozenset[int]
 
     LOC_CLASS            = 0
@@ -165,6 +166,7 @@ class AttributeInfo:
         assert stream.seekable(), "stream is not seekable"
 
         start = stream.tell()
+        # print(subclass, start, "-", start + length)
         try:
             self, child_meta = subclass._read(stream, version, pool)
             self.name = name
@@ -183,6 +185,7 @@ class AttributeInfo:
                     meta.error("read.overread", "Attribute %s read %i too many byte(s).", name.decode(), diff)
                 raise ValueError("overread")
             elif diff < 0:
+                # FIXME: Attributes at the end of the file that underread due to EOF will not preserve original length.
                 meta.warn("read.underread", "Attribute %s read %i too few byte(s).", name.decode(), -diff)
                 self.extra = stream.read(-diff)
 
@@ -282,7 +285,7 @@ class RawInfo(AttributeInfo):
     __slots__ = ("data",)
 
     tag = b""
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     locations = frozenset({
         AttributeInfo.LOC_CLASS, AttributeInfo.LOC_FIELD, AttributeInfo.LOC_METHOD, AttributeInfo.LOC_RECORD_COMPONENT,
     })
@@ -315,6 +318,48 @@ class RawInfo(AttributeInfo):
             verifier.error(self, "raw attribute")
 
 
+class Documentation(AttributeInfo):
+    """
+    The Documentation attribute.
+
+    A variable length attribute used to store documentation for classes, fields and
+    methods.
+    It was deprecated some time before Java 7 at the latest, perhaps even in Java 1.1.
+    """
+    # TODO: ^ find exactly when deprecated, likely long before 7.
+
+    __slots__ = ("doc",)
+
+    tag = b"Documentation"
+    since = JAVA_1_0
+    locations = frozenset({AttributeInfo.LOC_CLASS, AttributeInfo.LOC_FIELD, AttributeInfo.LOC_METHOD})
+
+    @classmethod
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["Documentation", None]:
+        assert stream.seekable(), "stream is not seekable"
+        stream.seek(-4, SEEK_CUR)
+        length, = unpack_I(stream.read(4))
+        return cls(stream.read(length)), None
+
+    def __init__(self, doc: bytes) -> None:
+        super().__init__()
+        self.doc = doc
+
+    def __repr__(self) -> str:
+        return "<Documentation(doc=%r)>" % self.doc
+
+    def __str__(self) -> str:
+        return "Documentation[len=%i]" % len(self.doc)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Documentation) and self.doc == other.doc
+
+    def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
+        stream.write(pack_HI(pool.add(self.name or UTF8Info(self.tag)), len(self.extra) + len(self.doc)))
+        stream.write(self.doc)
+        stream.write(self.extra)
+
+
 class Synthetic(AttributeInfo):
     """
     The Synthetic attribute.
@@ -326,7 +371,7 @@ class Synthetic(AttributeInfo):
     __slots__ = ()
 
     tag = b"Synthetic"
-    since = JAVA_1_0_2
+    since = JAVA_1_1
     locations = frozenset({AttributeInfo.LOC_CLASS, AttributeInfo.LOC_FIELD, AttributeInfo.LOC_METHOD})
 
     @classmethod
@@ -408,7 +453,7 @@ class Deprecated(AttributeInfo):
     __slots__ = ()
 
     tag = b"Deprecated"
-    since = JAVA_1_0_2
+    since = JAVA_1_1
     locations = frozenset({
         AttributeInfo.LOC_CLASS, AttributeInfo.LOC_FIELD, AttributeInfo.LOC_METHOD, AttributeInfo.LOC_RECORD_COMPONENT,
     })
@@ -439,11 +484,11 @@ class RuntimeVisibleAnnotations(AttributeInfo):
 
     Attributes
     ---------
-    annos: list[Annotation]
+    annotations: list[Annotation]
         A list of the runtime-visible annotations.
     """
 
-    __slots__ = ("annos",)
+    __slots__ = ("annotations",)
 
     tag = b"RuntimeVisibleAnnotations"
     since = JAVA_5
@@ -454,30 +499,42 @@ class RuntimeVisibleAnnotations(AttributeInfo):
     @classmethod
     def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["RuntimeVisibleAnnotations", None]:
         count, = unpack_H(stream.read(2))
-        annos = []
+        annotations = []
         for _ in range(count):
-            annos.append(Annotation.read(stream, pool))
-        return cls(annos), None
+            annotations.append(Annotation.read(stream, pool))
+        return cls(annotations), None
 
     def __init__(self, annotations: Iterable[Annotation] | None = None) -> None:
         super().__init__()
-        self.annos: list[Annotation] = []
+        self.annotations: list[Annotation] = []
         if annotations is not None:
-            self.annos.extend(annotations)
+            self.annotations.extend(annotations)
 
     def __repr__(self) -> str:
-        return "<RuntimeVisibleAnnotations(annos=%r)>" % self.annos
+        return "<RuntimeVisibleAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeVisibleAnnotations[[%s]]" % ",".join(map(str, self.annos))
+        return "RuntimeVisibleAnnotations[[%s]]" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, RuntimeVisibleAnnotations) and self.annos == other.annos
+        return isinstance(other, RuntimeVisibleAnnotations) and self.annotations == other.annotations
+
+    def __getitem__(self, index: int) -> Annotation:
+        return self.annotations[index]
+
+    def __setitem__(self, index: int, value: Annotation) -> None:
+        self.annotations[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.annotations[index]
+
+    def __len__(self) -> int:
+        return len(self.annotations)
 
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
-        stream.write(pack_H(len(self.annos)))
-        for anno in self.annos:
-            anno.write(stream, pool)
+        stream.write(pack_H(len(self.annotations)))
+        for annotation in self.annotations:
+            annotation.write(stream, pool)
 
 
 class RuntimeInvisibleAnnotations(AttributeInfo):
@@ -488,14 +545,14 @@ class RuntimeInvisibleAnnotations(AttributeInfo):
 
     Attributes
     ----------
-    annos: list[Annotation]
+    annotations: list[Annotation]
         A list of the runtime-invisible annotations.
     """
 
-    __slots__ = ("annos",)
+    __slots__ = ("annotations",)
 
     tag = b"RuntimeInvisibleAnnotations"
-    since = 49  # Java SE 5.0
+    since = JAVA_5
     locations = frozenset({
         AttributeInfo.LOC_CLASS, AttributeInfo.LOC_FIELD, AttributeInfo.LOC_METHOD, AttributeInfo.LOC_RECORD_COMPONENT,
     })
@@ -503,30 +560,42 @@ class RuntimeInvisibleAnnotations(AttributeInfo):
     @classmethod
     def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["RuntimeInvisibleAnnotations", None]:
         count, = unpack_H(stream.read(2))
-        annos = []
+        annotations = []
         for _ in range(count):
-            annos.append(Annotation.read(stream, pool))
-        return cls(annos), None
+            annotations.append(Annotation.read(stream, pool))
+        return cls(annotations), None
 
-    def __init__(self, annos: Iterable[Annotation] | None = None) -> None:
+    def __init__(self, annotations: Iterable[Annotation] | None = None) -> None:
         super().__init__()
-        self.annos: list[Annotation] = []
-        if annos is not None:
-            self.annos.extend(annos)
+        self.annotations: list[Annotation] = []
+        if annotations is not None:
+            self.annotations.extend(annotations)
 
     def __repr__(self) -> str:
-        return "<RuntimeInvisibleAnnotations(annos=%r)>" % self.annos
+        return "<RuntimeInvisibleAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeInvisibleAnnotations[[%s]]" % ",".join(map(str, self.annos))
+        return "RuntimeInvisibleAnnotations[[%s]]" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, RuntimeInvisibleAnnotations) and self.annos == other.annos
+        return isinstance(other, RuntimeInvisibleAnnotations) and self.annotations == other.annotations
+
+    def __getitem__(self, index: int) -> Annotation:
+        return self.annotations[index]
+
+    def __setitem__(self, index: int, value: Annotation) -> None:
+        self.annotations[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.annotations[index]
+
+    def __len__(self) -> int:
+        return len(self.annotations)
 
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
-        stream.write(pack_H(len(self.annos)))
-        for anno in self.annos:
-            anno.write(stream, pool)
+        stream.write(pack_H(len(self.annotations)))
+        for annotation in self.annotations:
+            annotation.write(stream, pool)
 
 
 class RuntimeVisibleTypeAnnotations(AttributeInfo):
@@ -540,11 +609,11 @@ class RuntimeVisibleTypeAnnotations(AttributeInfo):
 
     Attributes
     ----------
-    annos: list[TypeAnnotation]
+    annotations: list[TypeAnnotation]
         A list of the runtime-visible type annotations.
     """
 
-    __slots__ = ("annos",)
+    __slots__ = ("annotations",)
 
     tag = b"RuntimeVisibleTypeAnnotations"
     since = JAVA_8
@@ -558,30 +627,42 @@ class RuntimeVisibleTypeAnnotations(AttributeInfo):
             cls, stream: IO[bytes], version: Version, pool: "ConstPool",
     ) -> tuple["RuntimeVisibleTypeAnnotations", None]:
         count, = unpack_H(stream.read(2))
-        annos = []
+        annotations = []
         for _ in range(count):
-            annos.append(TypeAnnotation.read(stream, pool))
-        return cls(annos), None
+            annotations.append(TypeAnnotation.read(stream, pool))
+        return cls(annotations), None
 
-    def __init__(self, annos: Iterable[TypeAnnotation] | None = None) -> None:
+    def __init__(self, annotations: Iterable[TypeAnnotation] | None = None) -> None:
         super().__init__()
-        self.annos: list[TypeAnnotation] = []
-        if annos is not None:
-            self.annos.extend(annos)
+        self.annotations: list[TypeAnnotation] = []
+        if annotations is not None:
+            self.annotations.extend(annotations)
 
     def __repr__(self) -> str:
-        return "<RuntimeVisibleTypeAnnotations(annos=%r)>" % self.annos
+        return "<RuntimeVisibleTypeAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeVisibleTypeAnnotations[[%s]]" % ",".join(map(str, self.annos))
+        return "RuntimeVisibleTypeAnnotations[[%s]]" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, RuntimeVisibleTypeAnnotations) and self.annos == other.annos
+        return isinstance(other, RuntimeVisibleTypeAnnotations) and self.annotations == other.annotations
+
+    def __getitem__(self, index: int) -> TypeAnnotation:
+        return self.annotations[index]
+
+    def __setitem__(self, index: int, value: TypeAnnotation) -> None:
+        self.annotations[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.annotations[index]
+
+    def __len__(self) -> int:
+        return len(self.annotations)
 
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
-        stream.write(pack_H(len(self.annos)))
-        for anno in self.annos:
-            anno.write(stream, pool)
+        stream.write(pack_H(len(self.annotations)))
+        for annotation in self.annotations:
+            annotation.write(stream, pool)
 
 
 class RuntimeInvisibleTypeAnnotations(AttributeInfo):
@@ -595,11 +676,11 @@ class RuntimeInvisibleTypeAnnotations(AttributeInfo):
 
     Attributes
     ----------
-    annos: list[TypeAnnotation]
+    annotations: list[TypeAnnotation]
         A list of the runtime-invisible type annotations.
     """
 
-    __slots__ = ("annos",)
+    __slots__ = ("annotations",)
 
     tag = b"RuntimeInvisibleTypeAnnotations"
     since = JAVA_8
@@ -613,27 +694,39 @@ class RuntimeInvisibleTypeAnnotations(AttributeInfo):
             cls, stream: IO[bytes], version: Version, pool: "ConstPool",
     ) -> tuple["RuntimeInvisibleTypeAnnotations", None]:
         count, = unpack_H(stream.read(2))
-        annos = []
+        annotations = []
         for _ in range(count):
-            annos.append(TypeAnnotation.read(stream, pool))
-        return cls(annos), None
+            annotations.append(TypeAnnotation.read(stream, pool))
+        return cls(annotations), None
 
-    def __init__(self, annos: Iterable[TypeAnnotation] | None = None) -> None:
+    def __init__(self, annotations: Iterable[TypeAnnotation] | None = None) -> None:
         super().__init__()
-        self.annos: list[TypeAnnotation] = []
-        if annos is not None:
-            self.annos.extend(annos)
+        self.annotations: list[TypeAnnotation] = []
+        if annotations is not None:
+            self.annotations.extend(annotations)
 
     def __repr__(self) -> str:
-        return "<RuntimeInvisibleTypeAnnotations(annos=%r)>" % self.annos
+        return "<RuntimeInvisibleTypeAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeInvisibleTypeAnnotations[[%s]]" % ",".join(map(str, self.annos))
+        return "RuntimeInvisibleTypeAnnotations[[%s]]" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, RuntimeInvisibleTypeAnnotations) and self.annos == other.annos
+        return isinstance(other, RuntimeInvisibleTypeAnnotations) and self.annotations == other.annotations
+
+    def __getitem__(self, index: int) -> TypeAnnotation:
+        return self.annotations[index]
+
+    def __setitem__(self, index: int, value: TypeAnnotation) -> None:
+        self.annotations[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.annotations[index]
+
+    def __len__(self) -> int:
+        return len(self.annotations)
 
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
-        stream.write(pack_H(len(self.annos)))
-        for anno in self.annos:
-            anno.write(stream, pool)
+        stream.write(pack_H(len(self.annotations)))
+        for annotation in self.annotations:
+            annotation.write(stream, pool)

@@ -10,39 +10,49 @@ __all__ = (
     "ishl", "lshl", "ishr", "lshr", "iushr", "lushr",
     "iand", "land", "ior", "lor", "ixor", "lxor",
     "lcmp", "fcmpl", "fcmpg", "dcmpl", "dcmpg",
+    "BinOp", "Shift", "Comparison",
+    "Addition", "Subtraction", "Multiplication", "Division", "Remainder", "Negate",
+    "ShiftLeft", "ShiftRight", "ShiftRightUnsigned",
+    "BitwiseAnd", "BitwiseOr", "BitwiseXor",
+    "IntegralCompare", "FloatLCompare", "FloatGCompare",
 )
 
-import logging
 import typing
-from typing import IO, Optional
+from typing import IO
 
 from . import Instruction
 from ...model.types import *
-from ...model.values import Value
-from ...model.values.constants import Integer
+# from ...model.values import Value
+# from ...model.values.constants import Integer
 
 if typing.TYPE_CHECKING:
-    from ..analyse.frame import Frame
-    from ..analyse.state import State
+    # from ..analyse.frame import Frame
+    # from ..analyse.state import State
     from ..fmt import ConstPool
-
-logger = logging.getLogger("ijd.jvm.insns.arithmetic")
 
 
 class BinOp(Instruction):
+    """
+    A binary operation instruction base.
+
+    Performs a arithmetic operation on two stack values.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     type: Type
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "BinOp":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "BinOp":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        raise NotImplementedError("repr() is not implemented for %r" % type(self))
+
+    def __eq__(self, other: object) -> bool:
+        raise NotImplementedError("== is not implemented for %r" % type(self))
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -59,26 +69,26 @@ class BinOp(Instruction):
     #             return state.step(self, (left, right), frame.push(metadata.result or self.type, self), metadata)
     #     return state.step(self, (left, right), frame.push(self.type, self))
 
-    def evaluate(self, frame: "Frame", left: Value, right: Value) -> Optional["BinOp.Metadata"]:
-        """
-        Evaluates the binary operation with the given left and right values.
-
-        Parameters
-        ----------
-        frame: Frame
-            The frame to evaluate this operation in.
-        left: Value
-            The left operand value.
-        right: Value
-            The right operand value.
-
-        Returns
-        -------
-        BinOp.Metadata | None
-            The evaluation metadata, including the resulting value, if applicable.
-        """
-
-        raise NotImplementedError("evaluate() is not implemented for %r" % self)
+    # def evaluate(self, frame: "Frame", left: Value, right: Value) -> Optional["BinOp.Metadata"]:
+    #     """
+    #     Evaluates the binary operation with the given left and right values.
+    #
+    #     Parameters
+    #     ----------
+    #     frame: Frame
+    #         The frame to evaluate this operation in.
+    #     left: Value
+    #         The left operand value.
+    #     right: Value
+    #         The right operand value.
+    #
+    #     Returns
+    #     -------
+    #     BinOp.Metadata | None
+    #         The evaluation metadata, including the resulting value, if applicable.
+    #     """
+    #
+    #     raise NotImplementedError("evaluate() is not implemented for %r" % self)
 
     # class Metadata(Source.Metadata):
     #
@@ -93,8 +103,19 @@ class BinOp(Instruction):
 
 
 class Shift(BinOp):
+    """
+    A shift base instruction.
+
+    Performs a shift on an integral stack value with an int stack value.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<Shift(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Shift) and self.opcode == other.opcode
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     right = frame.pop(int_t, self)
@@ -109,8 +130,19 @@ class Shift(BinOp):
 
 
 class Comparison(BinOp):
+    """
+    A comparison instruction base.
+
+    Compares two numeric stack values.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<Comparison(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Comparison) and self.opcode == other.opcode
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     right = frame.pop(self.type, self)
@@ -123,13 +155,24 @@ class Comparison(BinOp):
     #
     #     return state.step(self, (left, right), frame.push(int_t, self))
 
-    def evaluate(self, frame: "Frame", left: Value, right: Value) -> Integer | None:
-        raise NotImplementedError("evaluate() is not implemented for %r" % self)
+    # def evaluate(self, frame: "Frame", left: Value, right: Value) -> Integer | None:
+    #     raise NotImplementedError("evaluate() is not implemented for %r" % self)
 
 
 class Addition(BinOp):
+    """
+    An addition instruction base.
+
+    Computes the sum of two numeric stack values.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<Addition(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Addition) and self.opcode == other.opcode
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:  # Constant propagation.
@@ -150,8 +193,19 @@ class Addition(BinOp):
 
 
 class Subtraction(BinOp):
+    """
+    A subtraction instruction base.
+
+    Computes the difference of two numeric stack values.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<Subtraction(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Subtraction) and self.opcode == other.opcode
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -172,8 +226,19 @@ class Subtraction(BinOp):
 
 
 class Multiplication(BinOp):
+    """
+    A multiplication instruction base.
+
+    Computes the product of two numeric stack values.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<Multiplication(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Multiplication) and self.opcode == other.opcode
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -194,8 +259,19 @@ class Multiplication(BinOp):
 
 
 class Division(BinOp):
+    """
+    A division instruction base.
+
+    Computes the division of two numeric stack values.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<Division(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Division) and self.opcode == other.opcode
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -221,8 +297,19 @@ class Division(BinOp):
 
 
 class Remainder(BinOp):
+    """
+    A remainder (modulo) instruction base.
+
+    Computes the remainder of two numeric stack values.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<Remainder(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Remainder) and self.opcode == other.opcode
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -248,16 +335,27 @@ class Remainder(BinOp):
 
 
 class Negate(Instruction):
+    """
+    A negation instruction base.
+
+    Negates a numeric stack value.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     type: Type
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Negate":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Negate":
         return cls()
+
+    def __repr__(self) -> str:
+        return "<Negate(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Negate) and self.opcode == other.opcode
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -296,8 +394,16 @@ class Negate(Instruction):
 
 
 class ShiftLeft(Shift):
+    """
+    A left shift instruction base.
+
+    Performs a left shift on an integral stack value with an int stack value.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<ShiftLeft(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -318,8 +424,16 @@ class ShiftLeft(Shift):
 
 
 class ShiftRight(Shift):
+    """
+    A right shift instruction base.
+
+    Performs a right shift on an integral stack value with an int stack value.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<ShiftRight(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -340,8 +454,17 @@ class ShiftRight(Shift):
 
 
 class ShiftRightUnsigned(Shift):
+    """
+    An unsigned shift right instruction base.
+
+    Performs an unsigned right shift (that is, the sign bit is also shifted) on an
+    integral stack value with an int stack value.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<ShiftRightUnsigned(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -362,8 +485,19 @@ class ShiftRightUnsigned(Shift):
 
 
 class BitwiseAnd(BinOp):
+    """
+    A bitwise AND instruction base.
+
+    Performs a bitwise AND operation on two integral stack values.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<BitwiseAnd(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, BitwiseAnd) and self.opcode == other.opcode
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -384,8 +518,19 @@ class BitwiseAnd(BinOp):
 
 
 class BitwiseOr(BinOp):
+    """
+    A bitwise OR instruction base.
+
+    Performs a bitwise OR operation on two integral stack values.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<BitwiseOr(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, BitwiseOr) and self.opcode == other.opcode
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -406,8 +551,19 @@ class BitwiseOr(BinOp):
 
 
 class BitwiseXor(BinOp):
+    """
+    A bitwise XOR instruction base.
+
+    Performs a bitwise XOR operation on two integral stack values.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<BitwiseXor(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, BitwiseXor) and self.opcode == other.opcode
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -427,9 +583,17 @@ class BitwiseXor(BinOp):
     #         return None
 
 
-class NumericCompare(Comparison):
+class IntegralCompare(Comparison):
+    """
+    A integral comparison instruction base.
+
+    Compares two integral stack values.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<IntegralCompare(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -458,8 +622,17 @@ class NumericCompare(Comparison):
 
 
 class FloatLCompare(Comparison):
+    """
+    A float comparison instruction base.
+
+    Compares two floats, if either one or two of them are NaN, -1 is pushed to the
+    stack.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<FloatLCompare(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -490,8 +663,17 @@ class FloatLCompare(Comparison):
 
 
 class FloatGCompare(Comparison):
+    """
+    A float comparison instruction base.
+
+    Compares two floats, if either one or two of them are NaN, 1 is pushed to the
+    stack.
+    """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<FloatGCompare(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -533,12 +715,12 @@ imul      = Multiplication.make(0x68, "imul", type=int_t)
 lmul      = Multiplication.make(0x69, "lmul", type=long_t)
 fmul      = Multiplication.make(0x6a, "fmul", type=float_t)
 dmul      = Multiplication.make(0x6b, "dmul", type=double_t)
-idiv            = Division.make(0x6c, "idiv", can_throw=True, type=int_t)
-ldiv            = Division.make(0x6d, "ldiv", can_throw=True, type=long_t)
+idiv            = Division.make(0x6c, "idiv", throws=True, type=int_t)
+ldiv            = Division.make(0x6d, "ldiv", throws=True, type=long_t)
 fdiv            = Division.make(0x6e, "fdiv", type=float_t)
 ddiv            = Division.make(0x6f, "ddiv", type=double_t)
-irem           = Remainder.make(0x70, "irem", can_throw=True, type=int_t)
-lrem           = Remainder.make(0x71, "lrem", can_throw=True, type=long_t)
+irem           = Remainder.make(0x70, "irem", throws=True, type=int_t)
+lrem           = Remainder.make(0x71, "lrem", throws=True, type=long_t)
 frem           = Remainder.make(0x72, "frem", type=float_t)
 drem           = Remainder.make(0x73, "drem", type=double_t)
 ineg              = Negate.make(0x74, "ineg", type=int_t)
@@ -558,8 +740,8 @@ lor            = BitwiseOr.make(0x81, "lor", type=long_t)
 ixor          = BitwiseXor.make(0x82, "ixor", type=int_t)
 lxor          = BitwiseXor.make(0x83, "lxor", type=long_t)
 
-lcmp = NumericCompare.make(0x94, "lcmp", type=long_t)
-fcmpl = FloatLCompare.make(0x95, "fcmpl", type=float_t)
-fcmpg = FloatGCompare.make(0x96, "fcmpg", type=float_t)
-dcmpl = FloatLCompare.make(0x97, "dcmpl", type=double_t)
-dcmpg = FloatGCompare.make(0x98, "dcmpg", type=double_t)
+lcmp = IntegralCompare.make(0x94, "lcmp", type=long_t)
+fcmpl  = FloatLCompare.make(0x95, "fcmpl", type=float_t)
+fcmpg  = FloatGCompare.make(0x96, "fcmpg", type=float_t)
+dcmpl  = FloatLCompare.make(0x97, "dcmpl", type=double_t)
+dcmpg  = FloatGCompare.make(0x98, "dcmpg", type=double_t)

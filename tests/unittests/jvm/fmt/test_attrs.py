@@ -12,6 +12,7 @@ from kirjava.jvm.fmt.constants import *
 from kirjava.jvm.fmt.field import *
 from kirjava.jvm.fmt.method import *
 from kirjava.jvm.fmt.stackmap import *
+from kirjava.jvm.insns import *
 from kirjava.jvm.version import JAVA_MAX
 
 
@@ -207,7 +208,7 @@ class TestAttributes(unittest.TestCase):
 
         # Method info / code attributes.
         Code: (
-            1, 5, 14, b"this is not real bytecode probably",
+            1, 5, 14, [iconst_0(), iconst_0(), iconst_0(), pop2(), dup(), pop2()],
             [Code.ExceptHandler(0, 30, 10, None), Code.ExceptHandler(5, 25, 10, ClassInfo(UTF8Info(b"TestException")))],
             [],
         ),
@@ -334,6 +335,8 @@ class TestAttributes(unittest.TestCase):
 
                 attr_read, _ = AttributeInfo.read(data, JAVA_MAX, self.pool, None)
                 self.assertEqual(attr_init, attr_read)
+                if data.read():
+                    self.fail("Attribute underread.")
 
                 data = BytesIO()
                 attr_read.write(data, JAVA_MAX, self.pool)

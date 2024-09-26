@@ -188,6 +188,18 @@ class Annotation:
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Annotation) and self.type == other.type and self.elements == other.elements
 
+    def __getitem__(self, index: int) -> "Annotation.NamedElement":
+        return self.elements[index]
+
+    def __setitem__(self, index: int, value: "Annotation.NamedElement") -> None:
+        self.elements[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.elements[index]
+
+    def __len__(self) -> int:
+        return len(self.elements)
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
         Writes this annotation to a binary stream.
@@ -283,6 +295,18 @@ class ParameterAnnotations:
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ParameterAnnotations) and self.annotations == other.annotations
+
+    def __getitem__(self, index: int) -> Annotation:
+        return self.annotations[index]
+
+    def __setitem__(self, index: int, value: Annotation) -> None:
+        self.annotations[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.annotations[index]
+
+    def __len__(self) -> int:
+        return len(self.annotations)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
@@ -543,6 +567,18 @@ class TypePath:
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, TypePath) and self.path == other.path
+
+    def __getitem__(self, index: int) -> "TypePath.Segment":
+        return self.path[index]
+
+    def __setitem__(self, index: int, value: "TypePath.Segment") -> None:
+        self.path[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.path[index]
+
+    def __len__(self) -> int:
+        return len(self.path)
 
     def write(self, stream: IO[bytes]) -> None:
         """
@@ -881,6 +917,18 @@ class ArrayValue(ElementValue):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ArrayValue) and self.values == other.values
 
+    def __getitem__(self, index: int) -> ElementValue:
+        return self.values[index]
+
+    def __setitem__(self, index: int, value: ElementValue) -> None:
+        self.values[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.values[index]
+
+    def __len__(self) -> int:
+        return len(self.values)
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(ArrayValue.tags[0], len(self.values)))
         for value in self.values:
@@ -1180,6 +1228,18 @@ class LocalVarTarget(TargetInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVarTarget) and self.kind == other.kind and self.ranges == other.ranges
+
+    def __getitem__(self, index: int) -> "LocalVarTarget.LocalVar":
+        return self.ranges[index]
+
+    def __setitem__(self, index: int, value: "LocalVarTarget.LocalVar") -> None:
+        self.ranges[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.ranges[index]
+
+    def __len__(self) -> int:
+        return len(self.ranges)
 
     def write(self, stream: IO[bytes]) -> None:
         stream.write(pack_BH(self.kind, len(self.ranges)))

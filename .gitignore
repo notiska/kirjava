@@ -2,6 +2,7 @@ __pycache__
 *.pyc
 
 /.idea/
+/.mypy_cache/
 /build/
 /dist/
 *.egg-info

@@ -291,7 +291,7 @@ class UTF8Info(ConstInfo):
 
     tag = 1
     wide = False
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     loadable = False
 
     @classmethod
@@ -354,7 +354,7 @@ class IntegerInfo(ConstInfo):
 
     tag = 3
     wide = False
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     loadable = True
 
     @classmethod
@@ -408,7 +408,7 @@ class FloatInfo(ConstInfo):
 
     tag = 4
     wide = False
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     loadable = True
 
     @classmethod
@@ -431,7 +431,14 @@ class FloatInfo(ConstInfo):
         return "%sf" % self.value
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, FloatInfo) and self.value == other.value
+        if not isinstance(other, FloatInfo):
+            return False
+        if self.value == other.value:
+            return True
+        # FIXME: Will not resolve exact NaN matches though. Could cause issues.
+        elif isnan(self.value) and isnan(other.value):  # Special case check, annoyingly.
+            return True
+        return False
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(np.array(self.value, dtype=np.dtype(">f4")).tobytes())
@@ -462,7 +469,7 @@ class LongInfo(ConstInfo):
 
     tag = 5
     wide = True
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     loadable = True
 
     @classmethod
@@ -516,7 +523,7 @@ class DoubleInfo(ConstInfo):
 
     tag = 6
     wide = True
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     loadable = True
 
     @classmethod
@@ -539,7 +546,13 @@ class DoubleInfo(ConstInfo):
         return "%sd" % self.value
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, DoubleInfo) and self.value == other.value
+        if not isinstance(other, DoubleInfo):
+            return False
+        if self.value == other.value:
+            return True
+        elif isnan(self.value) and isnan(other.value):
+            return True
+        return False
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(np.array(self.value, dtype=np.dtype(">f8")).tobytes())
@@ -570,7 +583,7 @@ class ClassInfo(ConstInfo):
 
     tag = 7
     wide = False
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     loadable = True
 
     @classmethod
@@ -629,7 +642,7 @@ class StringInfo(ConstInfo):
 
     tag = 8
     wide = False
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     loadable = True
 
     @classmethod
@@ -648,6 +661,7 @@ class StringInfo(ConstInfo):
 
     def __str__(self) -> str:
         if self.index is not None:
+            # FIXME: Formatting could be considered incorrect with quotations, i.e. "<#13>Two" and not <#13>"Two".
             return "<#%i>string[\"%s\"]" % (self.index, pretty_repr(str(self.value)).replace("\"", "\\\""))
         return "string[\"%s\"]" % pretty_repr(str(self.value)).replace("\"", "\\\"")
 
@@ -690,7 +704,7 @@ class FieldrefInfo(ConstInfo):
 
     tag = 9
     wide = False
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     loadable = False
 
     @classmethod
@@ -758,7 +772,7 @@ class MethodrefInfo(ConstInfo):
 
     tag = 10
     wide = False
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     loadable = False
 
     @classmethod
@@ -826,7 +840,7 @@ class InterfaceMethodrefInfo(ConstInfo):
 
     tag = 11
     wide = False
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     loadable = False
 
     @classmethod
@@ -893,7 +907,7 @@ class NameAndTypeInfo(ConstInfo):
 
     tag = 12
     wide = False
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     loadable = False
 
     @classmethod

@@ -12,39 +12,49 @@ __all__ = (
     "pop", "pop2", "dup", "dup_x1", "dup_x2", "dup2", "dup2_x1", "dup2_x2", "swap",
 )
 
-import logging
 import typing
 from typing import IO
 
 from . import Instruction
 from .._struct import *
 from ..fmt.constants import *
-from ...model.types import *
+# from ...model.types import *
 from ...model.values.constants import *
 
 if typing.TYPE_CHECKING:
-    from ..analyse.frame import Frame
-    from ..analyse.state import State
+    # from ..analyse.frame import Frame
+    # from ..analyse.state import State
     from ..fmt import ConstPool
-    from ..verify import Verifier
-
-logger = logging.getLogger("ijd.jvm.insns.stack")
+    # from ..verify import Verifier
 
 
 class PushConstant(Instruction):
+    """
+    A constant push instruction base.
+
+    Pushes a constant onto the top of the stack.
+
+    Attributes
+    ----------
+    constant: Constant
+        The constant to push.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     constant: Constant
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "PushConstant":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PushConstant":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<PushConstant(offset=%s, constant=%r)>" % (self.offset, self.constant)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, PushConstant) and self.opcode == other.opcode and self.constant == other.constant
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -61,96 +71,151 @@ class PushConstant(Instruction):
     #     entry.value = variable
 
 
-class PushByteConstant(PushConstant):
+class BIPush(PushConstant):
+    """
+    A `bipush` instruction.
 
-    __slots__ = ("constant",)
+    Pushes a signed byte onto the top of the stack.
+
+    Attributes
+    ----------
+    value: int
+        The byte value to push.
+    """
+
+    __slots__ = ("value",)
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "PushByteConstant":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "BIPush":
         value, = stream.read(1)
-        return cls(Integer(value))
+        return cls(value)
 
-    def __init__(self, constant: Integer) -> None:
+    @property
+    def constant(self) -> Integer:
+        return Integer(self.value)
+
+    @constant.setter
+    def constant(self, value: Integer) -> None:
+        self.value = value.value
+
+    def __init__(self, value: int) -> None:
         super().__init__()
-        self.constant: Integer = constant
+        self.value = value
 
     def __repr__(self) -> str:
-        return "<PushByteConstant(offset=%s, constant=%s)>" % (self.offset, self.constant)
+        return "<BIPush(offset=%s, value=%i)>" % (self.offset, self.value)
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: %s %s" % (self.offset, self.mnemonic, self.constant)
-        return "%s %s" % (self.mnemonic, self.constant)
+            return "%i: %s %i" % (self.offset, self.mnemonic, self.value)
+        return "%s %i" % (self.mnemonic, self.value)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, BIPush) and self.value == other.value
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(bytes((self.opcode, self.constant.value)))
+        stream.write(bytes((self.opcode, self.value)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.constant.value <= 255):
-            verifier.report("invalid byte constant value", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (0 <= self.constant.value <= 255):
+    #         verifier.report("invalid byte constant value", instruction=self)
 
 
-class PushShortConstant(PushConstant):
+class SIPush(PushConstant):
+    """
+    A `sipush` instruction.
 
-    __slots__ = ("constant",)
+    Pushes a signed short onto the top of the stack.
+
+    Attributes
+    ----------
+    value: int
+        The short value to push.
+    """
+
+    __slots__ = ("value",)
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "PushShortConstant":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "SIPush":
         value, = unpack_H(stream.read(2))
-        return cls(Integer(value))
+        return cls(value)
 
-    def __init__(self, constant: Integer) -> None:
+    @property
+    def constant(self) -> Integer:
+        return Integer(self.value)
+
+    @constant.setter
+    def constant(self, value: Integer) -> None:
+        self.value = value.value
+
+    def __init__(self, value: int) -> None:
         super().__init__()
-        self.constant: Integer = constant
+        self.value = value
 
     def __repr__(self) -> str:
-        return "<PushShortConstant(offset=%s, constant=%s)>" % (self.offset, self.constant)
+        return "<SIPush(offset=%s, value=%i)>" % (self.offset, self.value)
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: %s %s" % (self.offset, self.mnemonic, self.constant)
-        return "%s %s" % (self.mnemonic, self.constant)
+            return "%i: %s %i" % (self.offset, self.mnemonic, self.value)
+        return "%s %i" % (self.mnemonic, self.value)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, SIPush) and self.value == other.value
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, self.constant.value))
+        stream.write(pack_BH(self.opcode, self.value))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.constant.value <= 65535):
-            verifier.report("invalid short constant value", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (0 <= self.constant.value <= 65535):
+    #         verifier.report("invalid short constant value", instruction=self)
 
 
 class LoadConstant(Instruction):
+    """
+    A load constant instruction base.
+
+    Loads a constant from the constant pool and pushes it onto the top of the stack.
+
+    Attributes
+    ----------
+    info: ConstInfo
+        The constant info to load and push onto the stack.
+    """
 
     __slots__ = ("info",)
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadConstant":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadConstant":
         index, = stream.read(1)
         return cls(pool[index])
 
     @property
-    def can_throw(self) -> bool:
+    def throws(self) -> bool:
         # FIXME: I'm not sure about this, more testing on condys please!!
         return isinstance(self.info, (ClassInfo, MethodHandleInfo, DynamicInfo))
 
     def __init__(self, info: ConstInfo) -> None:
-        self.offset = None
+        super().__init__()
         self.info = info
 
     def __repr__(self) -> str:
-        return "<LoadConstant(offset=%s, info=%s)>" % (self.offset, self.info)
+        return "<LoadConstant(offset=%s, info=%r)>" % (self.offset, self.info)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: %s %s" % (self.offset, self.mnemonic, self.info)
         return "%s %s" % (self.mnemonic, self.info)
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, LoadConstant) and self.opcode == other.opcode and self.info == other.info
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, pool.add(self.info))))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not self.info.loadable:
-            verifier.report("constant is not loadable", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if verifier.check_const_types and not self.info.loadable:
+    #         verifier.report("constant is not loadable", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     metadata = Source.Metadata(self, logger)
@@ -178,34 +243,52 @@ class LoadConstant(Instruction):
 
 
 class LoadConstantWide(LoadConstant):
+    """
+    A wide load constant instruction.
+
+    Loads a constant from the constant pool and pushes it onto the top of the stack.
+    """
 
     __slots__ = ()
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadConstantWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadConstantWide":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
     def __repr__(self) -> str:
         return "<LoadConstantWide(offset=%s, info=%r)>" % (self.offset, self.info)
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, LoadConstantWide) and self.opcode == other.opcode and self.info == other.info
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.info)))
 
 
 class New(Instruction):
+    """
+    A `new` instruction.
+
+    Creates a new instance of a class.
+
+    Attributes
+    ----------
+    class_: ConstInfo
+        A class constant, used as the class to instantiate.
+    """
 
     __slots__ = ("class_",)
 
-    can_throw = True
+    throws = True  # If the class could not be resolved.
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "New":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "New":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
     def __init__(self, class_: ConstInfo) -> None:
-        self.offset = None
+        super().__init__()
         self.class_ = class_
 
     def __repr__(self) -> str:
@@ -216,12 +299,15 @@ class New(Instruction):
             return "%i: new %s" % (self.offset, self.class_)
         return "new %s" % self.class_
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, New) and self.class_ == other.class_
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.class_)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
-            verifier.report("class is not a class constant", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
+    #         verifier.report("class is not a class constant", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     return state.step(self, (), frame.push(Uninitialized(self), self))
@@ -234,17 +320,25 @@ class New(Instruction):
 
 
 class Pop(Instruction):
+    """
+    A `pop` instruction.
+
+    Pops the top value from the stack.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Pop":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Pop":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<Pop(offset=%s)>" % self.offset
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Pop)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -261,17 +355,25 @@ class Pop(Instruction):
 
 
 class Pop2(Instruction):
+    """
+    A `pop2` instruction.
+
+    Pops the top two values from the stack.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Pop2":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Pop2":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<Pop2(offset=%s)>" % self.offset
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Pop2)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -287,17 +389,25 @@ class Pop2(Instruction):
 
 
 class Dup(Instruction):
+    """
+    A `dup` instruction.
+
+    Duplicates the top value on the stack.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<Dup(offset=%s)>" % self.offset
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Dup)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -313,17 +423,25 @@ class Dup(Instruction):
 
 
 class DupX1(Instruction):
+    """
+    A `dup_x1` instruction.
+
+    Duplicate the top value on the stack and insert it one value down.
+    """
 
     __slots__ = ()
 
     can_throw = False
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "DupX1":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DupX1":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<DupX1(offset=%s)>" % self.offset
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, DupX1)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -339,17 +457,25 @@ class DupX1(Instruction):
 
 
 class DupX2(Instruction):
+    """
+    A `dup_x2` instruction.
+
+    Duplicate the top value on the stack and insert it two values down.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "DupX2":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DupX2":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<DupX2(offset=%s)>" % self.offset
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, DupX2)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -365,17 +491,25 @@ class DupX2(Instruction):
 
 
 class Dup2(Instruction):
+    """
+    A `dup2` instruction.
+
+    Duplicates the top two values on the stack.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<Dup2(offset=%s)>" % self.offset
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Dup2)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -397,17 +531,25 @@ class Dup2(Instruction):
 
 
 class Dup2X1(Instruction):
+    """
+    A `dup2_x1` instruction.
+
+    Duplicates the top two values on the stack and inserts them three values down.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2X1":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2X1":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<Dup2X1(offset=%s)>" % self.offset
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Dup2X1)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -418,17 +560,25 @@ class Dup2X1(Instruction):
 
 
 class Dup2X2(Instruction):
+    """
+    A `dup2_x2` instruction.
+
+    Duplicates the top two values on the stack and inserts them four values down.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2X2":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2X2":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<Dup2X2(offset=%s)>" % self.offset
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Dup2X2)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -439,17 +589,25 @@ class Dup2X2(Instruction):
 
 
 class Swap(Instruction):
+    """
+    A `swap` instruction.
+
+    Swaps the top two stack values.
+    """
 
     __slots__ = ()
 
-    can_throw = False
+    throws = False
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Swap":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Swap":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<Swap(offset=%s)>" % self.offset
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Swap)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -486,8 +644,8 @@ fconst_2 = PushConstant.make(0x0d, "fconst_2", constant=Float(2.0))  # Float(0x4
 dconst_0 = PushConstant.make(0x0e, "dconst_0", constant=Double(0.0))  # Double(0x0000000000000000))
 dconst_1 = PushConstant.make(0x0f, "dconst_1", constant=Double(1.0))  # Double(0x3ff0000000000000))
 
-bipush  = PushByteConstant.make(0x10, "bipush")
-sipush = PushShortConstant.make(0x11, "sipush")
+bipush = BIPush.make(0x10, "bipush")
+sipush = SIPush.make(0x11, "sipush")
 
 ldc        = LoadConstant.make(0x12, "ldc")
 ldc_w  = LoadConstantWide.make(0x13, "ldc_w")

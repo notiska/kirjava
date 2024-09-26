@@ -11,61 +11,70 @@ __all__ = (
     "athrow",
 )
 
-import logging
 import typing
-from typing import IO, Optional
+from operator import itemgetter
+from typing import IO, Mapping
 
 from . import Instruction
+from .misc import wide
 from .._struct import *
 from ...model.types import *
-from ...model.values.constants import *
+# from ...model.values.constants import *
 
 if typing.TYPE_CHECKING:
-    from ..analyse.frame import Frame
-    from ..analyse.state import State
+    # from ..analyse.frame import Frame
+    # from ..analyse.state import State
     from ..fmt import ConstPool
-    from ..verify import Verifier
-    from ...model.values import Value
-
-logger = logging.getLogger("ijd.jvm.insns.flow")
+    # from ..verify import Verifier
+    # from ...model.values import Value
 
 
 class Jump(Instruction):
+    """
+    A jump instruction base.
+
+    Jumps to a relative offset in the instructions.
+
+    Attributes
+    ----------
+    conditional: bool
+        Whether this jump is conditional.
+    """
 
     __slots__ = ("delta",)
 
-    can_throw = False
-
+    throws = False
     conditional = False
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Jump":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Jump":
         delta, = unpack_h(stream.read(2))
         return cls(delta)
 
     def __init__(self, delta: int | None) -> None:
-        self.offset = None
+        super().__init__()
         self.delta = delta
 
     def __repr__(self) -> str:
-        return "<Jump(opcode=0x%x, mnemonic=%s, offset=%s, delta=%s)>" % (
-            self.opcode, self.mnemonic, self.offset, self.delta,
-        )
+        return "<Jump(offset=%s, mnemonic=%s, delta=%s)>" % (self.offset, self.mnemonic, self.delta)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: %s %+i,%i" % (self.offset, self.mnemonic, self.delta, self.offset + self.delta)
         return "%s %+i" % (self.mnemonic, self.delta)
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Jump) and self.opcode == other.opcode and self.delta == other.delta
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_Bh(self.opcode, self.delta))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if self.offset is not None and not (-32768 <= self.offset <= 32767):
-            verifier.report("invalid jump offset", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if self.offset is not None and not (-32768 <= self.offset <= 32767):
+    #         verifier.report("invalid jump offset", instruction=self)
 
-    def trace(self, frame: "Frame", state: "State") -> Optional["State.Step"]:
-        ...
+    # def trace(self, frame: "Frame", state: "State") -> Optional["State.Step"]:
+    #     ...
 
     # class Metadata(Source.Metadata):
     #
@@ -79,24 +88,58 @@ class Jump(Instruction):
     #         return "<Jump.Metadata(jumps=%s)>" % self.jumps
 
 
-class JumpWide(Jump):
+class GotoWide(Jump):
+    """
+    A `goto_w` instruction.
+
+    Unconditionally jumps to a relative offset above the 16-bit limit in the
+    instructions.
+    """
 
     __slots__ = ()
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "JumpWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "GotoWide":
         delta, = unpack_i(stream.read(4))
         return cls(delta)
+
+    def __repr__(self) -> str:
+        return "<GotoWide(offset=%s, delta=%i)>" % (self.offset, self.delta)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_Bi(self.opcode, self.delta))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if self.offset is not None and not (-2147483648 <= self.offset <= 2147483647):
-            verifier.report("invalid jump offset", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if self.offset is not None and not (-2147483648 <= self.offset <= 2147483647):
+    #         verifier.report("invalid jump offset", instruction=self)
 
 
 class Compare(Jump):
+    """
+    A comparative conditional jump instruction base.
+
+    Compares two values and jumps based on the result.
+
+    Attributes
+    ----------
+    EQ: int
+        Compares if one value is equal to the other.
+    NE: int
+        Compares if one value is not equal to the other.
+    LT: int
+        Compares if one value is less than the other.
+    GE: int
+        Compares if one value is greater than or equal to the other.
+    GT: int
+        Compares if one value is greater than the other.
+    LE: int
+        Compares if one value is less than or equal to the other.
+
+    comparison: int
+        The comparison type to perform.
+    type: Type
+        The type of stack value(s) to compare.
+    """
 
     __slots__ = ()
 
@@ -113,9 +156,7 @@ class Compare(Jump):
     type: Type
 
     def __repr__(self) -> str:
-        return "<Compare(opcode=0x%x, mnemonic=%s, offset=%i, delta=%i)>" % (
-            self.opcode, self.mnemonic, self.offset, self.delta,
-        )
+        return "<Compare(offset=%s, mnemonic=%s, delta=%i)>" % (self.offset, self.mnemonic, self.delta)
 
     # def evaluate(self, left: "Value", right: "Value") -> Jump.Metadata:
     #     """
@@ -200,10 +241,18 @@ class Compare(Jump):
 
 
 class CompareToZero(Compare):
+    """
+    A compare to zero instruction base.
+
+    Compares an int stack value to zero.
+    """
 
     __slots__ = ()
 
     type = int_t
+
+    def __repr__(self) -> str:
+        return "<CompareToZero(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     value = frame.pop(int_t, self)
@@ -214,7 +263,34 @@ class CompareToZero(Compare):
     #     return state.step(self, (value,), None, metadata)
 
 
+class IfEq(CompareToZero):
+    """
+    An `ifeq` instruction.
+
+    Compares an int stack value to zero, or in older versions, also acts as an
+    `ifnull` instruction.
+    """
+
+    comparison = Compare.EQ
+
+
+class IfNe(CompareToZero):
+    """
+    An `ifne` instruction.
+
+    Compares an int stack value to zero, or in older versions, also acts as an
+    `ifnonnull` instruction.
+    """
+
+    comparison = Compare.NE
+
+
 class CompareToNull(Compare):
+    """
+    A compare to null instruction base.
+
+    Compares a reference stack value to null.
+    """
 
     __slots__ = ()
 
@@ -232,6 +308,11 @@ class CompareToNull(Compare):
 
 
 class Jsr(Jump):
+    """
+    A `jsr` instruction.
+
+    Unconditionally jumps to a subroutine, pushing the return address onto the stack.
+    """
 
     __slots__ = ()
 
@@ -248,11 +329,17 @@ class Jsr(Jump):
 
 
 class JsrWide(Jsr):
+    """
+    A `jsr_w` instruction.
+
+    Unconditionally jumps to a subroutine with a relative offset greater than the
+    16-bit limit, pushing the return address onto the stack.
+    """
 
     __slots__ = ()
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "JsrWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "JsrWide":
         delta, = unpack_i(stream.read(4))
         return cls(delta)
 
@@ -267,17 +354,23 @@ class JsrWide(Jsr):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_Bi(self.opcode, self.delta))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (-2147483648 <= self.offset <= 2147483647):
-            verifier.report("invalid jump offset", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (-2147483648 <= self.offset <= 2147483647):
+    #         verifier.report("invalid jump offset", instruction=self)
 
 
 class Ret(Jump):
+    """
+    A `ret` instruction.
+
+    Returns from a subroutine, to the address stored in the local variable at the
+    given index.
+    """
 
     __slots__ = ("index",)
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Ret":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Ret":
         index, = stream.read(1)
         return cls(index)
 
@@ -296,9 +389,9 @@ class Ret(Jump):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.index <= 255):
-            verifier.report("invalid local index", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (0 <= self.index <= 255):
+    #         verifier.report("invalid local index", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     retaddr = frame.load(self.index, return_address_t, self)
@@ -321,13 +414,19 @@ class Ret(Jump):
 
 
 class RetWide(Ret):
+    """
+    A `ret_w` pseudo-instruction (wide mutation).
+
+    Returns from a subroutine, to the address stored in the local variable at the
+    given 16-bit index (as compared to the 8-bit index with `ret`).
+    """
 
     __slots__ = ()
 
-    mutate_w = True
+    mutated = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "RetWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "RetWide":
         index, = unpack_H(stream.read(2))
         return cls(index)
 
@@ -340,29 +439,50 @@ class RetWide(Ret):
         return "ret_w %i" % self.index
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, self.index))
+        stream.write(pack_BBH(wide.opcode, self.opcode, self.index))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.index <= 65535):
-            verifier.report("invalid local index", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (0 <= self.index <= 65535):
+    #         verifier.report("invalid local index", instruction=self)
 
 
 class Switch(Instruction):
+    """
+    A switch instruction base.
+
+    Jumps to a relative offset based on a key value.
+
+    Attributes
+    ----------
+    default: int
+        The default offset to jump to if the key is not found.
+    offsets: dict[int, int]
+        A mapping of key values to relative offsets.
+    """
 
     __slots__ = ("default", "offsets")
 
-    can_throw = False
+    throws = False
 
-    def __init__(self, default: int, offsets: dict[int, int] = None) -> None:
-        self.offset = None
+    @classmethod
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Instruction":
+        raise NotImplementedError("_read() is not implemented for %r" % cls)
+
+    def __init__(self, default: int, offsets: Mapping[int, int] | None = None) -> None:
+        super().__init__()
         self.default = default
         self.offsets = {}
-
         if offsets is not None:
             self.offsets.update(offsets)
 
     def __repr__(self) -> str:
-        return "<Switch(offset=%s, default=%i, offsets=%r)>" % (self.offset, self.default, self.offsets)
+        raise NotImplementedError("repr() is not implemented for %r" % type(self))
+
+    def __eq__(self, other: object) -> bool:
+        raise NotImplementedError("== is not implemented for %r" % type(self))
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        raise NotImplementedError("write() is not implemented for %r" % type(self))
 
     # class Metadata(Source.Metadata):
     #
@@ -378,11 +498,25 @@ class Switch(Instruction):
 
 
 class TableSwitch(Switch):
+    """
+    A `tableswitch` instruction.
+
+    A 0-based jump table in which the key is the index of the offset value.
+
+    Attributes
+    ----------
+    low: int
+        The low value of the switch, the offset is calculated by `key - low`.
+        If `key < low`, the `default` offset is used.
+    high: int
+        The highest value of the switch. If `key > high`, the `default` offset is
+        used.
+    """
 
     __slots__ = ("low", "high")
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "TableSwitch":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "TableSwitch":
         stream.read((4 - stream.tell()) % 4)
         default, low, high = unpack_iii(stream.read(12))
         offsets = {}
@@ -390,7 +524,7 @@ class TableSwitch(Switch):
             offsets[index], = unpack_i(stream.read(4))
         return cls(default, low, high, offsets)
 
-    def __init__(self, default: int, low: int, high: int, offsets: dict[int, int] = None) -> None:
+    def __init__(self, default: int, low: int, high: int, offsets: Mapping[int, int] | None = None) -> None:
         super().__init__(default, offsets)
         self.low = low
         self.high = high
@@ -414,11 +548,21 @@ class TableSwitch(Switch):
         #     ", ".join("%i -> %+i" % (key, value) for key, value in self.offsets.items()),
         # )
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        ...  # TODO
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, TableSwitch) and
+            self.offsets == other.offsets and
+            self.default == other.default and
+            self.low == other.low and
+            self.high == other.high
+        )
 
-    def verify(self, verifier: "Verifier") -> None:
-        ...  # TODO
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(bytes((self.opcode,)))
+        stream.write(b"\x00" * (3 - (stream.tell() - 1) % 4))
+        stream.write(pack_iii(self.default, self.low, self.high))
+        for index in range(self.low, self.high + 1):
+            stream.write(pack_i(self.offsets[index]))
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     value = frame.pop(int_t, self)
@@ -436,15 +580,20 @@ class TableSwitch(Switch):
 
 
 class LookupSwitch(Switch):
+    """
+    A `lookupswitch` instruction.
+
+    A key-value jump table.
+    """
 
     __slots__ = ()
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "LookupSwitch":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LookupSwitch":
         stream.read((4 - stream.tell()) % 4)
-        default, npairs = unpack_ii(stream.read(8))
+        default, count = unpack_ii(stream.read(8))
         offsets = {}
-        for _ in range(npairs):
+        for _ in range(count):
             key, offset = unpack_ii(stream.read(8))
             offsets[key] = offset
         return cls(default, offsets)
@@ -465,11 +614,15 @@ class LookupSwitch(Switch):
         #     self.default, ", ".join("%i -> %+i" % (key, value) for key, value in self.offsets.items()),
         # )
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        ...  # TODO
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, LookupSwitch) and self.offsets == other.offsets and self.default == other.default
 
-    def verify(self, verifier: "Verifier") -> None:
-        ...  # TODO
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(bytes((self.opcode,)))
+        stream.write(b"\x00" * (3 - (stream.tell() - 1) % 4))
+        stream.write(pack_ii(self.default, len(self.offsets)))
+        for key, offset in self.offsets.items():  # sorted(self.offsets.items(), key=itemgetter(0)):
+            stream.write(pack_ii(key, offset))
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     value = frame.pop(int_t, self)
@@ -486,22 +639,32 @@ class LookupSwitch(Switch):
 
 
 class Return(Jump):
+    """
+    A return instruction base.
+
+    Returns from the current method.
+
+    Attributes
+    ----------
+    type: Type
+        The type of value to return.
+    """
 
     __slots__ = ()
 
-    can_throw = True
+    throws = True
 
     type: Type
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Return":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Return":
         return cls()
 
     def __init__(self) -> None:
         super().__init__(None)
 
     def __repr__(self) -> str:
-        return "<Return(offset=%s)>" % self.offset
+        return "<Return(offset=%s, type=%r)>" % (self.offset, self.type)
 
     def __str__(self) -> str:
         if self.offset is not None:
@@ -525,21 +688,26 @@ class Return(Jump):
     #         codegen.emit(IRReturn(step, codegen.value(step.inputs[0])))
 
 
-class Throw(Jump):
+class AThrow(Jump):
+    """
+    An `athrow` instruction.
+
+    Throws the exception on the top of the stack.
+    """
 
     __slots__ = ()
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "Throw":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "AThrow":
         return cls()
 
     def __init__(self) -> None:
         super().__init__(None)
 
     def __repr__(self) -> str:
-        return "<Throw(offset=%s)>" % self.offset
+        return "<AThrow(offset=%s)>" % self.offset
 
     def __str__(self) -> str:
         if self.offset is not None:
@@ -588,7 +756,7 @@ jsr         = Jsr.make(0xa8, "jsr")
 ret         = Ret.make(0xa9, "ret")
 ret_w   = RetWide.make(0xa9, "ret_w")
 
-goto_w = JumpWide.make(0xc8, "goto_w")
+goto_w = GotoWide.make(0xc8, "goto_w")
 jsr_w   = JsrWide.make(0xc9, "jsr_w")
 
 tableswitch   = TableSwitch.make(0xaa, "tableswitch")
@@ -601,4 +769,4 @@ dreturn = Return.make(0xaf, "dreturn", type=double_t)
 areturn = Return.make(0xb0, "areturn", type=reference_t)
 return_ = Return.make(0xb1, "return", type=void_t)
 
-athrow = Throw.make(0xbf, "athrow")
+athrow = AThrow.make(0xbf, "athrow")

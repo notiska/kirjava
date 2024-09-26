@@ -8,51 +8,64 @@ import typing
 from typing import IO
 
 from . import Instruction
-from .stack import New
-from .._desc import parse_method_descriptor
+# from .stack import New
+# from .._desc import parse_method_descriptor
 from .._struct import *
 from ..fmt.constants import *
-from ...model.types import *
-from ...model.values.constants import Null
+# from ...model.types import *
+# from ...model.values.constants import Null
 
 if typing.TYPE_CHECKING:
-    from ..analyse.frame import Frame
-    from ..analyse.state import State
+    # from ..analyse.frame import Frame
+    # from ..analyse.state import State
     from ..fmt import ConstPool
-    from ..verify import Verifier
+    # from ..verify import Verifier
 
 
 # TODO: Go easier on the assertions here. There's stuff that could be recorded in the metadata.
 
 class InvokeVirtual(Instruction):
+    """
+    An `invokevirtual` instruction.
+
+    Invokes a virtual method on an object.
+
+    Attributes
+    ----------
+    ref: ConstInfo
+        A method reference constant, used as the method to invoke.
+    """
 
     __slots__ = ("ref",)
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeVirtual":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeVirtual":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
     def __init__(self, ref: ConstInfo) -> None:
-        self.offset = None
+        super().__init__()
         self.ref = ref
 
     def __repr__(self) -> str:
-        return "<InvokeVirtual(offset=%s, ref=%s)>" % (self.offset, self.ref)
+        return "<InvokeVirtual(offset=%s, ref=%r)>" % (self.offset, self.ref)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: invokevirtual %s" % (self.offset, self.ref)
         return "invokevirtual %s" % self.ref
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, InvokeVirtual) and self.ref == other.ref
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.ref, MethodrefInfo):
-            verifier.report("ref is not a method ref constant", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if verifier.check_const_types and not isinstance(self.ref, MethodrefInfo):
+    #         verifier.report("ref is not a method ref constant", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     assert isinstance(self.ref.class_index.info, ClassInfo), "invalid class info %r" % self.ref.class_index.info
@@ -99,34 +112,47 @@ class InvokeVirtual(Instruction):
 
 
 class InvokeSpecial(Instruction):
+    """
+    An `invokespecial` instruction.
+
+    Invokes object constructors or directly invokes superclass methods of an object.
+
+    Attributes
+    ----------
+    ref: ConstInfo
+        A method reference constant, used as the method to invoke.
+    """
 
     __slots__ = ("ref",)
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeSpecial":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeSpecial":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
     def __init__(self, ref: ConstInfo) -> None:
-        self.offset = None
+        super().__init__()
         self.ref = ref
 
     def __repr__(self) -> str:
-        return "<InvokeSpecial(offset=%s, ref=%s)>" % (self.offset, self.ref)
+        return "<InvokeSpecial(offset=%s, ref=%r)>" % (self.offset, self.ref)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: invokespecial %s" % (self.offset, self.ref)
         return "invokespecial %s" % self.ref
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, InvokeSpecial) and self.ref == other.ref
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.ref, (MethodrefInfo, InterfaceMethodrefInfo)):
-            verifier.report("ref is not a method ref or interface method ref constant", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if verifier.check_const_types and not isinstance(self.ref, (MethodrefInfo, InterfaceMethodrefInfo)):
+    #         verifier.report("ref is not a method ref or interface method ref constant", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     assert isinstance(self.ref.class_index.info, ConstantClassInfo), "invalid class info %r" % self.ref.class_index.info
@@ -189,34 +215,47 @@ class InvokeSpecial(Instruction):
 
 
 class InvokeStatic(Instruction):
+    """
+    An `invokestatic` instruction.
+
+    Invokes a static method.
+
+    Attributes
+    ----------
+    ref: ConstInfo
+        A method reference constant, used as the method to invoke.
+    """
 
     __slots__ = ("ref",)
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeStatic":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeStatic":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
     def __init__(self, ref: ConstInfo) -> None:
-        self.offset = None
+        super().__init__()
         self.ref = ref
 
     def __repr__(self) -> str:
-        return "<InvokeStatic(offset=%s, ref=%s)>" % (self.offset, self.ref)
+        return "<InvokeStatic(offset=%s, ref=%r)>" % (self.offset, self.ref)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: invokestatic %s" % (self.offset, self.ref)
         return "invokestatic %s" % self.ref
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, InvokeStatic) and self.ref == other.ref
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.ref, MethodrefInfo):
-            verifier.report("ref is not a method ref constant", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if verifier.check_const_types and not isinstance(self.ref, MethodrefInfo):
+    #         verifier.report("ref is not a method ref constant", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     assert isinstance(self.ref.name_and_type_index.info, ConstantNameAndTypeInfo), "invalid name and type info %r" % self.ref.name_and_type_index.info
@@ -254,41 +293,63 @@ class InvokeStatic(Instruction):
 
 
 class InvokeInterface(Instruction):
+    """
+    An `invokeinterface` instruction.
+
+    Invokes an interface method.
+
+    Attributes
+    ----------
+    ref: ConstInfo
+        An interface method reference constant, used as the method to invoke.
+    count: int
+        The number of arguments to the method.
+    reserved: int
+        A reserved byte, should be 0.
+    """
 
     __slots__ = ("ref", "count", "reserved")
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeInterface":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeInterface":
         index, count, reserved = unpack_HBB(stream.read(4))
         return cls(pool[index], count, reserved)
 
     def __init__(self, ref: ConstInfo, count: int, reserved: int) -> None:
-        self.offset = None
+        super().__init__()
         self.ref = ref
         self.count = count
         self.reserved = reserved
 
     def __repr__(self) -> str:
-        return "<InvokeInterface(offset=%s, ref=%s, count=%i)>" % (self.offset, self.ref, self.count)
+        return "<InvokeInterface(offset=%s, ref=%r, count=%i)>" % (self.offset, self.ref, self.count)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: invokeinterface %s count %i" % (self.offset, self.ref, self.count)
         return "invokeinterface %s count %i" % (self.ref, self.count)
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BHBB(self.opcode, pool.add(self.ref), self.count))
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, InvokeInterface) and
+            self.ref == other.ref and
+            self.count == other.count and
+            self.reserved == other.reserved
+        )
 
-    def verify(self, verifier: "Verifier") -> None:
-        # TODO: Verify count is equal to argument size.
-        if verifier.check_const_types and not isinstance(self.ref, InterfaceMethodrefInfo):
-            verifier.report("ref is not an interface method ref", instruction=self)
-        if not (0 <= self.count <= 255):
-            verifier.report("invalid count", instruction=self)
-        if not (0 <= self.reserved <= 255):
-            verifier.report("invalid reserved field", instruction=self)
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BHBB(self.opcode, pool.add(self.ref), self.count, self.reserved))
+
+    # def verify(self, verifier: "Verifier") -> None:
+    #     # TODO: Verify count is equal to argument size.
+    #     if verifier.check_const_types and not isinstance(self.ref, InterfaceMethodrefInfo):
+    #         verifier.report("ref is not an interface method ref", instruction=self)
+    #     if not (0 <= self.count <= 255):
+    #         verifier.report("invalid count", instruction=self)
+    #     if not (0 <= self.reserved <= 255):
+    #         verifier.report("invalid reserved field", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     assert isinstance(self.ref.class_index.info, ConstantClassInfo), "invalid class info %r" % self.ref.class_index.info
@@ -340,37 +401,53 @@ class InvokeInterface(Instruction):
 
 
 class InvokeDynamic(Instruction):
+    """
+    An `invokedynamic` instruction.
+
+    Invokes a dynamically computed callsite.
+
+    Attributes
+    ----------
+    ref: ConstInfo
+        An invoke dynamic constant, used as the method to invoke in order to compute
+        the callsite.
+    reserved: int
+        Two reserved bytes, should be 0.
+    """
 
     __slots__ = ("ref", "reserved")
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeDynamic":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeDynamic":
         index, reserved = unpack_HH(stream.read(4))
         return cls(pool[index], reserved)
 
     def __init__(self, ref: ConstInfo, reserved: int) -> None:
-        self.offset = None
+        super().__init__()
         self.ref = ref
         self.reserved = reserved
 
     def __repr__(self) -> str:
-        return "<InvokeDynamic(offset=%s, ref=%s)>" % (self.offset, self.ref)
+        return "<InvokeDynamic(offset=%s, ref=%r)>" % (self.offset, self.ref)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: invokedynamic %s" % (self.offset, self.ref)
         return "invokedynamic %s" % self.ref
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, InvokeDynamic) and self.ref == other.ref and self.reserved == other.reserved
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(self.opcode, pool.add(self.ref), self.reserved))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.ref, InvokeDynamicInfo):
-            verifier.report("ref is not an invoke dynamic constant", instruction=self)
-        if not (0 <= self.reserved <= 65535):
-            verifier.report("invalid reserved field", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if verifier.check_const_types and not isinstance(self.ref, InvokeDynamicInfo):
+    #         verifier.report("ref is not an invoke dynamic constant", instruction=self)
+    #     if not (0 <= self.reserved <= 65535):
+    #         verifier.report("invalid reserved field", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     assert isinstance(self.ref.name_and_type_index.info, ConstantNameAndTypeInfo), "invalid name and type info %r" % self.ref.name_and_type_index.info

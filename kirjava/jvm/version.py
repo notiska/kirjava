@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "JAVA_1_0_2", "JAVA_1_1", "JAVA_1_2",
-    "JAVA_1_3", "JAVA_1_4", "JAVA_5",
-    "JAVA_6", "JAVA_7", "JAVA_8",
-    "JAVA_9", "JAVA_10", "JAVA_11",
-    "JAVA_12", "JAVA_13", "JAVA_14",
-    "JAVA_15", "JAVA_16", "JAVA_17",
-    "JAVA_18", "JAVA_19", "JAVA_20",
-    "JAVA_21", "JAVA_22",
+    "JAVA_1_0", "JAVA_1_0_1", "JAVA_1_0_2",
+    "JAVA_1_1", "JAVA_1_2", "JAVA_1_3",
+    "JAVA_1_4", "JAVA_5", "JAVA_6",
+    "JAVA_7", "JAVA_8", "JAVA_9",
+    "JAVA_10", "JAVA_11", "JAVA_12",
+    "JAVA_13", "JAVA_14", "JAVA_15",
+    "JAVA_16", "JAVA_17", "JAVA_18",
+    "JAVA_19", "JAVA_20", "JAVA_21",
+    "JAVA_22",
     "JAVA_MIN", "JAVA_MAX",
     "Version",
 )
@@ -37,8 +38,9 @@ class Version:  # FIXME: Class restructuring required.
     __slots__ = ("name", "major", "minor")
 
     NAMES: dict[tuple[int, int] | int, str] = {  # A map of major and/or minor versions to names.
-        (45, 0): "1.0.2",  # Annoying special case for 1.0.2.
-        (45, 1): "1.0.2",
+        # The 1.0 and 1.0.1 versions may not be true as I have not found any 45.0 or 45.1 classes anywhere.
+        (45, 0): "1.0",
+        (45, 1): "1.0.1",
         (45, 2): "1.0.2",
         (45, 3): "1.1",
         46: "1.2",
@@ -180,7 +182,9 @@ class Version:  # FIXME: Class restructuring required.
         return self == other or self < other
 
 
-JAVA_1_0_2 = Version(45, 0)
+JAVA_1_0   = Version(45, 0)
+JAVA_1_0_1 = Version(45, 1)
+JAVA_1_0_2 = Version(45, 2)
 JAVA_1_1   = Version(45, 3)
 JAVA_1_2   = Version(46, 0)
 JAVA_1_3   = Version(47, 0)
@@ -204,5 +208,5 @@ JAVA_20    = Version(64, 0)
 JAVA_21    = Version(65, 0)
 JAVA_22    = Version(66, 0)
 
-JAVA_MIN = JAVA_1_0_2
+JAVA_MIN = JAVA_1_0
 JAVA_MAX = JAVA_22

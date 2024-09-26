@@ -4,9 +4,11 @@ __all__ = (
     "u8", "u16", "u32", "u64",
     "i8", "i16", "i32", "i64",
     "f32", "f64",
+    "isnan",
 )
 
 import logging
+import math
 
 logger = logging.getLogger("kirjava.backend")
 
@@ -26,10 +28,13 @@ try:
     f32 = np.float32
     f64 = np.float64
 
+    isnan = np.isnan
+
 except ImportError:
     logger.debug("No numpy found for backend.")
 
     # TODO: Implement these.
+    # TODO: Fast serialisation and deserialisation.
 
     u8:   type["u8"] = type("u8", (int,), {})  # type: ignore[no-redef]
     u16: type["u16"] = type("u16", (int,), {})  # type: ignore[no-redef]
@@ -43,3 +48,5 @@ except ImportError:
 
     f32: type["f32"] = type("f32", (float,), {})  # type: ignore[no-redef]
     f64: type["f64"] = type("f64", (float,), {})  # type: ignore[no-redef]
+
+    isnan = math.isnan

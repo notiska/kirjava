@@ -13,6 +13,7 @@ JVM class file method info struct and attributes.
 """
 
 import typing
+from os import SEEK_CUR, SEEK_SET
 from typing import IO, Iterable
 
 from .annotation import ElementValue, ParameterAnnotations
@@ -20,7 +21,9 @@ from .attribute import AttributeInfo
 from .constants import *
 from .stackmap import StackMapFrame
 from .._desc import parse_method_descriptor
+from .._dis import CodeIOWrapper
 from .._struct import *
+from ..insns import Instruction
 from ..version import *
 from ...meta import Metadata
 from ...model.class_.method import Method
@@ -456,23 +459,21 @@ class Code(AttributeInfo):
         The maximum operand stack depth reached at any point during execution.
     max_locals: int
         The size of the local variable array.
-    offset: int
-        The base offset of the bytecode, or `-1` if the file was read non-streamed.
-    pure: list[Instruction]
-        A list of instructions found in the pure code area.
+    base: int
+        The base offset of the bytecode.
+    instructions: list[Instruction]
+        A list of bytecode the decoded instructions.
         It is assumed that the instructions are ordered correctly.
-    data: list[Instruction]
-        A list of instructions found in data areas, these are caused by invalid jumps.
     handlers: list[Code.ExceptionHandler]
         A list of exception handlers ordered by priority.
     attributes: list[AttributeInfo]
         A list of attributes on this code attribute.
     """
 
-    __slots__ = ("max_stack", "max_locals", "offset", "pure", "data", "handlers", "attributes")
+    __slots__ = ("max_stack", "max_locals", "base", "instructions", "handlers", "attributes")
 
     tag = b"Code"
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     locations = frozenset({AttributeInfo.LOC_METHOD})
 
     @classmethod
@@ -481,19 +482,31 @@ class Code(AttributeInfo):
         # Well known undocumented feature of older Java versions (<45.3) regarding sizes, that we need to account for.
         if version < JAVA_1_1:
             meta.info("read.old", "Read old code size.")
-            max_stack, max_locals, code_size = unpack_BBH(stream.read(4))
+            max_stack, max_locals, size = unpack_BBH(stream.read(4))
         else:
-            max_stack, max_locals, code_size = unpack_HHI(stream.read(8))
+            max_stack, max_locals, size = unpack_HHI(stream.read(8))
 
         # disassembler = Disassembler()
         # disassembler.disassemble_pure_code(stream, class_file, code_length)
 
-        offset = stream.tell()
+        base = stream.tell()
+        instructions = []
 
-        pure = []
-        data = []
+        wrapper = CodeIOWrapper(stream, base)
+        offset = wrapper.tell()
 
-        code = stream.read(code_size)  # TODO: Disassemble here?
+        while offset < size:
+            instruction = Instruction.read(wrapper, pool)
+            instruction.offset = offset
+            instructions.append(instruction)
+            offset = wrapper.tell()
+
+        delta = stream.tell() - (base + size)
+        if delta:
+            meta.error("read.overread", "Code instructions overread by %i byte(s).", delta)
+            stream.seek(-delta, SEEK_CUR)
+
+        # TODO: Version checking.
 
         handler_count, = unpack_H(stream.read(2))
         handlers = []
@@ -512,63 +525,79 @@ class Code(AttributeInfo):
             attributes.append(attr)
             meta.add(child_meta)
 
-        self = cls(max_stack, max_locals, offset, pure, data, handlers, attributes)
+        self = cls(max_stack, max_locals, base, instructions, handlers, attributes)
         meta.element = self
         return self, meta
 
     def __init__(
-            self, max_stack: int, max_locals: int, offset: int,
-            pure:            Iterable["Instruction"] | None = None,
-            data:            Iterable["Instruction"] | None = None,
+            self, max_stack: int, max_locals: int, base: int,
+            instructions:    Iterable["Instruction"] | None = None,
             handlers: Iterable["Code.ExceptHandler"] | None = None,
             attributes:      Iterable[AttributeInfo] | None = None,
     ) -> None:
         super().__init__()
         self.max_stack = max_stack
         self.max_locals = max_locals
-        self.offset = offset
-        self.pure = []
-        self.data = []
+        self.base = base
+        self.instructions: list["Instruction"] = []
         self.handlers: list[Code.ExceptHandler] = []
         self.attributes: list[AttributeInfo] = []
 
-        if pure is not None:
-            self.pure.extend(pure)
-        if data is not None:
-            self.data.extend(data)
+        if instructions is not None:
+            self.instructions.extend(instructions)
         if handlers is not None:
             self.handlers.extend(handlers)
         if attributes is not None:
             self.attributes.extend(attributes)
 
     def __repr__(self) -> str:
-        # TODO: Include instructions?
-        return "<Code(max_stack=%i, max_locals=%i, offset=%i, handlers=%r)>" % (
-            self.max_stack, self.max_locals, self.offset, self.handlers,
+        return "<Code(max_stack=%i, max_locals=%i, base=%i, instructions=%r, handlers=%r)>" % (
+            self.max_stack, self.max_locals, self.base, self.instructions, self.handlers,
         )
 
     def __str__(self) -> str:
-        return "Code[%i,%i,%i,[%s]]" % (self.max_stack, self.max_locals, self.offset, ",".join(map(str, self.handlers)))
+        return "Code[%i,%i,%i,[%s],[%s]]" % (
+            self.max_stack, self.max_locals, self.base,
+            ",".join(map(str, self.instructions)), ",".join(map(str, self.handlers)),
+        )
 
     def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, Code) and
             self.max_stack == other.max_stack and
             self.max_locals == other.max_locals and
-            self.offset == other.offset and
-            self.pure == other.pure and
-            self.data == other.data and
+            self.base == other.base and
+            self.instructions == other.instructions and
             self.handlers == other.handlers and
             self.attributes == other.attributes
         )
 
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         if version < JAVA_1_1:
-            stream.write(pack_BBH(self.max_stack, self.max_locals, len(self.code)))
+            stream.write(bytes((self.max_stack, self.max_locals)))
+            start = stream.tell()
+            stream.write(pack_H(0))
         else:
-            stream.write(pack_HHI(self.max_stack, self.max_locals, len(self.code)))
+            stream.write(pack_HH(self.max_stack, self.max_locals))
+            start = stream.tell()
+            stream.write(pack_I(0))
 
-        stream.write(self.code)
+        base = stream.tell()
+        wrapper = CodeIOWrapper(stream, base)
+
+        for instruction in self.instructions:
+            # print(instruction.offset + base, instruction)
+            instruction.write(wrapper, pool)
+
+        size = wrapper.tell()
+        end = stream.tell()
+        stream.seek(start, SEEK_SET)
+        if version < JAVA_1_1:
+            stream.write(pack_H(size))
+        else:
+            stream.write(pack_I(size))
+        stream.seek(end, SEEK_SET)
+
         stream.write(pack_H(len(self.handlers)))
         for handler in self.handlers:
             stream.write(pack_HHHH(
@@ -587,18 +616,18 @@ class Code(AttributeInfo):
             verifier.fatal(self, "invalid max stack size")
         if not (0 <= self.max_locals <= 65535):
             verifier.fatal(self, "invalid max locals size")
-        if len(self.code) > 65535:
-            verifier.fatal(self, "code too large")
+        # if len(self.code) > 65535:
+        #     verifier.fatal(self, "code too large")
 
         if len(self.handlers) > 65535:
             verifier.fatal(self, "too many exception handlers")
         for handler in self.handlers:
-            if not (0 <= handler.start_pc < len(self.code)):
-                verifier.fatal(self, "invalid handler start pc", handler=handler)
-            if not (0 <= handler.end_pc < len(self.code)):
-                verifier.fatal(self, "invalid handler end pc", handler=handler)
-            if not (0 <= handler.handler_pc < len(self.code)):
-                verifier.fatal(self, "invalid handler pc", handler=handler)
+            # if not (0 <= handler.start_pc < len(self.code)):
+            #     verifier.fatal(self, "invalid handler start pc", handler=handler)
+            # if not (0 <= handler.end_pc < len(self.code)):
+            #     verifier.fatal(self, "invalid handler end pc", handler=handler)
+            # if not (0 <= handler.handler_pc < len(self.code)):
+            #     verifier.fatal(self, "invalid handler pc", handler=handler)
             if verifier.check_const_types and handler.type is not None and not isinstance(handler.type, ClassInfo):
                 verifier.fatal(self, "handler type is not a class constant", handler=handler)
 
@@ -691,6 +720,18 @@ class StackMapTable(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, StackMapTable) and self.frames == other.frames
 
+    def __getitem__(self, index: int) -> StackMapFrame:
+        return self.frames[index]
+
+    def __setitem__(self, index: int, value: StackMapFrame) -> None:
+        self.frames[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.frames[index]
+
+    def __len__(self) -> int:
+        return len(self.frames)
+
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_H(len(self.frames)))
         for frame in self.frames:
@@ -721,7 +762,7 @@ class Exceptions(AttributeInfo):
     __slots__ = ("exceptions",)
 
     tag = b"Exceptions"
-    since = JAVA_1_0_2
+    since = JAVA_1_1
     locations = frozenset({AttributeInfo.LOC_METHOD})
 
     @classmethod
@@ -743,6 +784,18 @@ class Exceptions(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Exceptions) and self.exceptions == other.exceptions
+
+    def __getitem__(self, index: int) -> ConstInfo:
+        return self.exceptions[index]
+
+    def __setitem__(self, index: int, value: ConstInfo) -> None:
+        self.exceptions[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.exceptions[index]
+
+    def __len__(self) -> int:
+        return len(self.exceptions)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HIH(
@@ -782,7 +835,7 @@ class LineNumberTable(AttributeInfo):
     __slots__ = ("lines",)
 
     tag = b"LineNumberTable"
-    since = JAVA_1_0_2
+    since = JAVA_1_0
     locations = frozenset({AttributeInfo.LOC_CODE})
 
     @classmethod
@@ -808,6 +861,18 @@ class LineNumberTable(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LineNumberTable) and self.lines == other.lines
+
+    def __getitem__(self, index: int) -> "LineNumberTable.LineNumber":
+        return self.lines[index]
+
+    def __setitem__(self, index: int, value: "LineNumberTable.LineNumber") -> None:
+        self.lines[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.lines[index]
+
+    def __len__(self) -> int:
+        return len(self.lines)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HIH(
@@ -875,7 +940,9 @@ class LocalVariableTable(AttributeInfo):
     __slots__ = ("locals",)
 
     tag = b"LocalVariableTable"
-    since = JAVA_1_0_2
+    # Although maybe true, it was most likely called LocalVariables. Unfortunately the 1.0.2 compiler doesn't emit it,
+    # so we can't be sure.
+    since = JAVA_1_0
     locations = frozenset({AttributeInfo.LOC_CODE})
 
     @classmethod
@@ -901,6 +968,18 @@ class LocalVariableTable(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVariableTable) and self.locals == other.locals
+
+    def __getitem__(self, index: int) -> "LocalVariableTable.LocalVariable":
+        return self.locals[index]
+
+    def __setitem__(self, index: int, value: "LocalVariableTable.LocalVariable") -> None:
+        self.locals[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.locals[index]
+
+    def __len__(self) -> int:
+        return len(self.locals)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HIH(
@@ -1022,6 +1101,18 @@ class LocalVariableTypeTable(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVariableTypeTable) and self.locals == other.locals
+
+    def __getitem__(self, index: int) -> "LocalVariableTable.LocalVariable":
+        return self.locals[index]
+
+    def __setitem__(self, index: int, value: "LocalVariableTypeTable.LocalVariable") -> None:
+        self.locals[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.locals[index]
+
+    def __len__(self) -> int:
+        return len(self.locals)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HIH(
@@ -1182,6 +1273,18 @@ class MethodParameters(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MethodParameters) and self.params == other.params
 
+    def __getitem__(self, index: int) -> "MethodParameters.Parameter":
+        return self.params[index]
+
+    def __setitem__(self, index: int, value: "MethodParameters.Parameter") -> None:
+        self.params[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.params[index]
+
+    def __len__(self) -> int:
+        return len(self.params)
+
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HI(pool.add(UTF8Info(self.tag)), 1 + len(self.extra) + len(self.params) * 4))
         stream.write(bytes((len(self.params),)))
@@ -1283,12 +1386,12 @@ class RuntimeVisibleParameterAnnotations(AttributeInfo):
 
     Attributes
     ----------
-    annos: list[ParameterAnnotations]
+    annotations: list[ParameterAnnotations]
         A list of runtime visible annotations declared on each formal parameter of
         this method.
     """
 
-    __slots__ = ("annos",)
+    __slots__ = ("annotations",)
 
     tag = b"RuntimeVisibleParameterAnnotations"
     since = JAVA_5
@@ -1299,30 +1402,42 @@ class RuntimeVisibleParameterAnnotations(AttributeInfo):
             cls, stream: IO[bytes], version: Version, pool: "ConstPool",
     ) -> tuple["RuntimeVisibleParameterAnnotations", None]:
         count, = stream.read(1)
-        annos = []
+        annotations = []
         for _ in range(count):
-            annos.append(ParameterAnnotations.read(stream, pool))
-        return cls(annos), None
+            annotations.append(ParameterAnnotations.read(stream, pool))
+        return cls(annotations), None
 
-    def __init__(self, annos: list[ParameterAnnotations] | None = None) -> None:
+    def __init__(self, annotations: list[ParameterAnnotations] | None = None) -> None:
         super().__init__()
-        self.annos = []
-        if annos is not None:
-            self.annos.extend(annos)
+        self.annotations = []
+        if annotations is not None:
+            self.annotations.extend(annotations)
 
     def __repr__(self) -> str:
-        return "<RuntimeVisibleParameterAnnotations(annos=%r)>" % self.annos
+        return "<RuntimeVisibleParameterAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeVisibleParametersAnnotations[[%s]]" % ",".join(map(str, self.annos))
+        return "RuntimeVisibleParametersAnnotations[[%s]]" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, RuntimeVisibleParameterAnnotations) and self.annos == other.annos
+        return isinstance(other, RuntimeVisibleParameterAnnotations) and self.annotations == other.annotations
+
+    def __getitem__(self, index: int) -> ParameterAnnotations:
+        return self.annotations[index]
+
+    def __setitem__(self, index: int, value: ParameterAnnotations) -> None:
+        self.annotations[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.annotations[index]
+
+    def __len__(self) -> int:
+        return len(self.annotations)
 
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
-        stream.write(bytes((len(self.annos),)))
-        for anno in self.annos:
-            anno.write(stream, pool)
+        stream.write(bytes((len(self.annotations),)))
+        for annotation in self.annotations:
+            annotation.write(stream, pool)
 
 
 class RuntimeInvisibleParameterAnnotations(AttributeInfo):
@@ -1334,12 +1449,12 @@ class RuntimeInvisibleParameterAnnotations(AttributeInfo):
 
     Attributes
     ----------
-    annos: list[ParameterAnnotations]
+    annotations: list[ParameterAnnotations]
         A list of runtime invisible annotations declared on each formal parameter of
         this method.
     """
 
-    __slots__ = ("annos",)
+    __slots__ = ("annotations",)
 
     tag = b"RuntimeInvisibleParameterAnnotations"
     since = JAVA_5
@@ -1350,27 +1465,39 @@ class RuntimeInvisibleParameterAnnotations(AttributeInfo):
             cls, stream: IO[bytes], version: Version, pool: "ConstPool",
     ) -> tuple["RuntimeInvisibleParameterAnnotations", None]:
         count, = stream.read(1)
-        annos = []
+        annotations = []
         for _ in range(count):
-            annos.append(ParameterAnnotations.read(stream, pool))
-        return cls(annos), None
+            annotations.append(ParameterAnnotations.read(stream, pool))
+        return cls(annotations), None
 
-    def __init__(self, annos: list[ParameterAnnotations] | None = None) -> None:
+    def __init__(self, annotations: list[ParameterAnnotations] | None = None) -> None:
         super().__init__()
-        self.annos = []
-        if annos is not None:
-            self.annos.extend(annos)
+        self.annotations = []
+        if annotations is not None:
+            self.annotations.extend(annotations)
 
     def __repr__(self) -> str:
-        return "<RuntimeInvisibleParameterAnnotations(annos=%r)>" % self.annos
+        return "<RuntimeInvisibleParameterAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeInvisibleParametersAnnotations[[%s]]" % ",".join(map(str, self.annos))
+        return "RuntimeInvisibleParametersAnnotations[[%s]]" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, RuntimeInvisibleParameterAnnotations) and self.annos == other.annos
+        return isinstance(other, RuntimeInvisibleParameterAnnotations) and self.annotations == other.annotations
+
+    def __getitem__(self, index: int) -> ParameterAnnotations:
+        return self.annotations[index]
+
+    def __setitem__(self, index: int, value: ParameterAnnotations) -> None:
+        self.annotations[index] = value
+
+    def __delitem__(self, index: int) -> None:
+        del self.annotations[index]
+
+    def __len__(self) -> int:
+        return len(self.annotations)
 
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
-        stream.write(bytes((len(self.annos),)))
-        for anno in self.annos:
-            anno.write(stream, pool)
+        stream.write(bytes((len(self.annotations),)))
+        for annotation in self.annotations:
+            annotation.write(stream, pool)

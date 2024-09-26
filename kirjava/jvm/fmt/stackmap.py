@@ -18,7 +18,7 @@ JVM class file stack map frame and verification type structs.
 
 import typing
 from functools import cache
-from typing import IO
+from typing import IO, Iterable
 
 from .constants import ClassInfo, ConstInfo
 from .._struct import *
@@ -402,11 +402,11 @@ class ObjectVarInfo(VerificationTypeInfo):
 
     Attributes
     ----------
-    type: ConstInfo
+    class_: ConstInfo
         A class constant, used to represent the class of the object.
     """
 
-    __slots__ = ("type",)
+    __slots__ = ("class_",)
 
     tag = 7
 
@@ -415,23 +415,23 @@ class ObjectVarInfo(VerificationTypeInfo):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, type_: ConstInfo) -> None:
-        self.type = type_
+    def __init__(self, class_: ConstInfo) -> None:
+        self.class_ = class_
 
     def __repr__(self) -> str:
-        return "<ObjectVarInfo(type=%r)>" % self.type
+        return "<ObjectVarInfo(class_=%r)>" % self.class_
 
     def __str__(self) -> str:
-        return "object[%s] " % self.type
+        return "object[%s] " % self.class_
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, ObjectVarInfo) and self.type == other.type
+        return isinstance(other, ObjectVarInfo) and self.class_ == other.class_
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.tag, pool.add(self.type)))
+        stream.write(pack_BH(self.tag, pool.add(self.class_)))
 
     def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.type, ClassInfo):
+        if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
             verifier.fatal(self, "type is not a class constant")
 
 
@@ -729,7 +729,7 @@ class AppendFrame(StackMapFrame):
     ----------
     delta: int
         The bytecode offset delta from the previous frame.
-    locals: tuple[VerificationTypeInfo, ...]
+    locals: list[VerificationTypeInfo]
         The types of the additional local variables.
     """
 
@@ -740,15 +740,18 @@ class AppendFrame(StackMapFrame):
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> "AppendFrame":
         delta, = unpack_H(stream.read(2))
-        locals_ = tuple(VerificationTypeInfo.read(stream, pool) for _ in range(tag - 251))
+        locals_ = [VerificationTypeInfo.read(stream, pool) for _ in range(tag - 251)]
         return cls(tag, delta, locals_)
 
-    def __init__(self, tag: int, delta: int, locals_: tuple[VerificationTypeInfo, ...]) -> None:
+    def __init__(self, tag: int, delta: int, locals_: Iterable[VerificationTypeInfo] | None = None) -> None:
         # if tag - 251 != len(locals_):
         #     raise ValueError("invalid tag %i for %r, should reflect locals count" % (tag, type(self)))
         self.tag = tag
         self.delta = delta
-        self.locals = locals_
+        self.locals = []
+
+        if locals_ is not None:
+            self.locals.extend(locals_)
 
     def __repr__(self) -> str:
         return "<AppendFrame(tag=%i, delta=%i, locals=%r)>" % (self.tag, self.delta, self.locals)
@@ -790,9 +793,9 @@ class FullFrame(StackMapFrame):
     ----------
     delta: int
         The bytecode offset delta from the previous frame.
-    locals: tuple[VerificationTypeInfo, ...]
+    locals: list[VerificationTypeInfo]
         The types of the local variables.
-    stack: tuple[VerificationTypeInfo, ...]
+    stack: list[VerificationTypeInfo]
         The types on the operand stack.
     """
 
@@ -810,11 +813,18 @@ class FullFrame(StackMapFrame):
         return cls(delta, locals_, stack)
 
     def __init__(
-            self, delta: int, locals_: tuple[VerificationTypeInfo, ...], stack: tuple[VerificationTypeInfo, ...],
+            self, delta: int,
+            locals_: Iterable[VerificationTypeInfo] | None = None,
+            stack:   Iterable[VerificationTypeInfo] | None = None,
     ) -> None:
         self.delta = delta
-        self.locals = locals_
-        self.stack = stack
+        self.locals = []
+        self.stack = []
+
+        if locals_ is not None:
+            self.locals.extend(locals_)
+        if stack is not None:
+            self.stack.extend(stack)
 
     def __repr__(self) -> str:
         return "<FullFrame(delta=%i, locals=%r, stack=%r)>" % (self.delta, self.locals, self.stack)

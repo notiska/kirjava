@@ -2,38 +2,49 @@
 
 __all__ = (
     "getstatic", "putstatic", "getfield", "putfield",
+    "GetStatic", "PutStatic", "GetField", "PutField",
 )
 
 import typing
 from typing import IO
 
 from . import Instruction
-from .._desc import parse_field_descriptor
+# from .._desc import parse_field_descriptor
 from .._struct import *
 from ..fmt.constants import ClassInfo, ConstInfo, FieldrefInfo, NameAndTypeInfo
-from ...model.types import *
-from ...model.values.constants import Null
+# from ...model.types import *
+# from ...model.values.constants import Null
 
 if typing.TYPE_CHECKING:
-    from ..analyse.frame import Frame
-    from ..analyse.state import State
+    # from ..analyse.frame import Frame
+    # from ..analyse.state import State
     from ..fmt import ConstPool
-    from ..verify import Verifier
+    # from ..verify import Verifier
 
 
 class GetStatic(Instruction):
+    """
+    A `getstatic` instruction.
+
+    Gets the value of a static field in a class.
+
+    Attributes
+    ----------
+    ref: ConstInfo
+        A field reference constant, used as the static field to get.
+    """
 
     __slots__ = ("ref",)
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "GetStatic":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "GetStatic":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
     def __init__(self, ref: ConstInfo) -> None:
-        self.offset = None
+        super().__init__()
         self.ref = ref
 
     def __repr__(self) -> str:
@@ -44,12 +55,15 @@ class GetStatic(Instruction):
             return "%i: getstatic %s" % (self.offset, self.ref)
         return "getstatic %s" % self.ref
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, GetStatic) and self.ref == other.ref
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
-            verifier.report("ref is not a field ref constant", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
+    #         verifier.report("ref is not a field ref constant", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     assert isinstance(self.ref.name_and_type_index.info, ConstantNameAndTypeInfo), "invalid name and type info %r" % self.ref.name_and_type_index.info
@@ -75,18 +89,28 @@ class GetStatic(Instruction):
 
 
 class PutStatic(Instruction):
+    """
+    A `putstatic` instruction.
+
+    Sets the value of a static field in a class.
+
+    Attributes
+    ----------
+    ref: ConstInfo
+        A field reference constant, used as the static field to set.
+    """
 
     __slots__ = ("ref",)
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "PutStatic":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PutStatic":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
     def __init__(self, ref: ConstInfo) -> None:
-        self.offset = None
+        super().__init__()
         self.ref = ref
 
     def __repr__(self) -> str:
@@ -97,12 +121,15 @@ class PutStatic(Instruction):
             return "%i: putstatic %s" % (self.offset, self.ref)
         return "putstatic %s" % self.ref
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, PutStatic) and self.ref == other.ref
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
-            verifier.report("ref is not a field ref constant", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
+    #         verifier.report("ref is not a field ref constant", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     assert isinstance(self.ref.name_and_type_index.info, ConstantNameAndTypeInfo), "invalid name and type info %r" % self.ref.name_and_type_index.info
@@ -126,18 +153,28 @@ class PutStatic(Instruction):
 
 
 class GetField(Instruction):
+    """
+    A `getfield` instruction.
+
+    Gets the value of a field in an object.
+
+    Attributes
+    ----------
+    ref: ConstInfo
+        A field reference constant, used as the field to get.
+    """
 
     __slots__ = ("ref",)
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "GetField":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "GetField":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
     def __init__(self, ref: ConstInfo) -> None:
-        self.offset = None
+        super().__init__()
         self.ref = ref
 
     def __repr__(self) -> str:
@@ -148,12 +185,15 @@ class GetField(Instruction):
             return "%i: getfield %s" % (self.offset, self.ref)
         return "getfield %s" % self.ref
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, GetField) and self.ref == other.ref
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
-            verifier.report("ref is not a field ref constant", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
+    #         verifier.report("ref is not a field ref constant", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     assert isinstance(self.ref.class_index.info, ConstantClassInfo), "invalid class info %r" % self.ref.class_index.info
@@ -187,18 +227,28 @@ class GetField(Instruction):
 
 
 class PutField(Instruction):
+    """
+    A `putfield` instruction.
+
+    Sets the value of a field in an object.
+
+    Attributes
+    ----------
+    ref: ConstInfo
+        A field reference constant, used as the field to set.
+    """
 
     __slots__ = ("ref",)
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "PutField":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PutField":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
     def __init__(self, ref: ConstInfo) -> None:
-        self.offset = None
+        super().__init__()
         self.ref = ref
 
     def __repr__(self) -> str:
@@ -209,12 +259,15 @@ class PutField(Instruction):
             return "%i: putfield %s" % (self.offset, self.ref)
         return "putfield %s" % self.ref
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, PutField) and self.ref == other.ref
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
-            verifier.report("ref is not a field ref constant", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
+    #         verifier.report("ref is not a field ref constant", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     assert isinstance(self.ref.class_index.info, ConstantClassInfo), "invalid class info %r" % self.ref.class_index.info

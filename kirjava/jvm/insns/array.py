@@ -4,9 +4,9 @@ __all__ = (
     "iaload", "laload", "faload", "daload", "aaload", "baload", "caload", "saload",
     "iastore", "lastore", "fastore", "dastore", "aastore", "bastore", "castore", "sastore",
     "newarray", "anewarray", "multianewarray", "arraylength",
+    "ArrayLoad", "ArrayStore", "NewArray", "ANewArray", "MultiANewArray", "ArrayLength",
 )
 
-import logging
 import typing
 from typing import IO
 
@@ -14,32 +14,43 @@ from . import Instruction
 from .._struct import *
 from ..fmt.constants import ClassInfo, ConstInfo
 from ...model.types import *
-from ...model.values.constants import Integer, Null
-from ...model.values.objects import Array as ArrayValue
+# from ...model.values.constants import Integer, Null
+# from ...model.values.objects import Array as ArrayValue
 
 if typing.TYPE_CHECKING:
-    from ..analyse.frame import Frame
-    from ..analyse.state import State
+    # from ..analyse.frame import Frame
+    # from ..analyse.state import State
     from ..fmt import ConstPool
     from ..verify import Verifier
 
-logger = logging.getLogger("ijd.jvm.insns.array")
-
 
 class ArrayLoad(Instruction):
+    """
+    An array load instruction base.
+
+    Loads an element from an array.
+
+    Attributes
+    ----------
+    type: Type
+        The type of array element to load.
+    """
 
     __slots__ = ()
 
-    can_throw = True
+    throws = True
 
     type: Type
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "ArrayLoad":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ArrayLoad":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<ArrayLoad(offset=%s, type=%r)>" % (self.offset, self.type)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, ArrayLoad) and self.opcode == other.opcode
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -77,19 +88,32 @@ class ArrayLoad(Instruction):
 
 
 class ArrayStore(Instruction):
+    """
+    An array store instruction base.
+
+    Stores an element in an array.
+
+    Attributes
+    ----------
+    type: Type
+        The type of array element to store.
+    """
 
     __slots__ = ()
 
-    can_throw = True
+    throws = True
 
     type: Type
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "ArrayStore":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ArrayStore":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<ArrayStore(offset=%s, type=%r)>" % (self.offset, self.type)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, ArrayStore) and self.opcode == other.opcode
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -121,39 +145,53 @@ class ArrayStore(Instruction):
 
 
 class NewArray(Instruction):
+    """
+    A `newarray` instruction.
+
+    Creates a new primitive type array.
+
+    Attributes
+    ----------
+    TAG_BOOLEAN: int
+        Indicates that the array is of type `boolean`.
+    TAG_CHAR: int
+        Indicates that the array is of type `char`.
+    TAG_FLOAT: int
+        Indicates that the array is of type `float`.
+    TAG_DOUBLE: int
+        Indicates that the array is of type `double`.
+    TAG_BYTE: int
+        Indicates that the array is of type `byte`.
+    TAG_SHORT: int
+        Indicates that the array is of type `short`.
+    TAG_INT: int
+        Indicates that the array is of type `int`.
+    TAG_LONG: int
+        Indicates that the array is of type `long`.
+    tag: int
+        A byte tag indicating the type of the array to create.
+    """
 
     __slots__ = ("tag",)
 
-    can_throw = True
+    throws = True
 
-    _FWD_TAGS = {
-        4:  boolean_t,
-        5:  char_t,
-        6:  float_t,
-        7:  double_t,
-        8:  byte_t,
-        9:  short_t,
-        10: int_t,
-        11: long_t,
-    }
-    _REV_TAGS = {
-        boolean_t: 4,
-        char_t:    5,
-        float_t:   6,
-        double_t:  7,
-        byte_t:    8,
-        short_t:   9,
-        int_t:     10,
-        long_t:    11,
-    }
+    TAG_BOOLEAN = 4
+    TAG_CHAR    = 5
+    TAG_FLOAT   = 6
+    TAG_DOUBLE  = 7
+    TAG_BYTE    = 8
+    TAG_SHORT   = 9
+    TAG_INT     = 10
+    TAG_LONG    = 11
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "NewArray":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "NewArray":
         tag, = stream.read(1)
         return cls(tag)
 
     def __init__(self, tag: int) -> None:
-        self.offset = None
+        super().__init__()
         self.tag = tag
 
     def __repr__(self) -> str:
@@ -164,12 +202,15 @@ class NewArray(Instruction):
             return "%i: newarray %i" % (self.offset, self.tag)
         return "newarray %i" % self.tag
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, NewArray) and self.tag == other.tag
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.tag)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not self.tag in NewArray._FWD_TAGS:
-            verifier.report("invalid type tag", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not self.tag in NewArray._FWD_TAGS:
+    #         verifier.report("invalid type tag", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     array_type = Array(self.type)
@@ -198,34 +239,47 @@ class NewArray(Instruction):
 
 
 class ANewArray(Instruction):
+    """
+    An `anewarray` instruction.
+
+    Creates a new reference type array.
+
+    Attributes
+    ----------
+    class_: ConstInfo
+        A class constant, used as the type of the array to create.
+    """
 
     __slots__ = ("class_",)
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "ANewArray":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ANewArray":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
     def __init__(self, class_: ConstInfo) -> None:
-        self.offset = None
+        super().__init__()
         self.class_ = class_
 
     def __repr__(self) -> str:
-        return "<ANewArray(offset=%s, class=%s)>" % (self.offset, self.class_)
+        return "<ANewArray(offset=%s, class_=%r)>" % (self.offset, self.class_)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: anewarray %s" % (self.offset, self.class_)
         return "anewarray %s" % self.class_
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, ANewArray) and self.class_ == other.class_
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.class_)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
-            verifier.report("class is not a class constant", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
+    #         verifier.report("class is not a class constant", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     array_type = Array(self.class_.unwrap().as_rtype())
@@ -253,37 +307,53 @@ class ANewArray(Instruction):
 
 
 class MultiANewArray(Instruction):
+    """
+    A `multianewarray` instruction.
+
+    Creates a new multidimensional reference type array.
+
+    Attributes
+    ----------
+    class_: ConstInfo
+        A class constant, used as the type of the array to create.
+    dimensions: int
+        The number of dimensions to create.
+    """
 
     __slots__ = ("class_", "dimensions")
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "MultiANewArray":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MultiANewArray":
         index, dimensions = unpack_HB(stream.read(3))
         return cls(pool[index], dimensions)
 
     def __init__(self, class_: ConstInfo, dimensions: int) -> None:
-        self.offset = None
+        super().__init__()
         self.class_ = class_
         self.dimensions = dimensions
 
     def __repr__(self) -> str:
-        return "<MultiANewArray(offset=%s, class_=%s, dimensions=%i)>" % (self.offset, self.class_, self.dimensions)
+        return "<MultiANewArray(offset=%s, class_=%r, dimensions=%i)>" % (self.offset, self.class_, self.dimensions)
 
     def __str__(self) -> str:
         if self.offset is not None:
             return "%i: multianewarray %s dimension %i" % (self.offset, self.class_, self.dimensions)
         return "multianewarray %s dimension %i" % (self.class_, self.dimensions)
 
+    def __eq__(self, other: object) -> bool:
+        # Lol, just fits.
+        return isinstance(other, MultiANewArray) and self.class_ == other.class_ and self.dimensions == other.dimensions
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHB(self.opcode, pool.add(self.class_), self.dimensions))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.dimensions <= 255):
-            verifier.report("invalid dimensions", instruction=self)
-        if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
-            verifier.report("class is not a class constant", instruction=self)
+    # def verify(self, verifier: "Verifier") -> None:
+    #     if not (0 <= self.dimensions <= 255):
+    #         verifier.report("invalid dimensions", instruction=self)
+    #     if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
+    #         verifier.report("class is not a class constant", instruction=self)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     array_type = self.class_.unwrap().as_rtype()
@@ -321,17 +391,25 @@ class MultiANewArray(Instruction):
 
 
 class ArrayLength(Instruction):
+    """
+    An `arraylength` instruction.
+
+    Gets the length of an array.
+    """
 
     __slots__ = ()
 
-    can_throw = True
+    throws = True
 
     @classmethod
-    def parse(cls, stream: IO[bytes], pool: "ConstPool") -> "ArrayLength":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ArrayLength":
         return cls()
 
-    def __init__(self) -> None:
-        self.offset = None
+    def __repr__(self) -> str:
+        return "<ArrayLength(offset=%s)>" % self.offset
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, ArrayLength)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

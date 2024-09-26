@@ -6,7 +6,7 @@ __all__ = (
     "unpack_Hh", "pack_Hh",
     "unpack_BBH", "pack_BBH", "unpack_BHB", "pack_BHB", "unpack_BHH", "pack_BHH", "unpack_HBB", "pack_HBB",
     "unpack_BHBB", "pack_BHBB",
-    "unpack_BHh", "pack_BHh",
+    "unpack_BBHh", "pack_BBHh",
     "unpack_HI", "pack_HI", "unpack_HIH", "pack_HIH", "unpack_HHI", "pack_HHI",
     "unpack_h", "pack_h",
     "iter_unpack_H", "unpack_H", "pack_H", "unpack_HH", "pack_HH", "unpack_HHH", "pack_HHH",
@@ -55,9 +55,9 @@ _struct_BHBB = struct.Struct(">BHBB")
 unpack_BHBB  = _struct_BHBB.unpack
 pack_BHBB    = _struct_BHBB.pack
 
-_struct_BHh = struct.Struct(">BHh")
-unpack_BHh  = _struct_BHh.unpack
-pack_BHh    = _struct_BHh.pack
+_struct_BBHh = struct.Struct(">BBHh")
+unpack_BBHh  = _struct_BBHh.unpack
+pack_BBHh    = _struct_BBHh.pack
 
 _struct_HI  = struct.Struct(">HI")
 unpack_HI   = _struct_HI.unpack
