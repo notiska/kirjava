@@ -41,7 +41,9 @@ class ValueCast(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<ValueCast(offset=%s, type_in=%r, type_out=%r)>" % (self.offset, self.type_in, self.type_out)
+        if self.offset is not None:
+            return "<ValueCast(offset=%i, type_in=%s, type_out=%s)>" % (self.offset, self.type_in, self.type_out)
+        return "<ValueCast(type_in=%s, type_out=%s)>" % (self.type_in, self.type_out)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ValueCast) and self.opcode == other.opcode
@@ -82,7 +84,9 @@ class Truncate(ValueCast):
     type_in = int_t
 
     def __repr__(self) -> str:
-        return "<Truncate(offset=%s, type_out=%r)>" % (self.offset, self.type_out)
+        if self.offset is not None:
+            return "<Truncate(offset=%i, type_out=%s)>" % (self.offset, self.type_out)
+        return "<Truncate(type_out=%s)>" % self.type_out
 
 
 class CheckCast(Instruction):
@@ -106,15 +110,22 @@ class CheckCast(Instruction):
         self.class_ = class_
 
     def __repr__(self) -> str:
-        return "<CheckCast(offset=%s, class_=%r)>" % (self.offset, self.class_)
+        if self.offset is not None:
+            return "<CheckCast(offset=%i, class_=%s)>" % (self.offset, self.class_)
+        return "<CheckCast(class_=%s)>" % self.class_
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: checkcast %s" % (self.offset, self.class_)
-        return "checkcast %s" % self.class_
+            return "%i:checkcast(%s)" % (self.offset, self.class_)
+        return "checkcast(%s)" % self.class_
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, CheckCast) and self.class_ == other.class_
+
+    def copy(self) -> "CheckCast":
+        copy = checkcast(self.class_)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.class_)))
@@ -158,15 +169,22 @@ class InstanceOf(Instruction):
         self.class_ = class_
 
     def __repr__(self) -> str:
-        return "<InstanceOf(offset=%s, class_=%r)>" % (self.offset, self.class_)
+        if self.offset is not None:
+            return "<InstanceOf(offset=%i, class_=%s)>" % (self.offset, self.class_)
+        return "<InstanceOf(class_=%s)>" % self.class_
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: instanceof %s" % (self.offset, self.class_)
-        return "instanceof %s" % self.class_
+            return "%i:instanceof(%s)" % (self.offset, self.class_)
+        return "instanceof(%s)" % self.class_
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InstanceOf) and self.class_ == other.class_
+
+    def copy(self) -> "InstanceOf":
+        copy = instanceof(self.class_)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.class_)))
@@ -201,22 +219,22 @@ class InstanceOf(Instruction):
     #     codegen.emit(IRInstanceOf(step, variable, codegen.value(value), self.class_.unwrap().as_rtype()))
 
 
-i2l = ValueCast.make(0x85, "i2l", in_type=int_t, out_type=long_t)
-i2f = ValueCast.make(0x86, "i2f", in_type=int_t, out_type=float_t)
-i2d = ValueCast.make(0x87, "i2d", in_type=int_t, out_type=double_t)
-l2i = ValueCast.make(0x88, "l2i", in_type=long_t, out_type=int_t)
-l2f = ValueCast.make(0x89, "l2f", in_type=long_t, out_type=float_t)
-l2d = ValueCast.make(0x8a, "l2d", in_type=long_t, out_type=double_t)
-f2i = ValueCast.make(0x8b, "f2i", in_type=float_t, out_type=int_t)
-f2l = ValueCast.make(0x8c, "f2l", in_type=float_t, out_type=long_t)
-f2d = ValueCast.make(0x8d, "f2d", in_type=float_t, out_type=double_t)
-d2i = ValueCast.make(0x8e, "d2i", in_type=double_t, out_type=int_t)
-d2l = ValueCast.make(0x8f, "d2l", in_type=double_t, out_type=long_t)
-d2f = ValueCast.make(0x90, "d2f", in_type=double_t, out_type=float_t)
+i2l = ValueCast.make(0x85, "i2l", type_in=int_t, type_out=long_t)
+i2f = ValueCast.make(0x86, "i2f", type_in=int_t, type_out=float_t)
+i2d = ValueCast.make(0x87, "i2d", type_in=int_t, type_out=double_t)
+l2i = ValueCast.make(0x88, "l2i", type_in=long_t, type_out=int_t)
+l2f = ValueCast.make(0x89, "l2f", type_in=long_t, type_out=float_t)
+l2d = ValueCast.make(0x8a, "l2d", type_in=long_t, type_out=double_t)
+f2i = ValueCast.make(0x8b, "f2i", type_in=float_t, type_out=int_t)
+f2l = ValueCast.make(0x8c, "f2l", type_in=float_t, type_out=long_t)
+f2d = ValueCast.make(0x8d, "f2d", type_in=float_t, type_out=double_t)
+d2i = ValueCast.make(0x8e, "d2i", type_in=double_t, type_out=int_t)
+d2l = ValueCast.make(0x8f, "d2l", type_in=double_t, type_out=long_t)
+d2f = ValueCast.make(0x90, "d2f", type_in=double_t, type_out=float_t)
 
-i2b = Truncate.make(0x91, "i2b", out_type=byte_t)
-i2c = Truncate.make(0x92, "i2c", out_type=char_t)
-i2s = Truncate.make(0x93, "i2s", out_type=short_t)
+i2b = Truncate.make(0x91, "i2b", type_out=byte_t)
+i2c = Truncate.make(0x92, "i2c", type_out=char_t)
+i2s = Truncate.make(0x93, "i2s", type_out=short_t)
 
 checkcast  = CheckCast.make(0xc0, "checkcast")
 instanceof = InstanceOf.make(0xc1, "instanceof")

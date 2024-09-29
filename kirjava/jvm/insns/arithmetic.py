@@ -112,7 +112,9 @@ class Shift(BinOp):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<Shift(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<Shift(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<Shift(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Shift) and self.opcode == other.opcode
@@ -139,7 +141,9 @@ class Comparison(BinOp):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<Comparison(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<Comparison(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<Comparison(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Comparison) and self.opcode == other.opcode
@@ -169,7 +173,9 @@ class Addition(BinOp):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<Addition(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<Addition(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<Addition(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Addition) and self.opcode == other.opcode
@@ -202,7 +208,9 @@ class Subtraction(BinOp):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<Subtraction(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<Subtraction(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<Subtraction(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Subtraction) and self.opcode == other.opcode
@@ -235,7 +243,9 @@ class Multiplication(BinOp):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<Multiplication(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<Multiplication(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<Multiplication(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Multiplication) and self.opcode == other.opcode
@@ -268,7 +278,9 @@ class Division(BinOp):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<Division(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<Division(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<Division(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Division) and self.opcode == other.opcode
@@ -306,7 +318,9 @@ class Remainder(BinOp):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<Remainder(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<Remainder(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<Remainder(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Remainder) and self.opcode == other.opcode
@@ -352,7 +366,9 @@ class Negate(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<Negate(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<Negate(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<Negate(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Negate) and self.opcode == other.opcode
@@ -403,7 +419,9 @@ class ShiftLeft(Shift):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<ShiftLeft(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<ShiftLeft(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<ShiftLeft(type=%s)>" % self.type
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -433,7 +451,9 @@ class ShiftRight(Shift):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<ShiftRight(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<ShiftRight(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<ShiftRight(type=%s)>" % self.type
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -464,7 +484,9 @@ class ShiftRightUnsigned(Shift):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<ShiftRightUnsigned(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<ShiftRightUnsigned(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<ShiftRightUnsigned(type=%s)>" % self.type
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -494,7 +516,9 @@ class BitwiseAnd(BinOp):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<BitwiseAnd(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<BitwiseAnd(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<BitwiseAnd(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, BitwiseAnd) and self.opcode == other.opcode
@@ -527,7 +551,9 @@ class BitwiseOr(BinOp):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<BitwiseOr(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<BitwiseOr(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<BitwiseOr(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, BitwiseOr) and self.opcode == other.opcode
@@ -560,7 +586,9 @@ class BitwiseXor(BinOp):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<BitwiseXor(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<BitwiseXor(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<BitwiseXor(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, BitwiseXor) and self.opcode == other.opcode
@@ -593,7 +621,9 @@ class IntegralCompare(Comparison):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<IntegralCompare(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<IntegralCompare(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<IntegralCompare(type=%s)>" % self.type
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -632,7 +662,9 @@ class FloatLCompare(Comparison):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<FloatLCompare(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<FloatLCompare(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<FloatLCompare(type=%s)>" % self.type
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -673,7 +705,9 @@ class FloatGCompare(Comparison):
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "<FloatGCompare(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<FloatGCompare(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<FloatGCompare(type=%s)>" % self.type
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:

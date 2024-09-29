@@ -73,12 +73,7 @@ class ConstPool:
         self = cls()
 
         while self._index < count:
-            tag, = stream.read(1)
-            subclass = ConstInfo.lookup(tag)
-            if subclass is None:
-                raise ValueError("unknown constant pool tag %i at index %i" % (tag, self._index))
-            info = subclass.read(stream, self)
-            info.index = self._index
+            info = ConstInfo.read(stream, self)
             self[self._index] = info
 
         for entry in self._contiguous[1:]:
@@ -169,7 +164,6 @@ class ConstPool:
             if isinstance(entry, ConstIndex):
                 index += 1
                 continue
-            stream.write(bytes((entry.tag,)))
             entry.write(stream, self)
             index += 1
 

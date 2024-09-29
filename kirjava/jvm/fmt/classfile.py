@@ -20,7 +20,6 @@ from .._struct import *
 from ..version import *
 from ...meta import Metadata
 from ...model.class_ import Class
-from ...pretty import pretty_repr
 
 if typing.TYPE_CHECKING:
     from ..verify import Verifier
@@ -309,14 +308,13 @@ class ClassFile:
             self.attributes.extend(attributes)
 
     def __repr__(self) -> str:
-        return "<ClassFile(version=%r, access=0x%04x, this=%r, super=%r)>" % (
+        return "<ClassFile(version=%r, access=0x%04x, this=%s, super=%s)>" % (
             self.version, self.access, self.this, self.super,
         )
 
     def __str__(self) -> str:
-        return "ClassFile[%s,0x%04x,%s,%s]" % (
-            self.version, self.access, pretty_repr(str(self.this)),
-            pretty_repr(str(self.super)) if self.super is not None else "[none]",
+        return "ClassFile(%s,0x%04x,%s,%s)" % (
+            self.version, self.access, self.this, self.super if self.super is not None else "[none]",
         )
 
     def write(self, stream: IO[bytes]) -> None:
@@ -494,11 +492,11 @@ class BootstrapMethods(AttributeInfo):
         methods = []
         for _ in range(method_count):
             ref_index, arg_count = unpack_HH(stream.read(4))
-            arguments = []
+            args = []
             for _ in range(arg_count):
                 arg_index, = unpack_H(stream.read(2))
-                arguments.append(pool[arg_index])
-            methods.append(cls.BootstrapMethod(pool[ref_index], arguments))
+                args.append(pool[arg_index])
+            methods.append(cls.BootstrapMethod(pool[ref_index], args))
         return cls(methods), None
 
     def __init__(self, methods: Iterable["BootstrapMethods.BootstrapMethod"] | None = None) -> None:
@@ -511,7 +509,7 @@ class BootstrapMethods(AttributeInfo):
         return "<BoostrapMethods(methods=%r)>" % self.methods
 
     def __str__(self) -> str:
-        return "BootstrapMethods[[%s]]" % ",".join(map(str, self.methods))
+        return "BootstrapMethods([%s])" % ",".join(map(str, self.methods))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, BootstrapMethods) and self.methods == other.methods
@@ -531,8 +529,8 @@ class BootstrapMethods(AttributeInfo):
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_H(len(self.methods)))
         for method in self.methods:
-            stream.write(pack_HH(pool.add(method.reference), len(method.arguments)))
-            for argument in method.arguments:
+            stream.write(pack_HH(pool.add(method.ref), len(method.args)))
+            for argument in method.args:
                 stream.write(pack_H(pool.add(argument)))
 
     def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
@@ -542,11 +540,11 @@ class BootstrapMethods(AttributeInfo):
             verifier.fatal(self, "too many bootstrap methods")
 
         for method in self.methods:
-            if verifier.check_const_types and not isinstance(method.reference, MethodHandleInfo):
+            if verifier.check_const_types and not isinstance(method.ref, MethodHandleInfo):
                 verifier.fatal(self, "bootstrap method reference is not a method handle constant", method=method)
-            if len(method.arguments) > 65535:
+            if len(method.args) > 65535:
                 verifier.fatal(self, "too many bootstrap method arguments", method=method)
-            for argument in method.arguments:
+            for argument in method.args:
                 if not argument.loadable:
                     verifier.fatal(
                         self, "bootstrap method argument is not a loadable constant", method=method, argument=argument,
@@ -558,32 +556,33 @@ class BootstrapMethods(AttributeInfo):
 
         Attributes
         ----------
-        reference: ConstInfo
+        ref: ConstInfo
             A method handle constant used to resolve a constant or callsite.
-        arguments: list[ConstInfo]
+        args: list[ConstInfo]
             A list of constants to pass as static arguments to the bootstrap method.
         """
 
-        __slots__ = ("reference", "arguments")
+        __slots__ = ("ref", "args")
 
-        def __init__(self, reference: ConstInfo, arguments: Iterable[ConstInfo] | None = None) -> None:
-            self.reference = reference
-            self.arguments: list[ConstInfo] = []
-
-            if arguments is not None:
-                self.arguments.extend(arguments)
+        def __init__(self, ref: ConstInfo, args: Iterable[ConstInfo] | None = None) -> None:
+            self.ref = ref
+            self.args: list[ConstInfo] = []
+            if args is not None:
+                self.args.extend(args)
 
         def __repr__(self) -> str:
-            return "<BootstrapMethods.BootstrapMethod(reference=%r, arguments=%r)>" % (self.reference, self.arguments)
+            return "<BootstrapMethods.BootstrapMethod(ref=%s, args=[%s])>" % (
+                self.ref, ", ".join(map(str, self.args)),
+            )
 
         def __str__(self) -> str:
-            return "boostrap_method[%s,[%s]]" % (self.reference, ",".join(map(str, self.arguments)))
+            return "boostrap_method(%s,[%s])" % (self.ref, ",".join(map(str, self.args)))
 
         def __eq__(self, other: object) -> bool:
             return (
                 isinstance(other, BootstrapMethods.BootstrapMethod) and
-                self.reference == other.reference and
-                self.arguments == other.arguments
+                self.ref == other.ref and
+                self.args == other.args
             )
 
 
@@ -616,10 +615,10 @@ class NestHost(AttributeInfo):
         self.host = host
 
     def __repr__(self) -> str:
-        return "<NestHost(host=%r)>" % self.host
+        return "<NestHost(host=%s)>" % self.host
 
     def __str__(self) -> str:
-        return "NestHost[%s]" % self.host
+        return "NestHost(%s)" % self.host
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NestHost) and self.host == other.host
@@ -670,10 +669,10 @@ class NestMembers(AttributeInfo):
             self.classes.extend(classes)
 
     def __repr__(self) -> str:
-        return "<NestMembers(classes=%r)>" % self.classes
+        return "<NestMembers(classes=[%s])>" % ", ".join(map(str, self.classes))
 
     def __str__(self) -> str:
-        return "NestMembers[[%s]]" % ",".join(map(str, self.classes))
+        return "NestMembers([%s])" % ",".join(map(str, self.classes))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NestMembers) and self.classes == other.classes
@@ -742,10 +741,10 @@ class PermittedSubclasses(AttributeInfo):
             self.classes.extend(classes)
 
     def __repr__(self) -> str:
-        return "<PermittedSubclasses(classes=%r)>" % self.classes
+        return "<PermittedSubclasses(classes=[%s])>" % ", ".join(map(str, self.classes))
 
     def __str__(self) -> str:
-        return "PermittedSubclasses[[%s]]" % ",".join(map(str, self.classes))
+        return "PermittedSubclasses([%s])" % ",".join(map(str, self.classes))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PermittedSubclasses) and self.classes == other.classes
@@ -819,10 +818,10 @@ class InnerClasses(AttributeInfo):
             self.classes.extend(classes)
 
     def __repr__(self) -> str:
-        return "<InnerClasses(classes=%r)>" % self.classes
+        return "<InnerClasses(classes=[%s])>" % ", ".join(map(str, self.classes))
 
     def __str__(self) -> str:
-        return "InnerClasses[[%s]]" % ",".join(map(str, self.classes))
+        return "InnerClasses([%s])" % ",".join(map(str, self.classes))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InnerClasses) and self.classes == other.classes
@@ -1068,12 +1067,12 @@ class InnerClasses(AttributeInfo):
             self.access = access
 
         def __repr__(self) -> str:
-            return "<InnerClasses.InnerClass(inner_class=%r, outer_class=%r, name=%r, access=0x%04x)>" % (
+            return "<InnerClasses.InnerClass(inner_class=%s, outer_class=%s, name=%s, access=0x%04x)>" % (
                 self.inner_class, self.outer_class, self.name, self.access,
             )
 
         def __str__(self) -> str:
-            return "inner_class[%s,%s,%s,0x%04x]" % (
+            return "inner_class(%s,%s,%s,0x%04x)" % (
                 self.inner_class, self.outer_class if self.outer_class is not None else "[none]",
                 self.name if self.name is not None else "[none]", self.access,
             )
@@ -1121,10 +1120,10 @@ class EnclosingMethod(AttributeInfo):
         self.method = method
 
     def __repr__(self) -> str:
-        return "<EnclosingMethod(class_=%r, method=%r)>" % (self.class_, self.method)
+        return "<EnclosingMethod(class_=%s, method=%s)>" % (self.class_, self.method)
 
     def __str__(self) -> str:
-        return "EnclosingMethod[%s,%s]" % (self.class_, self.method if self.method is not None else "[none]")
+        return "EnclosingMethod(%s,%s)" % (self.class_, self.method if self.method is not None else "[none]")
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, EnclosingMethod) and self.class_ == other.class_ and self.method == other.method
@@ -1190,7 +1189,7 @@ class Record(AttributeInfo):
         return "<Record(components=%r)>" % self.components
 
     def __str__(self) -> str:
-        return "Record[[%s]]" % ",".join(map(str, self.components))
+        return "Record([%s])" % ",".join(map(str, self.components))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Record) and self.components == other.components
@@ -1257,10 +1256,10 @@ class Record(AttributeInfo):
                 self.attributes.extend(attributes)
 
         def __repr__(self) -> str:
-            return "<Record.ComponentInfo(name=%r, descriptor=%r)>" % (self.name, self.descriptor)
+            return "<Record.ComponentInfo(name=%s, descriptor=%s)>" % (self.name, self.descriptor)
 
         def __str__(self) -> str:
-            return "record_component_info[%s:%s]" % (self.name, self.descriptor)
+            return "record_component_info(%s:%s)" % (self.name, self.descriptor)
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -1300,10 +1299,10 @@ class SourceFile(AttributeInfo):
         self.file = file
 
     def __repr__(self) -> str:
-        return "<SourceFile(file=%r)>" % self.file
+        return "<SourceFile(file=%s)>" % self.file
 
     def __str__(self) -> str:
-        return "SourceFile[%s]" % self.file
+        return "SourceFile(%s)" % self.file
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SourceFile) and self.file == other.file
@@ -1351,7 +1350,7 @@ class SourceDebugExtension(AttributeInfo):
         return "<DebugExtension(extension=%r)>" % self.extension
 
     def __str__(self) -> str:
-        return "DebugExtension[%r]" % self.extension
+        return "DebugExtension(%r)" % self.extension
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SourceDebugExtension) and self.extension == other.extension
@@ -1525,12 +1524,13 @@ class Module(AttributeInfo):
             self.provides.extend(provides)
 
     def __repr__(self) -> str:
-        return "<Module(module=%r, flags=0x%04x, version=%r, requires=%r, exports=%r, opens=%r, uses=%r, provides=%r)>" % (
-            self.module, self.flags, self.version, self.requires, self.exports, self.opens, self.uses, self.provides,
+        return "<Module(module=%s, flags=0x%04x, version=%s, requires=%r, exports=%r, opens=%r, uses=[%s], provides=%r)>" % (
+            self.module, self.flags, self.version, self.requires, self.exports,
+            self.opens, ", ".join(map(str, self.uses)), self.provides,
         )
 
     def __str__(self) -> str:
-        return "Module[%s,0x%04x,%s,[%s],[%s],[%s],[%s],[%s]]" % (  # Wow, this is kinda a mess...
+        return "Module(%s,0x%04x,%s,[%s],[%s],[%s],[%s],[%s])" % (  # Wow, this is kinda a mess...
             self.module, self.flags, self.version if self.version is not None else "[none]",
             ",".join(map(str, self.requires)), ",".join(map(str, self.exports)), ",".join(map(str, self.opens)),
             ",".join(map(str, self.uses)), ",".join(map(str, self.provides)),
@@ -1704,10 +1704,10 @@ class Module(AttributeInfo):
             self.version = version
 
         def __repr__(self) -> str:
-            return "<Module.Require(module=%r, flags=0x%04x, version=%r)>" % (self.module, self.flags, self.version)
+            return "<Module.Require(module=%s, flags=0x%04x, version=%s)>" % (self.module, self.flags, self.version)
 
         def __str__(self) -> str:
-            return "module_require[%s,0x%04x,%s]" % (
+            return "module_require(%s,0x%04x,%s)" % (
                 self.module, self.flags, self.version if self.version is not None else "[none]",
             )
 
@@ -1758,12 +1758,12 @@ class Module(AttributeInfo):
                 self.exports_to.extend(exports_to)
 
         def __repr__(self) -> str:
-            return "<Module.Export(package=%r, flags=0x%04x, exports_to=%r)>" % (
-                self.package, self.flags, self.exports_to,
+            return "<Module.Export(package=%s, flags=0x%04x, exports_to=[%s])>" % (
+                self.package, self.flags, ", ".join(map(str, self.exports_to)),
             )
 
         def __str__(self) -> str:
-            return "module_export[%s,0x%04x,[%s]]" % (self.package, self.flags, ",".join(map(str, self.exports_to)))
+            return "module_export(%s,0x%04x,[%s])" % (self.package, self.flags, ",".join(map(str, self.exports_to)))
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -1810,10 +1810,12 @@ class Module(AttributeInfo):
                 self.opens_to.extend(opens_to)
 
         def __repr__(self) -> str:
-            return "<Module.Open(package=%r, flags=0x%04x, opens_to=%r)>" % (self.package, self.flags, self.opens_to)
+            return "<Module.Open(package=%s, flags=0x%04x, opens_to=[%s])>" % (
+                self.package, self.flags, ", ".join(map(str, self.opens_to)),
+            )
 
         def __str__(self) -> str:
-            return "module_open[%s,0x%04x,[%s]]" % (self.package, self.flags, ",".join(map(str, self.opens_to)))
+            return "module_open(%s,0x%04x,[%s])" % (self.package, self.flags, ",".join(map(str, self.opens_to)))
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -1849,10 +1851,10 @@ class Module(AttributeInfo):
                 self.impls.extend(impls)
 
         def __repr__(self) -> str:
-            return "<Module.Provide(interface=%r, impls=%r)>" % (self.interface, self.impls)
+            return "<Module.Provide(interface=%s, impls=[%s])>" % (self.interface, ", ".join(map(str, self.impls)))
 
         def __str__(self) -> str:
-            return "module_provide[%s,[%s]]" % (self.interface, ",".join(map(str, self.impls)))
+            return "module_provide(%s,[%s])" % (self.interface, ",".join(map(str, self.impls)))
 
         def __eq__(self, other: object) -> bool:
             return isinstance(other, Module.Provide) and self.interface == other.interface and self.impls == other.impls
@@ -1895,10 +1897,10 @@ class ModulePackages(AttributeInfo):
             self.packages.extend(packages)
 
     def __repr__(self) -> str:
-        return "<ModulePackages(packages=%r)>" % self.packages
+        return "<ModulePackages(packages=[%s])>" % ", ".join(map(str, self.packages))
 
     def __str__(self) -> str:
-        return "ModulePackages[[%s]]" % ",".join(map(str, self.packages))
+        return "ModulePackages([%s])" % ",".join(map(str, self.packages))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ModulePackages) and self.packages == other.packages
@@ -1941,11 +1943,11 @@ class ModuleMainClass(AttributeInfo):
 
     Attributes
     ----------
-    main_class: ConstInfo
+    class_: ConstInfo
         A class constant, used as the main class of this module.
     """
 
-    __slots__ = ("main_class",)
+    __slots__ = ("class_",)
 
     tag = b"ModuleMainClass"
     since = JAVA_9
@@ -1956,24 +1958,24 @@ class ModuleMainClass(AttributeInfo):
         index, = unpack_H(stream.read(2))
         return cls(pool[index]), None
 
-    def __init__(self, main_class: ConstInfo) -> None:
+    def __init__(self, class_: ConstInfo) -> None:
         super().__init__()
-        self.main_class = main_class
+        self.class_ = class_
 
     def __repr__(self) -> str:
-        return "<ModuleMainClass(main_class=%r)>" % self.main_class
+        return "<ModuleMainClass(class_=%s)>" % self.class_
 
     def __str__(self) -> str:
-        return "ModuleMainClass[%s]" % self.main_class
+        return "ModuleMainClass(%s)" % self.class_
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, ModuleMainClass) and self.main_class == other.main_class
+        return isinstance(other, ModuleMainClass) and self.class_ == other.class_
 
     def write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None:
-        stream.write(pack_HIH(pool.add(self.name or UTF8Info(self.tag)), 2 + len(self.extra), pool.add(self.main_class)))
+        stream.write(pack_HIH(pool.add(self.name or UTF8Info(self.tag)), 2 + len(self.extra), pool.add(self.class_)))
         stream.write(self.extra)
 
     def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
         super().verify(verifier, cf, location)
-        if verifier.check_const_types and not isinstance(self.main_class, ClassInfo):
+        if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
             verifier.error(self, "module main class is not a class constant")

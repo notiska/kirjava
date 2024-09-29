@@ -36,6 +36,7 @@ Repository = "https://github.com/notiska/kirjava.git"
 Issues = "https://github.com/notiska/kirjava/issues"
 
 [project.optional-dependencies]
+# TODO: Cython backend.
 backend = ["numpy"]
 
 [tool.setuptools.dynamic]

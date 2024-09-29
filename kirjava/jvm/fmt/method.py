@@ -21,13 +21,11 @@ from .attribute import AttributeInfo
 from .constants import *
 from .stackmap import StackMapFrame
 from .._desc import parse_method_descriptor
-from .._dis import CodeIOWrapper
 from .._struct import *
-from ..insns import Instruction
+from ..insns import CodeIOWrapper, Instruction
 from ..version import *
 from ...meta import Metadata
 from ...model.class_.method import Method
-from ...pretty import pretty_repr
 
 if typing.TYPE_CHECKING:
     from .classfile import ClassFile
@@ -311,12 +309,10 @@ class MethodInfo:
             self.attributes.extend(attributes)
 
     def __repr__(self) -> str:
-        return "<MethodInfo(access=0x%04x, name=%r, descriptor=%r)>" % (self.access, self.name, self.descriptor)
+        return "<MethodInfo(access=0x%04x, name=%s, descriptor=%s)>" % (self.access, self.name, self.descriptor)
 
     def __str__(self) -> str:
-        return "method_info[0x%04x,%s:%s]" % (
-            self.access, pretty_repr(str(self.name)), pretty_repr(str(self.descriptor)),
-        )
+        return "method_info(0x%04x,%s:%s)" % (self.access, self.name, self.descriptor)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         """
@@ -547,12 +543,12 @@ class Code(AttributeInfo):
             self.attributes.extend(attributes)
 
     def __repr__(self) -> str:
-        return "<Code(max_stack=%i, max_locals=%i, base=%i, instructions=%r, handlers=%r)>" % (
-            self.max_stack, self.max_locals, self.base, self.instructions, self.handlers,
+        return "<Code(max_stack=%i, max_locals=%i, base=%i, instructions=[%s], handlers=%r)>" % (
+            self.max_stack, self.max_locals, self.base, ", ".join(map(str, self.instructions)), self.handlers,
         )
 
     def __str__(self) -> str:
-        return "Code[%i,%i,%i,[%s],[%s]]" % (
+        return "Code(%i,%i,%i,[%s],[%s])" % (
             self.max_stack, self.max_locals, self.base,
             ",".join(map(str, self.instructions)), ",".join(map(str, self.handlers)),
         )
@@ -658,12 +654,12 @@ class Code(AttributeInfo):
             self.type = type_
 
         def __repr__(self) -> str:
-            return "<Code.ExceptHandler(start_pc=%i, end_pc=%i, handler_pc=%i, type=%r)>" % (
+            return "<Code.ExceptHandler(start_pc=%i, end_pc=%i, handler_pc=%i, type=%s)>" % (
                 self.start_pc, self.end_pc, self.handler_pc, self.type,
             )
 
         def __str__(self) -> str:
-            return "handler[%i,%i,%i,%s]" % (self.start_pc, self.end_pc, self.handler_pc, self.type)
+            return "handler(%i-%i:%i,%s)" % (self.start_pc, self.end_pc, self.handler_pc, self.type)
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -711,7 +707,7 @@ class StackMapTable(AttributeInfo):
         return "<StackMapTable(frames=%r)>" % self.frames
 
     def __str__(self) -> str:
-        return "StackMapTable[[%s]]" % ",".join(map(str, self.frames))
+        return "StackMapTable([%s])" % ",".join(map(str, self.frames))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, StackMapTable) and self.frames == other.frames
@@ -773,10 +769,10 @@ class Exceptions(AttributeInfo):
             self.exceptions.extend(exceptions)
 
     def __repr__(self) -> str:
-        return "<Exceptions(exceptions=%r)>" % self.exceptions
+        return "<Exceptions(exceptions=[%s])>" % ", ".join(map(str, self.exceptions))
 
     def __str__(self) -> str:
-        return "Exceptions[[%s]]" % ",".join(map(str, self.exceptions))
+        return "Exceptions([%s])" % ",".join(map(str, self.exceptions))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Exceptions) and self.exceptions == other.exceptions
@@ -853,7 +849,7 @@ class LineNumberTable(AttributeInfo):
         return "<LineNumberTable(lines=%r)>" % self.lines
 
     def __str__(self) -> str:
-        return "LineNumberTable[[%s]]" % ",".join(map(str, self.lines))
+        return "LineNumberTable([%s])" % ",".join(map(str, self.lines))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LineNumberTable) and self.lines == other.lines
@@ -911,7 +907,7 @@ class LineNumberTable(AttributeInfo):
             return "<LineNumberTable.LineNumber(start_pc=%i, line=%i)>" % (self.start_pc, self.line)
 
         def __str__(self) -> str:
-            return "line_number[%i,%i]" % (self.start_pc, self.line)
+            return "line_number(%i,%i)" % (self.start_pc, self.line)
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -960,7 +956,7 @@ class LocalVariableTable(AttributeInfo):
         return "<LocalVariableTable(locals=%r)>" % self.locals
 
     def __str__(self) -> str:
-        return "LocalVariableTable[[%s]]" % ",".join(map(str, self.locals))
+        return "LocalVariableTable([%s])" % ",".join(map(str, self.locals))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVariableTable) and self.locals == other.locals
@@ -1034,12 +1030,12 @@ class LocalVariableTable(AttributeInfo):
             self.index = index
 
         def __repr__(self) -> str:
-            return "<LocalVariableTable.LocalVariable(start_pc=%i, length=%i, name=%r, descriptor=%r, index=%i)>" % (
+            return "<LocalVariableTable.LocalVariable(start_pc=%i, length=%i, name=%s, descriptor=%s, index=%i)>" % (
                 self.start_pc, self.length, self.name, self.descriptor, self.index,
             )
 
         def __str__(self) -> str:
-            return "local_variable[%i,%i,%s,%s,%i]" % (
+            return "local_variable(%i+%i,%s,%s,%i)" % (
                 self.start_pc, self.length, self.name, self.descriptor, self.index,
             )
 
@@ -1093,7 +1089,7 @@ class LocalVariableTypeTable(AttributeInfo):
         return "<LocalVariableTypeTable(locals=%r)>" % self.locals
 
     def __str__(self) -> str:
-        return "LocalVariableTypeTable[[%s]]" % ",".join(map(str, self.locals))
+        return "LocalVariableTypeTable([%s])" % ",".join(map(str, self.locals))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVariableTypeTable) and self.locals == other.locals
@@ -1166,12 +1162,12 @@ class LocalVariableTypeTable(AttributeInfo):
             self.index = index
 
         def __repr__(self) -> str:
-            return "<LocalVariableTypeTable.LocalVariable(start_pc=%i, length=%i, name=%r, signature=%r, index=%i)>" % (
+            return "<LocalVariableTypeTable.LocalVariable(start_pc=%i, length=%i, name=%s, signature=%ß, index=%i)>" % (
                 self.start_pc, self.length, self.name, self.signature, self.index,
             )
 
         def __str__(self) -> str:
-            return "local_variable[%i,%i,%s,%s,%i]" % (
+            return "local_variable(%i+%i,%s,%s,%i)" % (
                 self.start_pc, self.length, self.name, self.signature, self.index,
             )
 
@@ -1217,7 +1213,7 @@ class AnnotationDefault(AttributeInfo):
         return "<AnnotationDefault(default=%r)>" % self.default
 
     def __str__(self) -> str:
-        return "AnnotationDefault[%s]" % self.default
+        return "AnnotationDefault(%s)" % self.default
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, AnnotationDefault) and self.default == other.default
@@ -1264,7 +1260,7 @@ class MethodParameters(AttributeInfo):
         return "<MethodParameters(params=%r)>" % self.params
 
     def __str__(self) -> str:
-        return "MethodParameters[[%s]]" % ",".join(map(str, self.params))
+        return "MethodParameters([%s])" % ",".join(map(str, self.params))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MethodParameters) and self.params == other.params
@@ -1365,7 +1361,10 @@ class MethodParameters(AttributeInfo):
             self.flags = flags
 
         def __repr__(self) -> str:
-            return "<MethodParameters.Parameter(name=%r, flags=0x%04x)>" % (self.name, self.flags)
+            return "<MethodParameters.Parameter(name=%s, flags=0x%04x)>" % (self.name, self.flags)
+
+        def __str__(self) -> str:
+            return "parameter(%s,0x%04x)" % (self.name, self.flags)
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -1413,7 +1412,7 @@ class RuntimeVisibleParameterAnnotations(AttributeInfo):
         return "<RuntimeVisibleParameterAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeVisibleParametersAnnotations[[%s]]" % ",".join(map(str, self.annotations))
+        return "RuntimeVisibleParametersAnnotations([%s])" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeVisibleParameterAnnotations) and self.annotations == other.annotations
@@ -1476,7 +1475,7 @@ class RuntimeInvisibleParameterAnnotations(AttributeInfo):
         return "<RuntimeInvisibleParameterAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeInvisibleParametersAnnotations[[%s]]" % ",".join(map(str, self.annotations))
+        return "RuntimeInvisibleParametersAnnotations([%s])" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeInvisibleParameterAnnotations) and self.annotations == other.annotations

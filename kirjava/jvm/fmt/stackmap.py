@@ -295,7 +295,7 @@ class IntegerVarInfo(VerificationTypeInfo):
         return "<IntegerVarInfo>"
 
     def __str__(self) -> str:
-        return "int"
+        return "int_item"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, IntegerVarInfo)
@@ -314,7 +314,7 @@ class FloatVarInfo(VerificationTypeInfo):
         return "<FloatVarInfo>"
 
     def __str__(self) -> str:
-        return "float"
+        return "item_float"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, FloatVarInfo)
@@ -333,7 +333,7 @@ class DoubleVarInfo(VerificationTypeInfo):
         return "<DoubleVarInfo>"
 
     def __str__(self) -> str:
-        return "double"
+        return "item_double"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, DoubleVarInfo)
@@ -352,7 +352,7 @@ class LongVarInfo(VerificationTypeInfo):
         return "<LongVarInfo>"
 
     def __str__(self) -> str:
-        return "long"
+        return "item_long"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LongVarInfo)
@@ -371,7 +371,7 @@ class NullVarInfo(VerificationTypeInfo):
         return "<NullVarInfo>"
 
     def __str__(self) -> str:
-        return "null"
+        return "item_null"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NullVarInfo)
@@ -390,7 +390,7 @@ class UninitializedThisVarInfo(VerificationTypeInfo):
         return "<UninitializedThisVarInfo>"
 
     def __str__(self) -> str:
-        return "uninitializedThis"
+        return "item_uninitializedThis"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, UninitializedThisVarInfo)
@@ -419,10 +419,10 @@ class ObjectVarInfo(VerificationTypeInfo):
         self.class_ = class_
 
     def __repr__(self) -> str:
-        return "<ObjectVarInfo(class_=%r)>" % self.class_
+        return "<ObjectVarInfo(class_=%s)>" % self.class_
 
     def __str__(self) -> str:
-        return "object[%s] " % self.class_
+        return "item_object(%s) " % self.class_
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ObjectVarInfo) and self.class_ == other.class_
@@ -462,7 +462,7 @@ class UninitializedVarInfo(VerificationTypeInfo):
         return "<UninitializedVarInfo(offset=%i)>" % self.offset
 
     def __str__(self) -> str:
-        return "uninitialized[%i]" % self.offset
+        return "item_uninitialized(%i)" % self.offset
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, UninitializedVarInfo) and self.offset == other.offset
@@ -509,7 +509,7 @@ class SameFrame(StackMapFrame):
         return "<SameFrame(tag=%i)>" % self.tag
 
     def __str__(self) -> str:
-        return "same_frame[%i]" % self.tag
+        return "same_frame(%i)" % self.tag
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SameFrame) and self.tag == other.tag
@@ -551,10 +551,10 @@ class SameLocalsOneStackItemFrame(StackMapFrame):
         self.stack = stack
 
     def __repr__(self) -> str:
-        return "<SameLocalsOneStackItemFrame(tag=%i, stack=%r)>" % (self.tag, self.stack)
+        return "<SameLocalsOneStackItemFrame(tag=%i, stack=%s)>" % (self.tag, self.stack)
 
     def __str__(self) -> str:
-        return "same_locals_1_stack_item_frame[%i,%s]" % (self.tag, self.stack)
+        return "same_locals_1_stack_item_frame(%i,%s)" % (self.tag, self.stack)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SameLocalsOneStackItemFrame) and self.tag == other.tag and self.stack == other.stack
@@ -600,10 +600,10 @@ class SameLocalsOneStackItemFrameExtended(StackMapFrame):
         self.stack = stack
 
     def __repr__(self) -> str:
-        return "<SameLocalsOneStackItemFrameExtended(delta=%i, stack=%r)>" % (self.delta, self.stack)
+        return "<SameLocalsOneStackItemFrameExtended(delta=%i, stack=%s)>" % (self.delta, self.stack)
 
     def __str__(self) -> str:
-        return "same_local_1_stack_item_frame_extended[%i,%s]" % (self.delta, self.stack)
+        return "same_local_1_stack_item_frame_extended(%i,%s)" % (self.delta, self.stack)
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -659,7 +659,7 @@ class ChopFrame(StackMapFrame):
         return "<ChopFrame(tag=%i, delta=%i)>" % (self.tag, self.delta)
 
     def __str__(self) -> str:
-        return "chop_frame[%i,%i]" % (self.tag, self.delta)
+        return "chop_frame(%i,%i)" % (self.tag, self.delta)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ChopFrame) and self.tag == other.tag and self.delta == other.delta
@@ -704,7 +704,7 @@ class SameFrameExtended(StackMapFrame):
         return "<SameFrameExtended(delta=%i)>" % self.delta
 
     def __str__(self) -> str:
-        return "same_frame_extended[%i]" % self.delta
+        return "same_frame_extended(%i)" % self.delta
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SameFrameExtended) and self.delta == other.delta
@@ -754,7 +754,7 @@ class AppendFrame(StackMapFrame):
             self.locals.extend(locals_)
 
     def __repr__(self) -> str:
-        return "<AppendFrame(tag=%i, delta=%i, locals=%r)>" % (self.tag, self.delta, self.locals)
+        return "<AppendFrame(tag=%i, delta=%i, locals=[%s])>" % (self.tag, self.delta, ", ".join(map(str, self.locals)))
 
     def __str__(self) -> str:
         return "append_frame[%i,%i,[%s]" % (self.tag, self.delta, ",".join(map(str, self.locals)))
@@ -827,10 +827,12 @@ class FullFrame(StackMapFrame):
             self.stack.extend(stack)
 
     def __repr__(self) -> str:
-        return "<FullFrame(delta=%i, locals=%r, stack=%r)>" % (self.delta, self.locals, self.stack)
+        return "<FullFrame(delta=%i, locals=[%s], stack=[%s])>" % (
+            self.delta, ", ".join(map(str, self.locals)), ", ".join(map(str, self.stack)),
+        )
 
     def __str__(self) -> str:
-        return "full_frame[%i,[%s],[%s]]" % (
+        return "full_frame(%i,[%s],[%s])" % (
             self.delta, ",".join(map(str, self.locals)), ",".join(map(str, self.stack)),
         )
 

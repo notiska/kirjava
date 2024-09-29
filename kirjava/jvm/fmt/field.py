@@ -19,7 +19,6 @@ from .._struct import *
 from ..version import JAVA_1_0, Version
 from ...meta import Metadata
 from ...model.class_.field import Field
-from ...pretty import pretty_repr
 
 if typing.TYPE_CHECKING:
     from .classfile import ClassFile
@@ -252,12 +251,10 @@ class FieldInfo:
             self.attributes.extend(attributes)
 
     def __repr__(self) -> str:
-        return "<FieldInfo(access=0x%04x, name=%r, descriptor=%r)>" % (self.access, self.name, self.descriptor)
+        return "<FieldInfo(access=0x%04x, name=%s, descriptor=%s)>" % (self.access, self.name, self.descriptor)
 
     def __str__(self) -> str:
-        return "field_info[0x%04x,%s:%s]" % (
-            self.access, pretty_repr(str(self.name)), pretty_repr(str(self.descriptor)),
-        )
+        return "field_info(0x%04x,%s:%s)" % (self.access, self.name, self.descriptor)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         """
@@ -369,10 +366,10 @@ class ConstantValue(AttributeInfo):
         self.value = value
 
     def __repr__(self) -> str:
-        return "<ConstantValue(value=%r)>" % self.value
+        return "<ConstantValue(value=%s)>" % self.value
 
     def __str__(self) -> str:
-        return "ConstantValue[%s]" % self.value
+        return "ConstantValue(%s)" % self.value
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ConstantValue) and self.value == other.value

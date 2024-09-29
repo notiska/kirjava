@@ -8,6 +8,7 @@ from kirjava.jvm.fmt import ConstPool
 from kirjava.jvm.fmt.constants import *
 from kirjava.jvm.insns import *
 from kirjava.jvm.insns.array import NewArray
+from kirjava.jvm.insns.flow import Jump
 
 
 class TestInstructions(unittest.TestCase):
@@ -109,6 +110,31 @@ class TestInstructions(unittest.TestCase):
 
     def setUp(self) -> None:
         self.pool = ConstPool()
+
+    def test_repr_str_eq_copy(self) -> None:
+        for subclass in INSTRUCTIONS:
+            with self.subTest(subclass.mnemonic):
+                init = self._DEFAULTS.get(subclass)
+                if init is None:
+                    self.skipTest("Missing default init values for %r." % subclass)
+                insn_no_offset = subclass(*init)  # type: ignore[arg-type]
+
+                print(str(insn_no_offset), repr(insn_no_offset), end=" ")
+                insn_offset = insn_no_offset.copy()
+                insn_offset.offset = 30
+                print(str(insn_offset), repr(insn_offset))
+
+                self.assertEqual(insn_no_offset, insn_no_offset)
+                self.assertEqual(insn_no_offset, insn_offset)
+
+                insn_offset_repr = repr(insn_offset)
+                insn_offset_repr = insn_offset_repr.replace("(offset=%i)" % insn_offset.offset, "")
+                insn_offset_repr = insn_offset_repr.replace("offset=%i, " % insn_offset.offset, "")
+                self.assertEqual(repr(insn_no_offset), insn_offset_repr)
+
+                # Jumps have a delta offset change in the str, so this doesn't work.
+                if not isinstance(insn_no_offset, Jump):
+                    self.assertEqual(str(insn_no_offset), str(insn_offset).replace("%i:" % insn_offset.offset, ""))
 
     def test_symmetric_read_write(self) -> None:
         for subclass in INSTRUCTIONS:

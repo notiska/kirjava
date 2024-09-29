@@ -10,6 +10,10 @@ __all__ = (
     "ldc", "ldc_w", "ldc2_w",
     "new",
     "pop", "pop2", "dup", "dup_x1", "dup_x2", "dup2", "dup2_x1", "dup2_x2", "swap",
+    "PushConstant", "BIPush", "SIPush",
+    "LoadConstant", "LoadConstantWide",
+    "New",
+    "Pop", "Pop2", "Dup", "DupX1", "DupX2", "Dup2", "Dup2X1", "Dup2X2", "Swap",
 )
 
 import typing
@@ -51,10 +55,17 @@ class PushConstant(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<PushConstant(offset=%s, constant=%r)>" % (self.offset, self.constant)
+        if self.offset is not None:
+            return "<PushConstant(offset=%i, constant=%s)>" % (self.offset, self.constant)
+        return "<PushConstant(constant=%s)>" % self.constant
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PushConstant) and self.opcode == other.opcode and self.constant == other.constant
+
+    # def copy(self) -> "PushConstant":
+    #     copy = type(self)(self.constant)
+    #     copy.offset = self.offset
+    #     return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -103,15 +114,22 @@ class BIPush(PushConstant):
         self.value = value
 
     def __repr__(self) -> str:
-        return "<BIPush(offset=%s, value=%i)>" % (self.offset, self.value)
+        if self.offset is not None:
+            return "<BIPush(offset=%i, value=%i)>" % (self.offset, self.value)
+        return "<BIPush(value=%i)>" % self.value
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: %s %i" % (self.offset, self.mnemonic, self.value)
-        return "%s %i" % (self.mnemonic, self.value)
+            return "%i:%s(%i)" % (self.offset, self.mnemonic, self.value)
+        return "%s(%i)" % (self.mnemonic, self.value)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, BIPush) and self.value == other.value
+
+    def copy(self) -> "BIPush":
+        copy = bipush(self.value)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.value)))
@@ -153,15 +171,22 @@ class SIPush(PushConstant):
         self.value = value
 
     def __repr__(self) -> str:
-        return "<SIPush(offset=%s, value=%i)>" % (self.offset, self.value)
+        if self.offset is not None:
+            return "<SIPush(offset=%i, value=%i)>" % (self.offset, self.value)
+        return "<SIPush(value=%i)>" % self.value
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: %s %i" % (self.offset, self.mnemonic, self.value)
-        return "%s %i" % (self.mnemonic, self.value)
+            return "%i:%s(%i)" % (self.offset, self.mnemonic, self.value)
+        return "%s(%i)" % (self.mnemonic, self.value)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SIPush) and self.value == other.value
+
+    def copy(self) -> "SIPush":
+        copy = sipush(self.value)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, self.value))
@@ -197,15 +222,22 @@ class LoadConstant(Instruction):
         self.info = info
 
     def __repr__(self) -> str:
-        return "<LoadConstant(offset=%s, info=%r)>" % (self.offset, self.info)
+        if self.offset is not None:
+            return "<LoadConstant(offset=%i, info=%s)>" % (self.offset, self.info)
+        return "<LoadConstant(info=%s)>" % self.info
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: %s %s" % (self.offset, self.mnemonic, self.info)
-        return "%s %s" % (self.mnemonic, self.info)
+            return "%i:%s(%s)" % (self.offset, self.mnemonic, self.info)
+        return "%s(%s)" % (self.mnemonic, self.info)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LoadConstant) and self.opcode == other.opcode and self.info == other.info
+
+    def copy(self) -> "LoadConstant":
+        copy = type(self)(self.info)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, pool.add(self.info))))
@@ -254,7 +286,9 @@ class LoadConstantWide(LoadConstant):
         return cls(pool[index])
 
     def __repr__(self) -> str:
-        return "<LoadConstantWide(offset=%s, info=%r)>" % (self.offset, self.info)
+        if self.offset is not None:
+            return "<LoadConstantWide(offset=%i, info=%s)>" % (self.offset, self.info)
+        return "<LoadConstantWide(info=%s)>" % self.info
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LoadConstantWide) and self.opcode == other.opcode and self.info == other.info
@@ -289,15 +323,22 @@ class New(Instruction):
         self.class_ = class_
 
     def __repr__(self) -> str:
-        return "<New(offset=%s, class_=%r)>" % (self.offset, self.class_)
+        if self.offset is not None:
+            return "<New(offset=%i, class_=%s)>" % (self.offset, self.class_)
+        return "<New(class_=%s)>" % self.class_
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: new %s" % (self.offset, self.class_)
-        return "new %s" % self.class_
+            return "%i:new(%s)" % (self.offset, self.class_)
+        return "new(%s)" % self.class_
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, New) and self.class_ == other.class_
+
+    def copy(self) -> "New":
+        copy = new(self.class_)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.class_)))
@@ -332,7 +373,9 @@ class Pop(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<Pop(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<Pop(offset=%i)>" % self.offset
+        return "<Pop>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Pop)
@@ -367,7 +410,9 @@ class Pop2(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<Pop2(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<Pop2(offset=%i)>" % self.offset
+        return "<Pop2>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Pop2)
@@ -401,7 +446,9 @@ class Dup(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<Dup(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<Dup(offset=%i)>" % self.offset
+        return "<Dup>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Dup)
@@ -435,7 +482,9 @@ class DupX1(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<DupX1(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<DupX1(offset=%i)>" % self.offset
+        return "<DupX1>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, DupX1)
@@ -469,7 +518,9 @@ class DupX2(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<DupX2(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<DupX2(offset=%i)>" % self.offset
+        return "<DupX2>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, DupX2)
@@ -503,7 +554,9 @@ class Dup2(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<Dup2(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<Dup2(offset=%i)>" % self.offset
+        return "<Dup2>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Dup2)
@@ -543,7 +596,9 @@ class Dup2X1(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<Dup2X1(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<Dup2X1(offset=%i)>" % self.offset
+        return "<Dup2X1>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Dup2X1)
@@ -572,7 +627,9 @@ class Dup2X2(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<Dup2X2(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<Dup2X2(offset=%i)>" % self.offset
+        return "<Dup2X2>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Dup2X2)
@@ -601,7 +658,9 @@ class Swap(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<Swap(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<Swap(offset=%i)>" % self.offset
+        return "<Swap>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Swap)

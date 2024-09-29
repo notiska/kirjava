@@ -53,7 +53,7 @@ class Block:
             self.insns.extend(insns)
 
     def __repr__(self) -> str:
-        return "<Block(label=%i, insns=%r)>" % (self.label, self.insns)
+        return "<Block(label=%i, insns=[%s])>" % (self.label, ", ".join(map(str, self.insns)))
 
     def __str__(self) -> str:
         if self.label == self.LABEL_ENTRY:

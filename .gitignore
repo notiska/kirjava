@@ -7,3 +7,9 @@ __pycache__
 /dist/
 *.egg-info
 
+# Compiled files (namely from Cython).
+*.c
+*.dll
+*.dylib
+*.pyd
+*.so

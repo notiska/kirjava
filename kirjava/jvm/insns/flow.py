@@ -9,6 +9,10 @@ __all__ = (
     "tableswitch", "lookupswitch",
     "ireturn", "lreturn", "freturn", "dreturn", "areturn", "return_",
     "athrow",
+    "Jump", "GotoWide",
+    "Compare", "CompareToZero", "IfEq", "IfNe", "CompareToNull",
+    "Jsr", "JsrWide", "Ret", "RetWide",
+    "Switch", "TableSwitch", "LookupSwitch",
 )
 
 import typing
@@ -55,19 +59,26 @@ class Jump(Instruction):
         self.delta = delta
 
     def __repr__(self) -> str:
-        return "<Jump(offset=%s, mnemonic=%s, delta=%s)>" % (self.offset, self.mnemonic, self.delta)
+        if self.offset is not None:
+            return "<Jump(offset=%i, delta=%s)>" % (self.offset, self.delta)
+        return "<Jump(delta=%s)>" % self.delta
 
     def __str__(self) -> str:
         if self.delta is None:
             if self.offset is not None:
-                return "%i: %s" % (self.offset, self.mnemonic)
+                return "%i:%s" % (self.offset, self.mnemonic)
             return self.mnemonic
         if self.offset is not None:
-            return "%i: %s %+i,%i" % (self.offset, self.mnemonic, self.delta, self.offset + self.delta)
-        return "%s %+i" % (self.mnemonic, self.delta)
+            return "%i:%s(%+i,%i)" % (self.offset, self.mnemonic, self.delta, self.offset + self.delta)
+        return "%s(%+i)" % (self.mnemonic, self.delta)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Jump) and self.opcode == other.opcode and self.delta == other.delta
+
+    def copy(self) -> "Jump":
+        copy = type(self)(self.delta)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_Bh(self.opcode, self.delta))
@@ -109,7 +120,9 @@ class GotoWide(Jump):
         return cls(delta)
 
     def __repr__(self) -> str:
-        return "<GotoWide(offset=%s, delta=%i)>" % (self.offset, self.delta)
+        if self.offset is not None:
+            return "<GotoWide(offset=%i, delta=%i)>" % (self.offset, self.delta)
+        return "<GotoWide(delta=%i)>" % self.delta
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_Bi(self.opcode, self.delta))
@@ -150,6 +163,7 @@ class Compare(Jump):
 
     conditional = True
 
+    # TODO: Pretty string reprs for these.
     EQ = 0
     NE = 1
     LT = 2
@@ -163,7 +177,11 @@ class Compare(Jump):
     delta: int
 
     def __repr__(self) -> str:
-        return "<Compare(offset=%s, mnemonic=%s, delta=%i)>" % (self.offset, self.mnemonic, self.delta)
+        if self.offset is not None:
+            return "<Compare(offset=%i, comparison=%i, type=%s, delta=%i)>" % (
+                self.offset, self.comparison, self.type, self.delta,
+            )
+        return "<Compare(comparison=%i, type=%s, delta=%i)>" % (self.comparison, self.type, self.delta)
 
     # def evaluate(self, left: "Value", right: "Value") -> Jump.Metadata:
     #     """
@@ -259,7 +277,9 @@ class CompareToZero(Compare):
     type = int_t
 
     def __repr__(self) -> str:
-        return "<CompareToZero(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<CompareToZero(offset=%i, comparison=%i, delta=%i)>" % (self.offset, self.comparison, self.delta)
+        return "<CompareToZero(comparison=%i, delta=%i)>" % (self.comparison, self.delta)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     value = frame.pop(int_t, self)
@@ -280,6 +300,11 @@ class IfEq(CompareToZero):
 
     comparison = Compare.EQ
 
+    def __repr__(self) -> str:
+        if self.offset is not None:
+            return "<IfEq(offset=%i, delta=%i)>" % (self.offset, self.delta)
+        return "<IfEq(delta=%i)>" % self.delta
+
 
 class IfNe(CompareToZero):
     """
@@ -290,6 +315,11 @@ class IfNe(CompareToZero):
     """
 
     comparison = Compare.NE
+
+    def __repr__(self) -> str:
+        if self.offset is not None:
+            return "<IfNe(offset=%i, delta=%i)>" % (self.offset, self.delta)
+        return "<IfNe(delta=%i)>" % self.delta
 
 
 class CompareToNull(Compare):
@@ -302,6 +332,11 @@ class CompareToNull(Compare):
     __slots__ = ()
 
     type = reference_t
+
+    def __repr__(self) -> str:
+        if self.offset is not None:
+            return "<CompareToNull(offset=%i, comparison=%i, delta=%i)>" % (self.offset, self.comparison, self.delta)
+        return "<CompareToNull(comparison=%i, delta=%i)>" % (self.comparison, self.delta)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     value = frame.pop(reference_t, self)
@@ -326,12 +361,14 @@ class Jsr(Jump):
     delta: int
 
     def __repr__(self) -> str:
-        return "<Jsr(offset=%s, delta=%i)>" % (self.offset, self.delta)
+        if self.offset is not None:
+            return "<Jsr(offset=%i, delta=%i)>" % (self.offset, self.delta)
+        return "<Jsr(delta=%i)>" % self.delta
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: jsr %+i,%i" % (self.offset, self.delta, self.offset + self.delta)
-        return "jsr %+i" % self.delta
+            return "%i:jsr(%+i,%i)" % (self.offset, self.delta, self.offset + self.delta)
+        return "jsr(%+i)" % self.delta
 
     # def trace(self, frame: "Frame", state: "State.Step") -> "State.Step":
     #     return state.step(self, (), frame.push(ReturnAddress(self)))
@@ -353,12 +390,14 @@ class JsrWide(Jsr):
         return cls(delta)
 
     def __repr__(self) -> str:
-        return "<JsrWide(offset=%s, delta=%i)>" % (self.offset, self.delta)
+        if self.offset is not None:
+            return "<JsrWide(offset=%i, delta=%i)>" % (self.offset, self.delta)
+        return "<JsrWide(delta=%i)>" % self.delta
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: jsr_w %+i,%i" % (self.offset, self.delta, self.offset + self.delta)
-        return "jsr_w %+i" % self.delta
+            return "%i:jsr_w(%+i,%i)" % (self.offset, self.delta, self.offset + self.delta)
+        return "jsr_w(%+i)" % self.delta
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_Bi(self.opcode, self.delta))
@@ -388,12 +427,19 @@ class Ret(Jump):
         self.index = index
 
     def __repr__(self) -> str:
-        return "<Ret(offset=%s, index=%i)>" % (self.offset, self.index)
+        if self.offset is not None:
+            return "<Ret(offset=%i, index=%i)>" % (self.offset, self.index)
+        return "<Ret(index=%i)>" % self.index
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: ret %i" % (self.offset, self.index)
-        return "ret %i" % self.index
+            return "%i:ret(%i)" % (self.offset, self.index)
+        return "ret(%i)" % self.index
+
+    def copy(self) -> "Ret":
+        copy = type(self)(self.index)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
@@ -440,12 +486,14 @@ class RetWide(Ret):
         return cls(index)
 
     def __repr__(self) -> str:
-        return "<RetWide(offset=%s, index=%i)>" % (self.offset, self.index)
+        if self.offset is not None:
+            return "<RetWide(offset=%i, index=%i)>" % (self.offset, self.index)
+        return "<RetWide(index=%i)>" % self.index
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: ret_w %i" % (self.offset, self.index)
-        return "ret_w %i" % self.index
+            return "%i:ret_w(%i)" % (self.offset, self.index)
+        return "ret_w(%i)" % self.index
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBH(wide.opcode, self.opcode, self.index))
@@ -539,14 +587,19 @@ class TableSwitch(Switch):
         self.high = high
 
     def __repr__(self) -> str:
-        return "<TableSwitch(offset=%s, default=%i, low=%i, high=%i, offsets=%r)>" % (
-            self.offset, self.default, self.low, self.high, self.offsets,
+        if self.offset is not None:
+            return "<TableSwitch(offset=%i, default=%i, low=%i, high=%i, offsets=%r)>" % (
+                self.offset, self.default, self.low, self.high, self.offsets,
+            )
+        return "<TableSwitch(default=%i, low=%i, high=%i, offsets=%r)>" % (
+            self.default, self.low, self.high, self.offsets,
         )
 
     def __str__(self) -> str:
+        # FIXME: Implement.
         if self.offset is not None:
-            return "%i: tableswitch %i-%i ..." % (self.offset, self.low, self.high)
-        return "tableswitch %i-%i ..." % (self.low, self.high)
+            return "%i:tableswitch(%i-%i,...)" % (self.offset, self.low, self.high)
+        return "tableswitch(%i-%i,...)" % (self.low, self.high)
         # if self.offset is not None:
         #     return "%i: tableswitch %i-%i default %+i,%i offsets %s" % (
         #         self.offset, self.low, self.high, self.default, self.offset + self.default,
@@ -560,11 +613,16 @@ class TableSwitch(Switch):
     def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, TableSwitch) and
-            self.offsets == other.offsets and
             self.default == other.default and
             self.low == other.low and
-            self.high == other.high
+            self.high == other.high and
+            self.offsets == other.offsets
         )
+
+    def copy(self) -> "TableSwitch":
+        copy = tableswitch(self.default, self.low, self.high, self.offsets)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -608,12 +666,14 @@ class LookupSwitch(Switch):
         return cls(default, offsets)
 
     def __repr__(self) -> str:
-        return "<LookupSwitch(offset=%s, default=%i, offsets=%r)>" % (self.offset, self.default, self.offsets)
+        if self.offset is not None:
+            return "<LookupSwitch(offset=%i, default=%i, offsets=%r)>" % (self.offset, self.default, self.offsets)
+        return "<LookupSwitch(default=%i, offsets=%r)>" % (self.default, self.offsets)
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: lookupswitch ..." % self.offset
-        return "lookupswitch ..."
+            return "%i:lookupswitch(...)" % self.offset
+        return "lookupswitch(...)"
         # if self.offset is not None:
         #     return "%i: lookupswitch default %+i,%i offsets %s" % (
         #         self.offset, self.default, self.offset + self.default,
@@ -624,7 +684,12 @@ class LookupSwitch(Switch):
         # )
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, LookupSwitch) and self.offsets == other.offsets and self.default == other.default
+        return isinstance(other, LookupSwitch) and self.default == other.default and self.offsets == other.offsets
+
+    def copy(self) -> "LookupSwitch":
+        copy = lookupswitch(self.default, self.offsets)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -673,12 +738,22 @@ class Return(Jump):
         super().__init__(None)
 
     def __repr__(self) -> str:
-        return "<Return(offset=%s, type=%r)>" % (self.offset, self.type)
+        if self.offset is not None:
+            return "<Return(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<Return(type=%s)>" % self.type
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: %s" % (self.offset, self.mnemonic)
+            return "%i:%s" % (self.offset, self.mnemonic)
         return self.mnemonic
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Return) and self.opcode == other.opcode
+
+    def copy(self) -> "Return":
+        copy = type(self)()
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -716,12 +791,22 @@ class AThrow(Jump):
         super().__init__(None)
 
     def __repr__(self) -> str:
-        return "<AThrow(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<AThrow(offset=%i)>" % self.offset
+        return "<AThrow>"
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: athrow" % self.offset
+            return "%i:athrow" % self.offset
         return "athrow"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, AThrow)
+
+    def copy(self) -> "AThrow":
+        copy = athrow()
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -740,8 +825,8 @@ class AThrow(Jump):
     #     codegen.emit(IRThrow(step, codegen.value(step.inputs[0])))
 
 
-ifeq = CompareToZero.make(0x99, "ifeq", comparison=Compare.EQ)
-ifne = CompareToZero.make(0x9a, "ifne", comparison=Compare.NE)
+ifeq          = IfEq.make(0x99, "ifeq")
+ifne          = IfNe.make(0x9a, "ifne")
 iflt = CompareToZero.make(0x9b, "iflt", comparison=Compare.LT)
 ifge = CompareToZero.make(0x9c, "ifge", comparison=Compare.GE)
 ifgt = CompareToZero.make(0x9d, "ifgt", comparison=Compare.GT)

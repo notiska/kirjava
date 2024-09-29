@@ -16,6 +16,9 @@ __all__ = (
     "dstore_0", "dstore_1", "dstore_2", "dstore_3",
     "astore_0", "astore_1", "astore_2", "astore_3",
     "iinc", "iinc_w",
+    "LoadLocal", "StoreLocal",
+    "LoadLocalAt", "StoreLocalAt", "IInc",
+    "LoadLocalAtWide", "StoreLocalAtWide", "IIncWide",
 )
 
 import typing
@@ -60,7 +63,9 @@ class LoadLocal(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<LoadLocal(offset=%s, type=%r, index=%i)>" % (self.offset, self.type, self.index)
+        if self.offset is not None:
+            return "<LoadLocal(offset=%i, type=%s, index=%i)>" % (self.offset, self.type, self.index)
+        return "<LoadLocal(type=%s, index=%i)>" % (self.type, self.index)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LoadLocal) and self.opcode == other.opcode
@@ -99,7 +104,9 @@ class StoreLocal(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<StoreLocal(offset=%s, type=%r, index=%i)>" % (self.offset, self.type, self.index)
+        if self.offset is not None:
+            return "<StoreLocal(offset=%i, type=%s, index=%i)>" % (self.offset, self.type, self.index)
+        return "<StoreLocal(type=%s, index=%i)>" % (self.type, self.index)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, StoreLocal) and self.opcode == other.opcode
@@ -141,15 +148,22 @@ class LoadLocalAt(LoadLocal):
         self.index = index
 
     def __repr__(self) -> str:
-        return "<LoadLocalAt(offset=%s, type=%r, index=%i)>" % (self.offset, self.type, self.index)
+        if self.offset is not None:
+            return "<LoadLocalAt(offset=%i, type=%s, index=%i)>" % (self.offset, self.type, self.index)
+        return "<LoadLocalAt(type=%s, index=%i)>" % (self.type, self.index)
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: %s %i" % (self.offset, self.mnemonic, self.index)
-        return "%s %i" % (self.mnemonic, self.index)
+            return "%i:%s(%i)" % (self.offset, self.mnemonic, self.index)
+        return "%s(%i)" % (self.mnemonic, self.index)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LoadLocalAt) and self.opcode == other.opcode and self.index == other.index
+
+    def copy(self) -> "LoadLocalAt":
+        copy = type(self)(self.index)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
@@ -178,15 +192,22 @@ class StoreLocalAt(StoreLocal):
         self.index = index
 
     def __repr__(self) -> str:
-        return "<StoreLocalAt(offset=%s, type=%r, index=%i)>" % (self.offset, self.type, self.index)
+        if self.offset is not None:
+            return "<StoreLocalAt(offset=%i, type=%s, index=%i)>" % (self.offset, self.type, self.index)
+        return "<StoreLocalAt(type=%s, index=%i)>" % (self.type, self.index)
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: %s %i" % (self.offset, self.mnemonic, self.index)
-        return "%s %i" % (self.mnemonic, self.index)
+            return "%i:%s(%i)" % (self.offset, self.mnemonic, self.index)
+        return "%s(%i)" % (self.mnemonic, self.index)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, StoreLocalAt) and self.opcode == other.opcode and self.index == other.index
+
+    def copy(self) -> "StoreLocalAt":
+        copy = type(self)(self.index)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
@@ -225,15 +246,22 @@ class IInc(Instruction):
         self.value = value
 
     def __repr__(self) -> str:
-        return "<IInc(offset=%s, index=%i, value=%i)>" % (self.offset, self.index, self.value)
+        if self.offset is not None:
+            return "<IInc(offset=%i, index=%i, value=%i)>" % (self.offset, self.index, self.value)
+        return "<IInc(index=%i, value=%i)>" % (self.index, self.value)
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: iinc %i by %i" % (self.offset, self.index, self.value)
-        return "iinc %i by %i" % (self.index, self.value)
+            return "%i:iinc(%i,%+i)" % (self.offset, self.index, self.value)
+        return "iinc(%i,%+i)" % (self.index, self.value)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, IInc) and self.index == other.index and self.value == other.value
+
+    def copy(self) -> "IInc":
+        copy = iinc(self.index, self.value)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBb(self.opcode, self.index, self.value))
@@ -277,7 +305,9 @@ class LoadLocalAtWide(LoadLocalAt):
         return cls(index)
 
     def __repr__(self) -> str:
-        return "<LoadLocalAtWide(offset=%s, type=%r, index=%i)>" % (self.offset, self.type, self.index)
+        if self.offset is not None:
+            return "<LoadLocalAtWide(offset=%i, type=%s, index=%i)>" % (self.offset, self.type, self.index)
+        return "<LoadLocalAtWide(type=%s, index=%i)>" % (self.type, self.index)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LoadLocalAtWide) and self.opcode == other.opcode and self.index == other.index
@@ -305,7 +335,9 @@ class StoreLocalAtWide(StoreLocalAt):
         return cls(index)
 
     def __repr__(self) -> str:
-        return "<StoreLocalAtWide(offset=%s, index=%i)>" % (self.offset, self.index)
+        if self.offset is not None:
+            return "<StoreLocalAtWide(offset=%i, index=%i)>" % (self.offset, self.index)
+        return "<StoreLocalAtWide(index=%i)>" % self.index
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, StoreLocalAtWide) and self.opcode == other.opcode and self.index == other.index
@@ -333,15 +365,22 @@ class IIncWide(IInc):
         return cls(index, value)
 
     def __repr__(self) -> str:
-        return "<IIncWide(offset=%s, index=%i, value=%i)>" % (self.offset, self.index, self.value)
+        if self.offset is not None:
+            return "<IIncWide(offset=%i, index=%i, value=%i)>" % (self.offset, self.index, self.value)
+        return "<IIncWide(index=%i, value=%i)>" % (self.index, self.value)
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: iinc_w %i by %i" % (self.offset, self.index, self.value)
-        return "iinc_w %i by %i" % (self.index, self.value)
+            return "%i:iinc_w(%i,%+i)" % (self.offset, self.index, self.value)
+        return "iinc_w(%i,%+i)" % (self.index, self.value)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, IIncWide) and self.index == other.index and self.value == other.value
+
+    def copy(self) -> "IIncWide":
+        copy = iinc_w(self.index, self.value)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBHh(wide.opcode, self.opcode, self.index, self.value))

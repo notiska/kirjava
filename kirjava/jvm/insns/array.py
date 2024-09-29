@@ -47,7 +47,9 @@ class ArrayLoad(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<ArrayLoad(offset=%s, type=%r)>" % (self.offset, self.type)
+        if self.offset is not None:
+            return "<ArrayLoad(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<ArrayLoad(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ArrayLoad) and self.opcode == other.opcode
@@ -110,7 +112,9 @@ class ArrayStore(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<ArrayStore(offset=%s, type=%r)>" % (self.offset, self.type)
+        if self.offset is not None:
+            return "<ArrayStore(offset=%i, type=%s)>" % (self.offset, self.type)
+        return "<ArrayStore(type=%s)>" % self.type
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ArrayStore) and self.opcode == other.opcode
@@ -195,15 +199,22 @@ class NewArray(Instruction):
         self.tag = tag
 
     def __repr__(self) -> str:
-        return "<NewArray(offset=%s, tag=%i)>" % (self.offset, self.tag)
+        if self.offset is not None:
+            return "<NewArray(offset=%i, tag=%i)>" % (self.offset, self.tag)
+        return "<NewArray(tag=%i)>" % self.tag
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: newarray %i" % (self.offset, self.tag)
-        return "newarray %i" % self.tag
+            return "%i:newarray(%i)" % (self.offset, self.tag)
+        return "newarray(%i)" % self.tag
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NewArray) and self.tag == other.tag
+
+    def copy(self) -> "NewArray":
+        copy = newarray(self.tag)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.tag)))
@@ -264,15 +275,22 @@ class ANewArray(Instruction):
         self.class_ = class_
 
     def __repr__(self) -> str:
-        return "<ANewArray(offset=%s, class_=%r)>" % (self.offset, self.class_)
+        if self.offset is not None:
+            return "<ANewArray(offset=%i, class_=%s)>" % (self.offset, self.class_)
+        return "<ANewArray(class_=%s)>" % self.class_
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: anewarray %s" % (self.offset, self.class_)
-        return "anewarray %s" % self.class_
+            return "%i:anewarray(%s)" % (self.offset, self.class_)
+        return "anewarray(%s)" % self.class_
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ANewArray) and self.class_ == other.class_
+
+    def copy(self) -> "ANewArray":
+        copy = anewarray(self.class_)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.class_)))
@@ -335,16 +353,23 @@ class MultiANewArray(Instruction):
         self.dimensions = dimensions
 
     def __repr__(self) -> str:
-        return "<MultiANewArray(offset=%s, class_=%r, dimensions=%i)>" % (self.offset, self.class_, self.dimensions)
+        if self.offset is not None:
+            return "<MultiANewArray(offset=%i, class_=%s, dimensions=%i)>" % (self.offset, self.class_, self.dimensions)
+        return "<MultiANewArray(class_=%s, dimensions=%i)>" % (self.class_, self.dimensions)
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: multianewarray %s dimension %i" % (self.offset, self.class_, self.dimensions)
-        return "multianewarray %s dimension %i" % (self.class_, self.dimensions)
+            return "%i:multianewarray(%s,%i)" % (self.offset, self.class_, self.dimensions)
+        return "multianewarray(%s,%i)" % (self.class_, self.dimensions)
 
     def __eq__(self, other: object) -> bool:
         # Lol, just fits.
         return isinstance(other, MultiANewArray) and self.class_ == other.class_ and self.dimensions == other.dimensions
+
+    def copy(self) -> "MultiANewArray":
+        copy = multianewarray(self.class_, self.dimensions)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHB(self.opcode, pool.add(self.class_), self.dimensions))
@@ -406,7 +431,9 @@ class ArrayLength(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<ArrayLength(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<ArrayLength(offset=%i)>" % self.offset
+        return "<ArrayLength>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ArrayLength)

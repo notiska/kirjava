@@ -300,10 +300,10 @@ class RawInfo(AttributeInfo):
         self.data = data
 
     def __repr__(self) -> str:
-        return "<RawAttributeInfo(name=%r, data=%r)>" % (self.name, self.data)
+        return "<RawAttributeInfo(name=%s, data=%r)>" % (self.name, self.data)
 
     def __str__(self) -> str:
-        return "raw_info[%s,len=%i]" % (self.name, len(self.data))
+        return "raw_info(%s,len=%i)" % (self.name, len(self.data))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RawInfo) and self.name == other.name and self.data == other.data
@@ -349,7 +349,7 @@ class Documentation(AttributeInfo):
         return "<Documentation(doc=%r)>" % self.doc
 
     def __str__(self) -> str:
-        return "Documentation[len=%i]" % len(self.doc)
+        return "Documentation(len=%i)" % len(self.doc)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Documentation) and self.doc == other.doc
@@ -378,11 +378,11 @@ class Synthetic(AttributeInfo):
     def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["Synthetic", None]:
         return cls(), None
 
-    def __str__(self) -> str:
-        return "Synthetic"
-
     def __repr__(self) -> str:
         return "<Synthetic>"
+
+    def __str__(self) -> str:
+        return "Synthetic"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Synthetic)
@@ -423,10 +423,10 @@ class Signature(AttributeInfo):
         self.signature = signature
 
     def __repr__(self) -> str:
-        return "<Signature(signature=%r)>" % self.signature
+        return "<Signature(signature=%s)>" % self.signature
 
     def __str__(self) -> str:
-        return "Signature[%s]" % self.signature
+        return "Signature(%s)" % self.signature
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Signature) and self.signature == other.signature
@@ -514,7 +514,7 @@ class RuntimeVisibleAnnotations(AttributeInfo):
         return "<RuntimeVisibleAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeVisibleAnnotations[[%s]]" % ",".join(map(str, self.annotations))
+        return "RuntimeVisibleAnnotations([%s])" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeVisibleAnnotations) and self.annotations == other.annotations
@@ -575,7 +575,7 @@ class RuntimeInvisibleAnnotations(AttributeInfo):
         return "<RuntimeInvisibleAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeInvisibleAnnotations[[%s]]" % ",".join(map(str, self.annotations))
+        return "RuntimeInvisibleAnnotations([%s])" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeInvisibleAnnotations) and self.annotations == other.annotations
@@ -642,7 +642,7 @@ class RuntimeVisibleTypeAnnotations(AttributeInfo):
         return "<RuntimeVisibleTypeAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeVisibleTypeAnnotations[[%s]]" % ",".join(map(str, self.annotations))
+        return "RuntimeVisibleTypeAnnotations([%s])" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeVisibleTypeAnnotations) and self.annotations == other.annotations
@@ -709,7 +709,7 @@ class RuntimeInvisibleTypeAnnotations(AttributeInfo):
         return "<RuntimeInvisibleTypeAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "RuntimeInvisibleTypeAnnotations[[%s]]" % ",".join(map(str, self.annotations))
+        return "RuntimeInvisibleTypeAnnotations([%s])" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeInvisibleTypeAnnotations) and self.annotations == other.annotations

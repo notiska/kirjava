@@ -15,13 +15,10 @@ import typing
 from functools import cache
 from typing import IO
 
-import numpy as np
-
 from .._struct import *
 from ..version import *
 from ...backend import *
 from ...model.values.constants import *
-from ...pretty import pretty_repr
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
@@ -55,10 +52,12 @@ class ConstInfo:
     lookup(tag: int) -> type[ConstInfo] | None
         Looks up a constant info type by tag.
 
-    write(self, stream: IO[bytes], pool: ConstPool) -> None
-        Writes the constant info to a binary stream.
+    copy(self) -> ConstInfo
+        Creates a copy of this cosntant.
     populate(self, pool: ConstPool) -> None
         Dereferences any indices in the constant.
+    write(self, stream: IO[bytes], pool: ConstPool) -> None
+        Writes the constant info to a binary stream.
     verify(self, verifier: Verifier) -> None
         Verifies that the constant is valid.
     unwrap(self) -> Constant
@@ -73,19 +72,12 @@ class ConstInfo:
     loadable: bool
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "ConstInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ConstInfo":
         """
-        Reads a constant info from a binary stream.
-
-        Parameters
-        ----------
-        stream: IO[bytes]
-            The binary stream to read from.
-        pool: ConstantPool
-            The class file constant pool.
+        Internal constant read.
         """
 
-        raise NotImplementedError("read() is not implemented for %r" % cls)
+        raise NotImplementedError("_read() is not implemented for %r" % cls)
 
     @classmethod
     @cache
@@ -108,6 +100,27 @@ class ConstInfo:
             if subclass.tag == tag:
                 return subclass
         return None
+
+    @classmethod
+    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "ConstInfo":
+        """
+        Reads a constant info from a binary stream.
+
+        Parameters
+        ----------
+        stream: IO[bytes]
+            The binary stream to read from.
+        pool: ConstantPool
+            The class file constant pool.
+        """
+
+        tag, = stream.read(1)
+        subclass: type[ConstInfo] | None = ConstInfo.lookup(tag)
+        if subclass is None:
+            raise ValueError("unknown constant pool tag %i" % tag)
+        info = subclass._read(stream, pool)
+        info.index = pool.maximum
+        return info
 
     # @staticmethod
     # def make(constant: object) -> "ConstInfo":
@@ -170,6 +183,25 @@ class ConstInfo:
     # def __set__(self, instance: object, value: "ConstInfo") -> None:
     #     instance.__dict__[self.__name__] = value
 
+    def copy(self) -> "ConstInfo":
+        """
+        Creates a copy of this constant.
+        """
+
+        raise NotImplementedError("copy() is not implemented for %r" % type(self))
+
+    def populate(self, pool: "ConstPool") -> None:
+        """
+        Dereferences any indices in the constant.
+
+        Parameters
+        ----------
+        pool: ConstPool
+            The constant pool to dereference from.
+        """
+
+        raise NotImplementedError("populate() is not implemented for %r" % type(self))
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
         Writes the constant info to a binary stream.
@@ -183,18 +215,6 @@ class ConstInfo:
         """
 
         raise NotImplementedError("write() is not implemented for %r" % type(self))
-
-    def populate(self, pool: "ConstPool") -> None:
-        """
-        Dereferences any indices in the constant.
-
-        Parameters
-        ----------
-        pool: ConstPool
-            The constant pool to dereference from.
-        """
-
-        raise NotImplementedError("populate() is not implemented for %r" % type(self))
 
     def verify(self, verifier: "Verifier") -> None:
         """
@@ -244,7 +264,7 @@ class ConstIndex(ConstInfo):
     loadable = False
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "ConstIndex":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ConstIndex":
         return cls(pool.maximum)  # Shouldn't really happen, though.
 
     def __init__(self, index: int) -> None:
@@ -260,10 +280,13 @@ class ConstIndex(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ConstIndex) and self.index == other.index
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        ...
+    def copy(self) -> "ConstIndex":
+        return ConstIndex(self.index)
 
     def populate(self, pool: "ConstPool") -> None:
+        ...
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         ...
 
     def verify(self, verifier: "Verifier") -> None:
@@ -295,7 +318,7 @@ class UTF8Info(ConstInfo):
     loadable = False
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "UTF8Info":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "UTF8Info":
         length, = unpack_H(stream.read(2))
         return cls(stream.read(length))
 
@@ -310,18 +333,23 @@ class UTF8Info(ConstInfo):
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>%s" % (self.index, self.decode())
-        return self.decode()
+            return "#%i:%r" % (self.index, self.decode())
+        return repr(self.decode())
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, UTF8Info) and self.value == other.value
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_H(len(self.value)))
-        stream.write(self.value)
+    def copy(self) -> "UTF8Info":
+        copy = UTF8Info(self.value)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         ...
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BH(UTF8Info.tag, len(self.value)))
+        stream.write(self.value)
 
     def verify(self, verifier: "Verifier") -> None:
         if len(self.value) > 65535:
@@ -358,9 +386,8 @@ class IntegerInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "IntegerInfo":
-        value, = np.frombuffer(stream.read(4), dtype=np.dtype(">i4"))
-        return cls(value)
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "IntegerInfo":
+        return cls(unpack_i32(stream.read(4)))
 
     def __init__(self, value: i32) -> None:
         super().__init__()
@@ -373,17 +400,23 @@ class IntegerInfo(ConstInfo):
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>%si" % (self.index, self.value)
+            return "#%i:%si" % (self.index, self.value)
         return "%si" % self.value
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, IntegerInfo) and self.value == other.value
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(np.array(self.value, dtype=np.dtype(">i4")).tobytes())
+    def copy(self) -> "IntegerInfo":
+        copy = IntegerInfo(self.value)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         ...
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(bytes((IntegerInfo.tag,)))
+        stream.write(pack_i32(self.value))
 
     def verify(self, verifier: "Verifier") -> None:
         ...
@@ -412,9 +445,8 @@ class FloatInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "FloatInfo":
-        value, = np.frombuffer(stream.read(4), dtype=np.dtype(">f4"))
-        return cls(value)
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "FloatInfo":
+        return cls(unpack_f32(stream.read(4)))
 
     def __init__(self, value: f32) -> None:
         super().__init__()
@@ -427,7 +459,7 @@ class FloatInfo(ConstInfo):
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>%sf" % (self.index, self.value)
+            return "#%i:%sf" % (self.index, self.value)
         return "%sf" % self.value
 
     def __eq__(self, other: object) -> bool:
@@ -440,11 +472,17 @@ class FloatInfo(ConstInfo):
             return True
         return False
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(np.array(self.value, dtype=np.dtype(">f4")).tobytes())
+    def copy(self) -> "FloatInfo":
+        copy = FloatInfo(self.value)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         ...
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(bytes((FloatInfo.tag,)))
+        stream.write(pack_f32(self.value))
 
     def verify(self, verifier: "Verifier") -> None:
         ...
@@ -473,9 +511,8 @@ class LongInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "LongInfo":
-        value, = np.frombuffer(stream.read(8), dtype=np.dtype(">i8"))
-        return cls(value)
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LongInfo":
+        return cls(unpack_i64(stream.read(8)))
 
     def __init__(self, value: i64) -> None:
         super().__init__()
@@ -488,17 +525,23 @@ class LongInfo(ConstInfo):
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>%sl" % (self.index, self.value)
+            return "#%i:%sl" % (self.index, self.value)
         return "%sl" % self.value
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LongInfo) and self.value == other.value
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(np.array(self.value, dtype=np.dtype(">i8")).tobytes())
+    def copy(self) -> "LongInfo":
+        copy = LongInfo(self.value)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         ...
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(bytes((LongInfo.tag,)))
+        stream.write(pack_i64(self.value))
 
     def verify(self, verifier: "Verifier") -> None:
         ...
@@ -527,9 +570,8 @@ class DoubleInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "DoubleInfo":
-        value, = np.frombuffer(stream.read(8), dtype=np.dtype(">f8"))
-        return cls(value)
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DoubleInfo":
+        return cls(unpack_f64(stream.read(8)))
 
     def __init__(self, value: f64) -> None:
         super().__init__()
@@ -542,7 +584,7 @@ class DoubleInfo(ConstInfo):
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>%sd" % (self.index, self.value)
+            return "#%i:%sd" % (self.index, self.value)
         return "%sd" % self.value
 
     def __eq__(self, other: object) -> bool:
@@ -554,11 +596,17 @@ class DoubleInfo(ConstInfo):
             return True
         return False
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(np.array(self.value, dtype=np.dtype(">f8")).tobytes())
+    def copy(self) -> "DoubleInfo":
+        copy = DoubleInfo(self.value)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         ...
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(bytes((DoubleInfo.tag,)))
+        stream.write(pack_f64(self.value))
 
     def verify(self, verifier: "Verifier") -> None:
         ...
@@ -587,7 +635,7 @@ class ClassInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "ClassInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ClassInfo":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -597,24 +645,29 @@ class ClassInfo(ConstInfo):
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<ClassInfo(index=%i, name=%r)>" % (self.index, self.name)
-        return "<ClassInfo(name=%r)>" % self.name
+            return "<ClassInfo(index=%i, name=%s)>" % (self.index, self.name)
+        return "<ClassInfo(name=%s)>" % self.name
 
     def __str__(self) -> str:
         # return pretty_repr(str(self.name))
         if self.index is not None:
-            return "<#%i>class[%s]" % (self.index, pretty_repr(str(self.name)))
-        return "class[%s]" % pretty_repr(str(self.name))
+            return "#%i:Class(%s)" % (self.index, self.name)
+        return "Class(%s)" % self.name
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ClassInfo) and self.name == other.name
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_H(pool.add(self.name)))
+    def copy(self) -> "ClassInfo":
+        copy = ClassInfo(self.name)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         if isinstance(self.name, ConstIndex):
             self.name = pool[self.name.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BH(ClassInfo.tag, pool.add(self.name)))
 
     def verify(self, verifier: "Verifier") -> None:
         if verifier.check_const_types and not isinstance(self.name, UTF8Info):
@@ -646,7 +699,7 @@ class StringInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "StringInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "StringInfo":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -656,24 +709,28 @@ class StringInfo(ConstInfo):
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<StringInfo(index=%i, value=%r)>" % (self.index, self.value)
-        return "<StringInfo(value=%r)>" % self.value
+            return "<StringInfo(index=%i, value=%s)>" % (self.index, self.value)
+        return "<StringInfo(value=%s)>" % self.value
 
     def __str__(self) -> str:
         if self.index is not None:
-            # FIXME: Formatting could be considered incorrect with quotations, i.e. "<#13>Two" and not <#13>"Two".
-            return "<#%i>string[\"%s\"]" % (self.index, pretty_repr(str(self.value)).replace("\"", "\\\""))
-        return "string[\"%s\"]" % pretty_repr(str(self.value)).replace("\"", "\\\"")
+            return "#%i:String(%s)" % (self.index, self.value)
+        return "String(%s)" % self.value
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, StringInfo) and self.value == other.value
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_H(pool.add(self.value)))
+    def copy(self) -> "StringInfo":
+        copy = StringInfo(self.value)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         if isinstance(self.value, ConstIndex):
             self.value = pool[self.value.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BH(StringInfo.tag, pool.add(self.value)))
 
     def verify(self, verifier: "Verifier") -> None:
         if verifier.check_const_types and not isinstance(self.value, UTF8Info):
@@ -708,7 +765,7 @@ class FieldrefInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "FieldrefInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "FieldrefInfo":
         class_index, nat_index = unpack_HH(stream.read(4))
         return cls(pool[class_index], pool[nat_index])
 
@@ -719,15 +776,15 @@ class FieldrefInfo(ConstInfo):
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<FieldrefInfo(index=%i, class_=%r, name_and_type=%r)>" % (
+            return "<FieldrefInfo(index=%i, class_=%s, name_and_type=%s)>" % (
                 self.index, self.class_, self.name_and_type,
             )
-        return "<FieldrefInfo(class_=%r, name_and_type=%r)>" % (self.class_, self.name_and_type)
+        return "<FieldrefInfo(class_=%s, name_and_type=%s)>" % (self.class_, self.name_and_type)
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>fieldref[%s.%s]" % (self.index, self.class_, self.name_and_type)
-        return "fieldref[%s.%s]" % (self.class_, self.name_and_type)
+            return "#%i:Fieldref(%s.%s)" % (self.index, self.class_, self.name_and_type)
+        return "Fieldref(%s.%s)" % (self.class_, self.name_and_type)
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -736,14 +793,19 @@ class FieldrefInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_HH(pool.add(self.class_), pool.add(self.name_and_type)))
+    def copy(self) -> "FieldrefInfo":
+        copy = FieldrefInfo(self.class_, self.name_and_type)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         if isinstance(self.class_, ConstIndex):
             self.class_ = pool[self.class_.index]
         if isinstance(self.name_and_type, ConstIndex):
             self.name_and_type = pool[self.name_and_type.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BHH(FieldrefInfo.tag, pool.add(self.class_), pool.add(self.name_and_type)))
 
     def verify(self, verifier: "Verifier") -> None:
         if verifier.check_const_types:
@@ -776,7 +838,7 @@ class MethodrefInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "MethodrefInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MethodrefInfo":
         class_index, nat_index = unpack_HH(stream.read(4))
         return cls(pool[class_index], pool[nat_index])
 
@@ -787,15 +849,15 @@ class MethodrefInfo(ConstInfo):
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<MethodrefInfo(index=%i, class_=%r, name_and_type=%r)>" % (
+            return "<MethodrefInfo(index=%i, class_=%s, name_and_type=%s)>" % (
                 self.index, self.class_, self.name_and_type,
             )
-        return "<MethodrefInfo(class_=%r, name_and_type=%r)>" % (self.class_, self.name_and_type)
+        return "<MethodrefInfo(class_=%s, name_and_type=%s)>" % (self.class_, self.name_and_type)
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>methodref[%s.%s]" % (self.index, self.class_, self.name_and_type)
-        return "methodref[%s.%s]" % (self.class_, self.name_and_type)
+            return "#%i:Methodref(%s.%s)" % (self.index, self.class_, self.name_and_type)
+        return "Methodref(%s.%s)" % (self.class_, self.name_and_type)
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -804,14 +866,19 @@ class MethodrefInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_HH(pool.add(self.class_), pool.add(self.name_and_type)))
+    def copy(self) -> "MethodrefInfo":
+        copy = MethodrefInfo(self.class_, self.name_and_type)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         if isinstance(self.class_, ConstIndex):
             self.class_ = pool[self.class_.index]
         if isinstance(self.name_and_type, ConstIndex):
             self.name_and_type = pool[self.name_and_type.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BHH(MethodrefInfo.tag, pool.add(self.class_), pool.add(self.name_and_type)))
 
     def verify(self, verifier: "Verifier") -> None:
         if verifier.check_const_types:
@@ -844,7 +911,7 @@ class InterfaceMethodrefInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "InterfaceMethodrefInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InterfaceMethodrefInfo":
         class_index, nat_index = unpack_HH(stream.read(4))
         return cls(pool[class_index], pool[nat_index])
 
@@ -855,15 +922,15 @@ class InterfaceMethodrefInfo(ConstInfo):
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<InterfaceMethodrefInfo(index=%i, class_=%r, name_and_type=%r)>" % (
+            return "<InterfaceMethodrefInfo(index=%i, class_=%s, name_and_type=%s)>" % (
                 self.index, self.class_, self.name_and_type,
             )
-        return "<InterfaceMethodrefInfo(class_=%r, name_and_type=%r)>" % (self.class_, self.name_and_type)
+        return "<InterfaceMethodrefInfo(class_=%s, name_and_type=%s)>" % (self.class_, self.name_and_type)
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>interfacemethodref[%s.%s]" % (self.index, self.class_, self.name_and_type)
-        return "interfacemethodref[%s.%s]" % (self.class_, self.name_and_type)
+            return "#%i:InterfaceMethodref(%s.%s)" % (self.index, self.class_, self.name_and_type)
+        return "InterfaceMethodref(%s.%s)" % (self.class_, self.name_and_type)
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -872,14 +939,19 @@ class InterfaceMethodrefInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_HH(pool.add(self.class_), pool.add(self.name_and_type)))
+    def copy(self) -> "InterfaceMethodrefInfo":
+        copy = InterfaceMethodrefInfo(self.class_, self.name_and_type)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         if isinstance(self.class_, ConstIndex):
             self.class_ = pool[self.class_.index]
         if isinstance(self.name_and_type, ConstIndex):
             self.name_and_type = pool[self.name_and_type.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BHH(InterfaceMethodrefInfo.tag, pool.add(self.class_), pool.add(self.name_and_type)))
 
     def verify(self, verifier: "Verifier") -> None:
         if verifier.check_const_types:
@@ -911,7 +983,7 @@ class NameAndTypeInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "NameAndTypeInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "NameAndTypeInfo":
         name_index, desc_index = unpack_HH(stream.read(4))
         return cls(pool[name_index], pool[desc_index])
 
@@ -922,27 +994,32 @@ class NameAndTypeInfo(ConstInfo):
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<NameAndTypeInfo(index=%i, name=%r, descriptor=%r)>" % (
+            return "<NameAndTypeInfo(index=%i, name=%s, descriptor=%s)>" % (
                 self.index, self.name, self.descriptor,
             )
-        return "<NameAndTypeInfo(name=%r, descriptor=%r)>" % (self.name, self.descriptor)
+        return "<NameAndTypeInfo(name=%s, descriptor=%s)>" % (self.name, self.descriptor)
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>%s:%s" % (self.index, pretty_repr(str(self.name)), self.descriptor)
-        return "%s:%s" % (pretty_repr(str(self.name)), self.descriptor)
+            return "#%i:NameAndType(%s:%s)" % (self.index, self.name, self.descriptor)
+        return "NameAndType(%s:%s)" % (self.name, self.descriptor)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NameAndTypeInfo) and self.name == other.name and self.descriptor == other.descriptor
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_HH(pool.add(self.name), pool.add(self.descriptor)))
+    def copy(self) -> "NameAndTypeInfo":
+        copy = NameAndTypeInfo(self.name, self.descriptor)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         if isinstance(self.name, ConstIndex):
             self.name = pool[self.name.index]
         if isinstance(self.descriptor, ConstIndex):
             self.descriptor = pool[self.descriptor.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BHH(NameAndTypeInfo.tag, pool.add(self.name), pool.add(self.descriptor)))
 
     def verify(self, verifier: "Verifier") -> None:
         if verifier.check_const_types:
@@ -990,12 +1067,12 @@ class MethodHandleInfo(ConstInfo):
 
     kind: int
         The kind of reference.
-    reference: ConstInfo
+    ref: ConstInfo
         A field, method or interface method reference constant, used as the target
         of this method handle.
     """
 
-    __slots__ = ("kind", "reference")
+    __slots__ = ("kind", "ref")
 
     GET_FIELD          = 1
     GET_STATIC         = 2
@@ -1013,36 +1090,39 @@ class MethodHandleInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "MethodHandleInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MethodHandleInfo":
         kind, index = unpack_BH(stream.read(3))
         return cls(kind, pool[index])
 
-    def __init__(self, kind: int, reference: ConstInfo) -> None:
+    def __init__(self, kind: int, ref: ConstInfo) -> None:
         super().__init__()
         self.kind = kind
-        self.reference = reference
+        self.ref = ref
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<MethodHandleInfo(index=%i, kind=%i, reference=%r)>" % (
-                self.index, self.kind, self.reference,
-            )
-        return "<MethodHandleInfo(kind=%i, reference=%r)>" % (self.kind, self.reference)
+            return "<MethodHandleInfo(index=%i, kind=%i, ref=%s)>" % (self.index, self.kind, self.ref)
+        return "<MethodHandleInfo(kind=%i, ref=%s)>" % (self.kind, self.ref)
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>methodhandle[%s,%s]" % (self.index, self.kind, self.reference)
-        return "methodhandle[%s,%s]" % (self.kind, self.reference)
+            return "#%i:MethodHandle(%i,%s)" % (self.index, self.kind, self.ref)
+        return "MethodHandle(%i,%s)" % (self.kind, self.ref)
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, MethodHandleInfo) and self.kind == other.kind and self.reference == other.reference
+        return isinstance(other, MethodHandleInfo) and self.kind == other.kind and self.ref == other.ref
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.kind, pool.add(self.reference)))
+    def copy(self) -> "MethodHandleInfo":
+        copy = MethodHandleInfo(self.kind, self.ref)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
-        if isinstance(self.reference, ConstIndex):
-            self.reference = pool[self.reference.index]
+        if isinstance(self.ref, ConstIndex):
+            self.ref = pool[self.ref.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BBH(MethodHandleInfo.tag, self.kind, pool.add(self.ref)))
 
     def verify(self, verifier: "Verifier") -> None:
         # This method is a handful lol, read carefully if you dare.
@@ -1051,17 +1131,17 @@ class MethodHandleInfo(ConstInfo):
             MethodHandleInfo.GET_FIELD, MethodHandleInfo.GET_STATIC,
             MethodHandleInfo.PUT_FIELD, MethodHandleInfo.PUT_STATIC,
         ):
-            if verifier.check_const_types and not isinstance(self.reference, FieldrefInfo):
+            if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
                 verifier.fatal(self, "reference is not a field reference")
 
         elif self.kind in (
             MethodHandleInfo.INVOKE_VIRTUAL, MethodHandleInfo.INVOKE_STATIC, MethodHandleInfo.INVOKE_SPECIAL,
         ):
-            if isinstance(self.reference, MethodrefInfo) or isinstance(self.reference, InterfaceMethodrefInfo):
+            if isinstance(self.ref, MethodrefInfo) or isinstance(self.ref, InterfaceMethodrefInfo):
                 if (
-                    isinstance(self.reference.name_and_type, NameAndTypeInfo) and
-                    isinstance(self.reference.name_and_type.name, UTF8Info) and
-                    self.reference.name_and_type.name.value in (b"<init>", b"<clinit>")
+                    isinstance(self.ref.name_and_type, NameAndTypeInfo) and
+                    isinstance(self.ref.name_and_type.name, UTF8Info) and
+                    self.ref.name_and_type.name.value in (b"<init>", b"<clinit>")
                 ):
                     verifier.fatal(self, "invalid method reference name")
                 # FIXME: Below, need to check version.
@@ -1075,18 +1155,18 @@ class MethodHandleInfo(ConstInfo):
                 verifier.fatal(self, "reference is not a method reference or an interface method reference")
 
         elif self.kind == MethodHandleInfo.NEW_INVOKE_SPECIAL:
-            if isinstance(self.reference, MethodrefInfo):
+            if isinstance(self.ref, MethodrefInfo):
                 if (
-                    isinstance(self.reference.name_and_type, NameAndTypeInfo) and
-                    isinstance(self.reference.name_and_type.name, UTF8Info) and
-                    self.reference.name_and_type.name.value != b"<init>"
+                    isinstance(self.ref.name_and_type, NameAndTypeInfo) and
+                    isinstance(self.ref.name_and_type.name, UTF8Info) and
+                    self.ref.name_and_type.name.value != b"<init>"
                 ):
                     verifier.fatal(self, "invalid method reference name")
             elif verifier.check_const_types:
                 verifier.fatal(self, "reference is not a method reference")
 
         elif self.kind == MethodHandleInfo.INVOKE_INTERFACE:
-            if verifier.check_const_types and not isinstance(self.reference, InterfaceMethodrefInfo):
+            if verifier.check_const_types and not isinstance(self.ref, InterfaceMethodrefInfo):
                 verifier.fatal(self, "reference is not an interface method reference")
 
         else:
@@ -1153,7 +1233,7 @@ class MethodTypeInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "MethodTypeInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MethodTypeInfo":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -1163,23 +1243,28 @@ class MethodTypeInfo(ConstInfo):
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<MethodTypeInfo(index=%i, descriptor=%r)>" % (self.index, self.descriptor)
-        return "<MethodTypeInfo(descriptor=%r)>" % self.descriptor
+            return "<MethodTypeInfo(index=%i, descriptor=%s)>" % (self.index, self.descriptor)
+        return "<MethodTypeInfo(descriptor=%s)>" % self.descriptor
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>methodtype[%s]" % (self.index, pretty_repr(str(self.descriptor)))
-        return "methodtype[%s]" % pretty_repr(str(self.descriptor))
+            return "#%i:MethodType(%s)" % (self.index, self.descriptor)
+        return "MethodType(%s)" % self.descriptor
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MethodTypeInfo) and self.descriptor == other.descriptor
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_H(pool.add(self.descriptor)))
+    def copy(self) -> "MethodTypeInfo":
+        copy = MethodTypeInfo(self.descriptor)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         if isinstance(self.descriptor, ConstIndex):
             self.descriptor = pool[self.descriptor.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BH(MethodTypeInfo.tag, pool.add(self.descriptor)))
 
     def verify(self, verifier: "Verifier") -> None:
         if verifier.check_const_types and not isinstance(self.descriptor, UTF8Info):
@@ -1215,7 +1300,7 @@ class DynamicInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "DynamicInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DynamicInfo":
         attr_index, nat_index = unpack_HH(stream.read(4))
         return cls(attr_index, pool[nat_index])
 
@@ -1226,15 +1311,15 @@ class DynamicInfo(ConstInfo):
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<DynamicInfo(index=%i, attr_index=%i, name_and_type=%r)>" % (
+            return "<DynamicInfo(index=%i, attr_index=%i, name_and_type=%s)>" % (
                 self.index, self.attr_index, self.name_and_type
             )
-        return "<DynamicInfo(attr_index=%i, name_and_type=%r)>" % (self.attr_index, self.name_and_type)
+        return "<DynamicInfo(attr_index=%i, name_and_type=%s)>" % (self.attr_index, self.name_and_type)
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>dynamic[#%s,%s]" % (self.index, self.attr_index, self.name_and_type)
-        return "dynamic[#%s,%s]" % (self.attr_index, self.name_and_type)
+            return "#%i:Dynamic(#%i,%s)" % (self.index, self.attr_index, self.name_and_type)
+        return "Dynamic(#%i,%s)" % (self.attr_index, self.name_and_type)
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -1243,12 +1328,17 @@ class DynamicInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_HH(self.attr_index, pool.add(self.name_and_type)))
+    def copy(self) -> "DynamicInfo":
+        copy = DynamicInfo(self.attr_index, self.name_and_type)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         if isinstance(self.name_and_type, ConstIndex):
             self.name_and_type = pool[self.name_and_type.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BHH(DynamicInfo.tag, self.attr_index, pool.add(self.name_and_type)))
 
     def verify(self, verifier: "Verifier") -> None:
         if not (0 <= self.attr_index <= 65535):
@@ -1285,7 +1375,7 @@ class InvokeDynamicInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeDynamicInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeDynamicInfo":
         attr_index, nat_index = unpack_HH(stream.read(4))
         return cls(attr_index, pool[nat_index])
 
@@ -1296,15 +1386,15 @@ class InvokeDynamicInfo(ConstInfo):
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<InvokeDynamicInfo(index=%i, attr_index=%i, name_and_type=%r)>" % (
+            return "<InvokeDynamicInfo(index=%i, attr_index=%i, name_and_type=%s)>" % (
                 self.index, self.attr_index, self.name_and_type,
             )
-        return "<InvokeDynamicInfo(attr_index=%i, name_and_type=%r)>" % (self.attr_index, self.name_and_type)
+        return "<InvokeDynamicInfo(attr_index=%i, name_and_type=%s)>" % (self.attr_index, self.name_and_type)
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>invokedynamic[#%s,%s]" % (self.index, self.attr_index, self.name_and_type)
-        return "invokedynamic[#%s,%s]" % (self.attr_index, self.name_and_type)
+            return "#%i:InvokeDynamic(#%i,%s)" % (self.index, self.attr_index, self.name_and_type)
+        return "InvokeDynamic(#%i,%s)" % (self.attr_index, self.name_and_type)
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -1313,12 +1403,17 @@ class InvokeDynamicInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_HH(self.attr_index, pool.add(self.name_and_type)))
+    def copy(self) -> "InvokeDynamicInfo":
+        copy = InvokeDynamicInfo(self.attr_index, self.name_and_type)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         if isinstance(self.name_and_type, ConstIndex):
             self.name_and_type = pool[self.name_and_type.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BHH(InvokeDynamicInfo.tag, self.attr_index, pool.add(self.name_and_type)))
 
     def verify(self, verifier: "Verifier") -> None:
         if not (0 <= self.attr_index <= 65535):
@@ -1347,7 +1442,7 @@ class ModuleInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "ModuleInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ModuleInfo":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -1357,23 +1452,28 @@ class ModuleInfo(ConstInfo):
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<ModuleInfo(index=%i, name=%r)>" % (self.index, self.name)
-        return "<ModuleInfo(name=%r)>" % self.name
+            return "<ModuleInfo(index=%i, name=%s)>" % (self.index, self.name)
+        return "<ModuleInfo(name=%s)>" % self.name
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>module[%s]" % (self.index, pretty_repr(str(self.name)))
-        return "module[%s]" % pretty_repr(str(self.name))
+            return "#%i:Module(%s)" % (self.index, self.name)
+        return "Module(%s)" % self.name
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ModuleInfo) and self.name == other.name
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_H(pool.add(self.name)))
+    def copy(self) -> "ModuleInfo":
+        copy = ModuleInfo(self.name)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         if isinstance(self.name, ConstIndex):
             self.name = pool[self.name.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BH(ModuleInfo.tag, pool.add(self.name)))
 
     def verify(self, verifier: "Verifier") -> None:
         if verifier.check_const_types and not isinstance(self.name, UTF8Info):
@@ -1398,7 +1498,7 @@ class PackageInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "PackageInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PackageInfo":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -1408,23 +1508,28 @@ class PackageInfo(ConstInfo):
 
     def __repr__(self) -> str:
         if self.index is not None:
-            return "<PackageInfo(index=%i, name=%r)>" % (self.index, self.name)
-        return "<PackageInfo(name=%r)>" % self.name
+            return "<PackageInfo(index=%i, name=%s)>" % (self.index, self.name)
+        return "<PackageInfo(name=%s)>" % self.name
 
     def __str__(self) -> str:
         if self.index is not None:
-            return "<#%i>package[%s]" % (self.index, pretty_repr(str(self.name)))
-        return "package[%s]" % pretty_repr(str(self.name))
+            return "#%i:Package(%s)" % (self.index, self.name)
+        return "Package(%s)" % self.name
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PackageInfo) and self.name == other.name
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_H(pool.add(self.name)))
+    def copy(self) -> "PackageInfo":
+        copy = PackageInfo(self.name)
+        copy.index = self.index
+        return copy
 
     def populate(self, pool: "ConstPool") -> None:
         if isinstance(self.name, ConstIndex):
             self.name = pool[self.name.index]
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BH(PackageInfo.tag, pool.add(self.name)))
 
     def verify(self, verifier: "Verifier") -> None:
         if verifier.check_const_types and not isinstance(self.name, UTF8Info):

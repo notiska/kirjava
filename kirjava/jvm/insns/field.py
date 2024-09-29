@@ -48,15 +48,22 @@ class GetStatic(Instruction):
         self.ref = ref
 
     def __repr__(self) -> str:
-        return "<GetStatic(offset=%s, ref=%s)>" % (self.offset, self.ref)
+        if self.offset is not None:
+            return "<GetStatic(offset=%i, ref=%s)>" % (self.offset, self.ref)
+        return "<GetStatic(ref=%s)>" % self.ref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: getstatic %s" % (self.offset, self.ref)
-        return "getstatic %s" % self.ref
+            return "%i:getstatic(%s)" % (self.offset, self.ref)
+        return "getstatic(%s)" % self.ref
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, GetStatic) and self.ref == other.ref
+
+    def copy(self) -> "GetStatic":
+        copy = getstatic(self.ref)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -114,15 +121,22 @@ class PutStatic(Instruction):
         self.ref = ref
 
     def __repr__(self) -> str:
-        return "<PutStatic(offset=%s, ref=%s)>" % (self.offset, self.ref)
+        if self.offset is not None:
+            return "<PutStatic(offset=%i, ref=%s)>" % (self.offset, self.ref)
+        return "<PutStatic(ref=%s)>" % self.ref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: putstatic %s" % (self.offset, self.ref)
-        return "putstatic %s" % self.ref
+            return "%i:putstatic(%s)" % (self.offset, self.ref)
+        return "putstatic(%s)" % self.ref
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PutStatic) and self.ref == other.ref
+
+    def copy(self) -> "PutStatic":
+        copy = putstatic(self.ref)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -178,15 +192,22 @@ class GetField(Instruction):
         self.ref = ref
 
     def __repr__(self) -> str:
-        return "<GetField(offset=%s, ref=%s)>" % (self.offset, self.ref)
+        if self.offset is not None:
+            return "<GetField(offset=%i, ref=%s)>" % (self.offset, self.ref)
+        return "<GetField(ref=%s)>" % self.ref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: getfield %s" % (self.offset, self.ref)
-        return "getfield %s" % self.ref
+            return "%i:getfield(%s)" % (self.offset, self.ref)
+        return "getfield(%s)" % self.ref
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, GetField) and self.ref == other.ref
+
+    def copy(self) -> "GetField":
+        copy = getfield(self.ref)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -252,15 +273,22 @@ class PutField(Instruction):
         self.ref = ref
 
     def __repr__(self) -> str:
-        return "<PutField(offset=%s, ref=%s)>" % (self.offset, self.ref)
+        if self.offset is not None:
+            return "<PutField(offset=%i, ref=%s)>" % (self.offset, self.ref)
+        return "<PutField(ref=%s)>" % self.ref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: putfield %s" % (self.offset, self.ref)
-        return "putfield %s" % self.ref
+            return "%i:putfield(%s)" % (self.offset, self.ref)
+        return "putfield(%s)" % self.ref
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PutField) and self.ref == other.ref
+
+    def copy(self) -> "PutField":
+        copy = putfield(self.ref)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))

@@ -4,6 +4,7 @@ __all__ = (
     "nop", "wide",
     "monitorenter", "monitorexit",
     "breakpoint_", "impdep1", "impdep2",
+    "Nop", "Wide", "MonitorEnter", "MonitorExit", "Internal", "Unknown",
 )
 
 import typing
@@ -36,7 +37,9 @@ class Nop(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<Nop(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<Nop(offset=%i)>" % self.offset
+        return "<Nop>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Nop)
@@ -61,6 +64,8 @@ class Wide(Instruction):  # TODO: Test that we can have random wide instructions
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Instruction:
+        # Note: random wide instructions can cause the JVM to hang, they're not valid at all. We'll parse them as-is
+        #       here, though.
         try:
             opcode, = stream.read(1)
         except ValueError:
@@ -72,7 +77,9 @@ class Wide(Instruction):  # TODO: Test that we can have random wide instructions
         return subclass._read(stream, pool)
 
     def __repr__(self) -> str:
-        return "<Wide(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<Wide(offset=%i)>" % self.offset
+        return "<Wide>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Wide)
@@ -100,7 +107,9 @@ class MonitorEnter(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<MonitorEnter(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<MonitorEnter(offset=%i)>" % self.offset
+        return "<MonitorEnter>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MonitorEnter)
@@ -135,7 +144,9 @@ class MonitorExit(Instruction):
         return cls()
 
     def __repr__(self) -> str:
-        return "<MonitorExit(offset=%s)>" % self.offset
+        if self.offset is not None:
+            return "<MonitorExit(offset=%i)>" % self.offset
+        return "<MonitorExit>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MonitorExit)
@@ -168,10 +179,54 @@ class Internal(Instruction):  # FIXME: Too broad.
         return cls()
 
     def __repr__(self) -> str:
-        return "<Internal(offset=%s, mnemonic=%s)>" % (self.offset, self.mnemonic)
+        if self.offset is not None:
+            return "<Internal(offset=%i, opcode=0x%02x)>" % (self.offset, self.opcode)
+        return "<Internal(opcode=0x%02x)>" % self.opcode
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Internal) and self.opcode == other.opcode
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(bytes((self.opcode,)))
+
+
+class Unknown(Instruction):
+    """
+    An instruction with an unknown opcode.
+
+    Attributes
+    ----------
+    opcode: int
+        The reported opcode of the instruction.
+    """
+
+    __slots__ = ("opcode",)
+
+    @classmethod
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Unknown":
+        raise ValueError("can't read unknown opcode")
+
+    def __init__(self, opcode: int) -> None:
+        super().__init__()
+        self.opcode = opcode
+
+    def __repr__(self) -> str:
+        if self.offset is not None:
+            return "<Unknown(offset=%i, opcode=0x%02x)>" % (self.offset, self.opcode)
+        return "<Unknown(opcode=0x%02x)>" % self.opcode
+
+    def __str__(self) -> str:
+        if self.offset is not None:
+            return "%i:opcode(0x%02x)" % (self.offset, self.opcode)
+        return "opcode(0x%02x)" % self.opcode
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Unknown) and self.opcode == other.opcode
+
+    def copy(self) -> "Unknown":
+        copy = type(self)(self.opcode)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

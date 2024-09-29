@@ -2,6 +2,7 @@
 
 __all__ = (
     "block", "edge",
+    "Block", "Edge",
     "Graph",
 )
 
@@ -12,10 +13,11 @@ from typing import IO
 from . import block, edge
 from .block import Block
 from .edge import Edge
+from ...meta import Metadata
 
-# if typing.TYPE_CHECKING:
-#     from ..fmt import ClassFile
-#     from ..fmt.method import Code, MethodInfo
+if typing.TYPE_CHECKING:
+    from ..fmt import ClassFile
+    from ..fmt.method import MethodInfo
 
 
 class Graph:

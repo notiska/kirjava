@@ -2,6 +2,7 @@
 
 __all__ = (
     "invokevirtual", "invokespecial", "invokestatic", "invokeinterface", "invokedynamic",
+    "InvokeVirtual", "InvokeSpecial", "InvokeStatic", "InvokeInterface", "InvokeDynamic",
 )
 
 import typing
@@ -50,15 +51,22 @@ class InvokeVirtual(Instruction):
         self.ref = ref
 
     def __repr__(self) -> str:
-        return "<InvokeVirtual(offset=%s, ref=%r)>" % (self.offset, self.ref)
+        if self.offset is not None:
+            return "<InvokeVirtual(offset=%i, ref=%s)>" % (self.offset, self.ref)
+        return "<InvokeVirtual(ref=%s)>" % self.ref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: invokevirtual %s" % (self.offset, self.ref)
-        return "invokevirtual %s" % self.ref
+            return "%i:invokevirtual(%s)" % (self.offset, self.ref)
+        return "invokevirtual(%s)" % self.ref
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeVirtual) and self.ref == other.ref
+
+    def copy(self) -> "InvokeVirtual":
+        copy = invokevirtual(self.ref)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -137,15 +145,22 @@ class InvokeSpecial(Instruction):
         self.ref = ref
 
     def __repr__(self) -> str:
-        return "<InvokeSpecial(offset=%s, ref=%r)>" % (self.offset, self.ref)
+        if self.offset is not None:
+            return "<InvokeSpecial(offset=%i, ref=%s)>" % (self.offset, self.ref)
+        return "<InvokeSpecial(ref=%s)>" % self.ref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: invokespecial %s" % (self.offset, self.ref)
-        return "invokespecial %s" % self.ref
+            return "%i:invokespecial(%s)" % (self.offset, self.ref)
+        return "invokespecial(%s)" % self.ref
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeSpecial) and self.ref == other.ref
+
+    def copy(self) -> "InvokeSpecial":
+        copy = invokespecial(self.ref)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -240,15 +255,22 @@ class InvokeStatic(Instruction):
         self.ref = ref
 
     def __repr__(self) -> str:
-        return "<InvokeStatic(offset=%s, ref=%r)>" % (self.offset, self.ref)
+        if self.offset is not None:
+            return "<InvokeStatic(offset=%i, ref=%s)>" % (self.offset, self.ref)
+        return "<InvokeStatic(ref=%s)>" % self.ref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: invokestatic %s" % (self.offset, self.ref)
-        return "invokestatic %s" % self.ref
+            return "%i:invokestatic(%s)" % (self.offset, self.ref)
+        return "invokestatic(%s)" % self.ref
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeStatic) and self.ref == other.ref
+
+    def copy(self) -> "InvokeStatic":
+        copy = invokestatic(self.ref)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -324,12 +346,14 @@ class InvokeInterface(Instruction):
         self.reserved = reserved
 
     def __repr__(self) -> str:
-        return "<InvokeInterface(offset=%s, ref=%r, count=%i)>" % (self.offset, self.ref, self.count)
+        if self.offset is not None:
+            return "<InvokeInterface(offset=%i, ref=%s, count=%i)>" % (self.offset, self.ref, self.count)
+        return "<InvokeInterface(ref=%s, count=%i)>" % (self.ref, self.count)
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: invokeinterface %s count %i" % (self.offset, self.ref, self.count)
-        return "invokeinterface %s count %i" % (self.ref, self.count)
+            return "%i:invokeinterface(%s,%i)" % (self.offset, self.ref, self.count)
+        return "invokeinterface(%s,%i)" % (self.ref, self.count)
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -338,6 +362,11 @@ class InvokeInterface(Instruction):
             self.count == other.count and
             self.reserved == other.reserved
         )
+
+    def copy(self) -> "InvokeInterface":
+        copy = invokeinterface(self.ref, self.count, self.reserved)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHBB(self.opcode, pool.add(self.ref), self.count, self.reserved))
@@ -430,15 +459,22 @@ class InvokeDynamic(Instruction):
         self.reserved = reserved
 
     def __repr__(self) -> str:
-        return "<InvokeDynamic(offset=%s, ref=%r)>" % (self.offset, self.ref)
+        if self.offset is not None:
+            return "<InvokeDynamic(offset=%i, ref=%s)>" % (self.offset, self.ref)
+        return "<InvokeDynamic(ref=%s)>" % self.ref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: invokedynamic %s" % (self.offset, self.ref)
-        return "invokedynamic %s" % self.ref
+            return "%i:invokedynamic(%s)" % (self.offset, self.ref)
+        return "invokedynamic(%s)" % self.ref
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeDynamic) and self.ref == other.ref and self.reserved == other.reserved
+
+    def copy(self) -> "InvokeDynamic":
+        copy = invokedynamic(self.ref, self.reserved)
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(self.opcode, pool.add(self.ref), self.reserved))

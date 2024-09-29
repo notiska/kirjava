@@ -180,10 +180,10 @@ class Annotation:
             self.elements.extend(elements)
 
     def __repr__(self) -> str:
-        return "<Annotation(type=%r, elements=%r)>" % (self.type, self.elements)
+        return "<Annotation(type=%s, elements=%r)>" % (self.type, self.elements)
 
     def __str__(self) -> str:
-        return "annotation[%s,[%s]]" % (self.type, ",".join(map(str, self.elements)))
+        return "annotation(%s,[%s])" % (self.type, ",".join(map(str, self.elements)))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Annotation) and self.type == other.type and self.elements == other.elements
@@ -236,7 +236,7 @@ class Annotation:
             self.value = value
 
         def __repr__(self) -> str:
-            return "<Annotation.NamedElement(name=%r, value=%r)>" % (self.name, self.value)
+            return "<Annotation.NamedElement(name=%s, value=%r)>" % (self.name, self.value)
 
         def __str__(self) -> str:
             return "%s=%s" % (self.name, self.value)
@@ -291,7 +291,7 @@ class ParameterAnnotations:
         return "<ParameterAnnotations(annotations=%r)>" % self.annotations
 
     def __str__(self) -> str:
-        return "parameter_annotations[[%s]]" % ",".join(map(str, self.annotations))
+        return "parameter_annotations([%s])" % ",".join(map(str, self.annotations))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ParameterAnnotations) and self.annotations == other.annotations
@@ -563,7 +563,7 @@ class TypePath:
         return "<TypePath(path=%r)>" % self.path
 
     def __str__(self) -> str:
-        return "type_path[[%s]]" % ",".join(map(str, self.path))
+        return "type_path([%s])" % ",".join(map(str, self.path))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, TypePath) and self.path == other.path
@@ -678,12 +678,12 @@ class TypeAnnotation(Annotation):
         self.path = path
 
     def __repr__(self) -> str:
-        return "<TypeAnnotation(type=%r, info=%r, path=%r, elements=%r)>" % (
+        return "<TypeAnnotation(type=%s, info=%r, path=%r, elements=%r)>" % (
             self.type, self.info, self.path, self.elements,
         )
 
     def __str__(self) -> str:
-        return "type_annotation[%s,%s,%s,[%s]]" % (self.type, self.info, self.path, ",".join(map(str, self.elements)))
+        return "type_annotation(%s,%s,%s,[%s])" % (self.type, self.info, self.path, ",".join(map(str, self.elements)))
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -752,13 +752,13 @@ class ConstValue(ElementValue):
 
     def __init__(self, kind: int, value: "ConstInfo") -> None:
         if not kind in ConstValue.tags:
-            raise ValueError("invalid kind %c for %r" % (kind, type(self)))
+            raise ValueError("invalid kind %i for %r" % (kind, type(self)))
 
         super().__init__(kind)
         self.value = value
 
     def __repr__(self) -> str:
-        return "<ConstValue(kind=%c, value=%r)>" % (self.kind, self.value)
+        return "<ConstValue(kind=%i, value=%s)>" % (self.kind, self.value)
 
     def __str__(self) -> str:
         return str(self.value)
@@ -797,7 +797,7 @@ class EnumConstValue(ElementValue):
         self.name = name
 
     def __repr__(self) -> str:
-        return "<EnumConstValue(type=%r, name=%r)>" % (self.type, self.name)
+        return "<EnumConstValue(type=%s, name=%s)>" % (self.type, self.name)
 
     def __str__(self) -> str:
         return "%s.%s" % (self.type, self.name)
@@ -835,7 +835,7 @@ class ClassValue(ElementValue):
         self.type = type_
 
     def __repr__(self) -> str:
-        return "<ClassValue(type=%r)>" % self.type
+        return "<ClassValue(type=%s)>" % self.type
 
     def __str__(self) -> str:
         return str(self.type)
@@ -970,7 +970,7 @@ class TypeParameterTarget(TargetInfo):
         return "<TypeParameterTarget(kind=0x%02x, index=%i)>" % (self.kind, self.index)
 
     def __str__(self) -> str:
-        return "type_parameter_target[0x%02x,%i]" % (self.kind, self.index)
+        return "type_parameter_target(0x%02x,%i)" % (self.kind, self.index)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, TypeParameterTarget) and self.kind == other.kind and self.index == other.index
@@ -1010,7 +1010,7 @@ class SuperTypeTarget(TargetInfo):
         return "<SuperTypeTarget(index=%i)>" % self.index
 
     def __str__(self) -> str:
-        return "supertype_target[%i]" % self.index
+        return "supertype_target(%i)" % self.index
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SuperTypeTarget) and self.index == other.index
@@ -1057,7 +1057,7 @@ class TypeParameterBoundTarget(TargetInfo):
         )
 
     def __str__(self) -> str:
-        return "type_parameter_bound_target[0x%02x,%i,%i]" % (self.kind, self.param_index, self.bound_index)
+        return "type_parameter_bound_target(0x%02x,%i,%i)" % (self.kind, self.param_index, self.bound_index)
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -1100,7 +1100,7 @@ class EmptyTarget(TargetInfo):
         return "<EmptyTarget(kind=0x%02x)>" % self.kind
 
     def __str__(self) -> str:
-        return "empty_target[0x%02x]" % self.kind
+        return "empty_target(0x%02x)" % self.kind
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, EmptyTarget) and self.kind == other.kind
@@ -1138,7 +1138,7 @@ class FormalParameterTarget(TargetInfo):
         return "<FormalParameterTarget(index=%i)>" % self.index
 
     def __str__(self) -> str:
-        return "formal_parameter_target[%i]" % self.index
+        return "formal_parameter_target(%i)" % self.index
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, FormalParameterTarget) and self.index == other.index
@@ -1176,7 +1176,7 @@ class ThrowsTarget(TargetInfo):
         return "<ThrowsTarget(index=%i)>" % self.index
 
     def __str__(self) -> str:
-        return "throws_target[%i]" % self.index
+        return "throws_target(%i)" % self.index
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ThrowsTarget) and self.index == other.index
@@ -1224,7 +1224,7 @@ class LocalVarTarget(TargetInfo):
         return "<LocalVarTarget(kind=0x%02x, ranges=%r)>" % (self.kind, self.ranges)
 
     def __str__(self) -> str:
-        return "localvar_target[0x%02x,[%s]]" % (self.kind, ",".join(map(str, self.ranges)))
+        return "localvar_target(0x%02x,[%s])" % (self.kind, ",".join(map(str, self.ranges)))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVarTarget) and self.kind == other.kind and self.ranges == other.ranges
@@ -1273,7 +1273,7 @@ class LocalVarTarget(TargetInfo):
             )
 
         def __str__(self) -> str:
-            return "localvar[%i,%i,%i]" % (self.start_pc, self.length, self.index)
+            return "localvar(%i,%i,%i)" % (self.start_pc, self.length, self.index)
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -1315,7 +1315,7 @@ class CatchTarget(TargetInfo):
         return "<CatchTarget(index=%i)>" % self.index
 
     def __str__(self) -> str:
-        return "catch_target[%i]" % self.index
+        return "catch_target(%i)" % self.index
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, CatchTarget) and self.index == other.index
@@ -1363,7 +1363,7 @@ class OffsetTarget(TargetInfo):
         return "<OffsetTarget(kind=0x%02x, offset=%i)>" % (self.kind, self.offset)
 
     def __str__(self) -> str:
-        return "offset_target[0x%02x,%i]" % (self.kind, self.offset)
+        return "offset_target(0x%02x,%i)" % (self.kind, self.offset)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, OffsetTarget) and self.kind == other.kind and self.offset == other.offset
@@ -1416,7 +1416,7 @@ class TypeArgumentTarget(TargetInfo):
         return "<TypeArgumentTarget(kind=0x%02x, offset=%i, index=%i)>" % (self.kind, self.offset, self.index)
 
     def __str__(self) -> str:
-        return "type_argument_target[0x%02x,%i,%i]" % (self.kind, self.offset, self.index)
+        return "type_argument_target(0x%02x,%i,%i)" % (self.kind, self.offset, self.index)
 
     def __eq__(self, other: object) -> bool:
         return (

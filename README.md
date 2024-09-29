@@ -10,7 +10,7 @@ Note: this is *very much* a hobby project, the maintenance schedule will fluctua
 
 ## Quickstart
 
-For more usage, see [examples](examples/).
+For more usage, see [examples](https://github.com/notiska/kirjava/tree/main/examples/).
 
 ### Installing
 

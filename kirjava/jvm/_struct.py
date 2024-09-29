@@ -13,7 +13,7 @@ __all__ = (
     "unpack_HHHH", "pack_HHHH", "unpack_HHHHH", "pack_HHHHH",
     "unpack_I", "pack_I",
     "unpack_i", "pack_i", "unpack_Bi", "pack_Bi", "unpack_ii", "pack_ii", "unpack_iii", "pack_iii",
-    "unpack_f", "pack_f", "unpack_q", "pack_q", "unpack_d", "pack_d",
+    # "unpack_f", "pack_f", "unpack_q", "pack_q", "unpack_d", "pack_d",
 )
 
 import struct
@@ -107,12 +107,12 @@ _struct_iii = struct.Struct(">iii")
 unpack_iii  = _struct_iii.unpack
 pack_iii    = _struct_iii.pack
 
-_struct_f = struct.Struct(">f")
-unpack_f  = _struct_f.unpack
-pack_f    = _struct_f.pack
-_struct_q = struct.Struct(">q")
-unpack_q  = _struct_q.unpack
-pack_q    = _struct_q.pack
-_struct_d = struct.Struct(">d")
-unpack_d  = _struct_d.unpack
-pack_d    = _struct_d.pack
+# _struct_f = struct.Struct(">f")
+# unpack_f  = _struct_f.unpack
+# pack_f    = _struct_f.pack
+# _struct_q = struct.Struct(">q")
+# unpack_q  = _struct_q.unpack
+# pack_q    = _struct_q.pack
+# _struct_d = struct.Struct(">d")
+# unpack_d  = _struct_d.unpack
+# pack_d    = _struct_d.pack

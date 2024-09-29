@@ -58,13 +58,15 @@ __all__ = (
     "pop", "pop2", "dup", "dup_x1", "dup_x2", "dup2", "dup2_x1", "dup2_x2", "swap",
 
     "Instruction",
+    "CodeIOWrapper",
 )
 
 import typing
 from functools import cache
+from io import BytesIO
+from os import SEEK_SET
 from typing import IO
-
-from ...meta import Metadata
+from typing_extensions import Buffer
 
 if typing.TYPE_CHECKING:
     from ..fmt import ConstPool
@@ -98,6 +100,8 @@ class Instruction:
         Looks up an instruction given an opcode.
     read(stream: IO[bytes], pool: ConstPool) -> Instruction
         Reads an instruction from a binary stream.
+    copy(self) -> Instruction
+        Creates a copy of this instruction.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes this instruction to the binary stream.
     verify(self, verifier: Verifier) -> None
@@ -111,7 +115,7 @@ class Instruction:
 
     opcode: int
     mnemonic: str
-    since: "Version"
+    since: "Version"  # TODO: This (information is a little annoying to track down).
     throws: bool
 
     mutated = False
@@ -178,17 +182,17 @@ class Instruction:
             The class file constant pool.
         """
 
-        # TODO: On singleton really anything, @cache.
+        # TODO: Faster singleton reads.
 
         offset = stream.tell()
         opcode, = stream.read(1)
 
         subclass: type[Instruction] | None = cls.lookup(opcode)
         if subclass is None:
+            # self = Unknown(opcode)
             raise ValueError("unknown opcode 0x%x at offset %i" % (opcode, offset))
         self = subclass._read(stream, pool)
         self.offset = offset
-
         return self
 
         # if isinstance(self, wide):
@@ -222,11 +226,21 @@ class Instruction:
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i: %s" % (self.offset, self.mnemonic)
+            return "%i:%s" % (self.offset, self.mnemonic)
         return self.mnemonic
 
     def __eq__(self, other: object) -> bool:
         raise NotImplementedError("== is not implemented for %r" % type(self))
+
+    def copy(self) -> "Instruction":
+        """
+        Creates a copy of this instruction.
+        """
+
+        # raise NotImplementedError("copy() is not implemented for %r" % type(self))
+        copy = type(self)()
+        copy.offset = self.offset
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
@@ -272,6 +286,43 @@ class Instruction:
     #     """
     #
     #     ...  # raise NotImplementedError("trace() is not implemented for %r" % self)
+
+
+class CodeIOWrapper(BytesIO):  # Extended only for type hinting, BufferedIOBase doesn't seem to work.
+    """
+    A stream wrapper for code in a method, so that the offset is correct as per the
+    base of the code, rather than the base of the class file.
+
+    Attributes
+    ----------
+    delegate: IO[bytes]
+        The underlying stream to read from.
+    base: int
+        The base offset of the code.
+    """
+
+    # __slots__ = ("delegate", "base")  # No slots on BytesIO, unfortunately.
+
+    def __init__(self, delegate: IO[bytes], base: int | None) -> None:
+        super().__init__()
+        self.delegate = delegate
+        self.base = base if base is not None else delegate.tell()  # base or delegate.tell()
+
+    def read(self, size: int | None = -1) -> bytes:
+        if size is None:
+            size = -1
+        return self.delegate.read(size)
+
+    def tell(self) -> int:
+        return self.delegate.tell() - self.base
+
+    def seek(self, offset: int, whence: int = SEEK_SET) -> int:
+        if whence == SEEK_SET:
+            offset += self.base
+        return self.delegate.seek(offset, whence)
+
+    def write(self, data: Buffer) -> int:
+        return self.delegate.write(data)
 
 
 from .arithmetic import *
