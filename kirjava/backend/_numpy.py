@@ -48,7 +48,10 @@ _f64 = np.dtype(">f8")
 
 
 def unpack_u8(data: bytes) -> u8:
-    return np.frombuffer(data, dtype=_u8)[0]
+    try:
+        return np.frombuffer(data, dtype=_u8)[0]
+    except IndexError:
+        raise ValueError("1 byte needed to unpack u8") from None
 
 
 def pack_u8(value: u8) -> bytes:
@@ -56,7 +59,10 @@ def pack_u8(value: u8) -> bytes:
 
 
 def unpack_u16(data: bytes) -> u16:
-    return np.frombuffer(data, dtype=_u16)[0]
+    try:
+        return np.frombuffer(data, dtype=_u16)[0]
+    except IndexError:
+        raise ValueError("2 bytes needed to unpack u16") from None
 
 
 def pack_u16(value: u16) -> bytes:
@@ -64,7 +70,10 @@ def pack_u16(value: u16) -> bytes:
 
 
 def unpack_u32(data: bytes) -> u32:
-    return np.frombuffer(data, dtype=_u32)[0]
+    try:
+        return np.frombuffer(data, dtype=_u32)[0]
+    except IndexError:
+        raise ValueError("4 bytes needed to unpack u32") from None
 
 
 def pack_u32(value: u32) -> bytes:
@@ -72,7 +81,10 @@ def pack_u32(value: u32) -> bytes:
 
 
 def unpack_u64(data: bytes) -> u64:
-    return np.frombuffer(data, dtype=_u64)[0]
+    try:
+        return np.frombuffer(data, dtype=_u64)[0]
+    except IndexError:
+        raise ValueError("8 bytes needed to unpack u64") from None
 
 
 def pack_u64(value: u64) -> bytes:
@@ -80,7 +92,10 @@ def pack_u64(value: u64) -> bytes:
 
 
 def unpack_i8(data: bytes) -> i8:
-    return np.frombuffer(data, dtype=_i8)[0]
+    try:
+        return np.frombuffer(data, dtype=_i8)[0]
+    except IndexError:
+        raise ValueError("1 byte needed to unpack i8") from None
 
 
 def pack_i8(value: i8) -> bytes:
@@ -88,7 +103,10 @@ def pack_i8(value: i8) -> bytes:
 
 
 def unpack_i16(data: bytes) -> i16:
-    return np.frombuffer(data, dtype=_i16)[0]
+    try:
+        return np.frombuffer(data, dtype=_i16)[0]
+    except IndexError:
+        raise ValueError("2 bytes needed to unpack i16") from None
 
 
 def pack_i16(value: i16) -> bytes:
@@ -96,7 +114,10 @@ def pack_i16(value: i16) -> bytes:
 
 
 def unpack_i32(data: bytes) -> i32:
-    return np.frombuffer(data, dtype=_i32)[0]
+    try:
+        return np.frombuffer(data, dtype=_i32)[0]
+    except IndexError:
+        raise ValueError("4 bytes needed to unpack i32") from None
 
 
 def pack_i32(value: i32) -> bytes:
@@ -104,7 +125,10 @@ def pack_i32(value: i32) -> bytes:
 
 
 def unpack_i64(data: bytes) -> i64:
-    return np.frombuffer(data, dtype=_i64)[0]
+    try:
+        return np.frombuffer(data, dtype=_i64)[0]
+    except IndexError:
+        raise ValueError("8 bytes needed to unpack i64") from None
 
 
 def pack_i64(value: i64) -> bytes:
@@ -112,7 +136,10 @@ def pack_i64(value: i64) -> bytes:
 
 
 def unpack_f32(data: bytes) -> f32:
-    return np.frombuffer(data, dtype=_f32)[0]
+    try:
+        return np.frombuffer(data, dtype=_f32)[0]
+    except IndexError:
+        raise ValueError("4 bytes needed to unpack f32") from None
 
 
 def pack_f32(value: f32) -> bytes:
@@ -120,7 +147,10 @@ def pack_f32(value: f32) -> bytes:
 
 
 def unpack_f64(data: bytes) -> f64:
-    return np.frombuffer(data, dtype=_f64)[0]
+    try:
+        return np.frombuffer(data, dtype=_f64)[0]
+    except IndexError:
+        raise ValueError("8 bytes needed to unpack f64") from None
 
 
 def pack_f64(value: f64) -> bytes:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 __all__ = (
+    "USING_CYTHON", "USING_NUMPY",
     "u8", "u16", "u32", "u64",
     "i8", "i16", "i32", "i64",
     "f32", "f64",
@@ -19,21 +20,23 @@ import logging
 
 logger = logging.getLogger("kirjava.backend")
 
-imported = False
+USING_CYTHON = False
+USING_NUMPY  = False
 
-# try:
-#     # import pyximport
-#     # pyximport.install()
-#     from ._cython import *
-#     imported = True
-# except Exception as error:
-#     logger.debug("Cython backend not available: %s", error)
-#     logger.debug(repr(error), exc_info=True)
+try:
+    # import pyximport
+    # pyximport.install()
+    # raise Exception()
+    from ._cython import *
+    USING_CYTHON = True
+except Exception as error:
+    logger.debug("Cython backend not available: %s", error)
+    logger.debug(repr(error), exc_info=True)
 
-if not imported:
+if not USING_CYTHON:
     try:
         from ._numpy import *
-        imported = True
+        USING_NUMPY = True
     except Exception as error:
         logger.debug("numpy backend not available: %s", error)
         logger.debug(repr(error), exc_info=True)
@@ -47,7 +50,6 @@ if not imported:
 #         logger.debug(repr(error), exc_info=True)
 #         imported = False
 
-if not imported:
-    # TODO: A way to suppress this warning.
-    logger.warning("No backend available, using Python types (this may result in accuracy issues).")
-    from ._python import *
+if not USING_CYTHON and not USING_NUMPY:
+    # TODO: Some sort of fallback that just handles bytes and not any actual arithmetic functionality where necessary.
+    raise ImportError("no backend available")
