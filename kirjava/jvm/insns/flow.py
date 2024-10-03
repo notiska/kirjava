@@ -620,9 +620,9 @@ class TableSwitch(Switch):
         )
 
     def copy(self) -> "TableSwitch":
-        copy = tableswitch(self.default, self.low, self.high, self.offsets)
+        copy = tableswitch(self.default, self.low, self.high, self.offsets)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -687,9 +687,9 @@ class LookupSwitch(Switch):
         return isinstance(other, LookupSwitch) and self.default == other.default and self.offsets == other.offsets
 
     def copy(self) -> "LookupSwitch":
-        copy = lookupswitch(self.default, self.offsets)
+        copy = lookupswitch(self.default, self.offsets)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -806,7 +806,7 @@ class AThrow(Jump):
     def copy(self) -> "AThrow":
         copy = athrow()
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

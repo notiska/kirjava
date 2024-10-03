@@ -1162,7 +1162,7 @@ class LocalVariableTypeTable(AttributeInfo):
             self.index = index
 
         def __repr__(self) -> str:
-            return "<LocalVariableTypeTable.LocalVariable(start_pc=%i, length=%i, name=%s, signature=%ß, index=%i)>" % (
+            return "<LocalVariableTypeTable.LocalVariable(start_pc=%i, length=%i, name=%s, signature=%s, index=%i)>" % (
                 self.start_pc, self.length, self.name, self.signature, self.index,
             )
 

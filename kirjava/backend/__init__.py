@@ -26,8 +26,8 @@ USING_NUMPY  = False
 try:
     # import pyximport
     # pyximport.install()
-    # raise Exception()
-    from ._cython import *
+    # FIXME: Add typing stubs.
+    from ._cython import *  # type: ignore[import-untyped]
     USING_CYTHON = True
 except Exception as error:
     logger.debug("Cython backend not available: %s", error)

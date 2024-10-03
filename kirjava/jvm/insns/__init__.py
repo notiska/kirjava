@@ -65,7 +65,7 @@ import typing
 from functools import cache
 from io import BytesIO
 from os import SEEK_SET
-from typing import IO
+from typing import IO  # , Self  # FIXME: Ditch support for 3.10 at some point.
 from typing_extensions import Buffer
 
 if typing.TYPE_CHECKING:

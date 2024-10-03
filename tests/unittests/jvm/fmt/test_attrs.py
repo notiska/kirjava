@@ -320,6 +320,15 @@ class TestAttributes(unittest.TestCase):
     def setUp(self) -> None:
         self.pool = ConstPool()
 
+    def test_repr_str(self) -> None:
+        for subclass in AttributeInfo.__subclasses__():
+            with self.subTest(subclass.__name__):
+                init = self._DEFAULTS.get(subclass)
+                if init is None:
+                    self.skipTest("Missing default init values for %r." % subclass)
+                attr = subclass(*init)  # type: ignore[arg-type]
+                print(repr(attr), str(attr))
+
     def test_symmetric_read_write(self) -> None:
         for subclass in AttributeInfo.__subclasses__():
             with self.subTest(subclass.__name__):  # , subclass=subclass):

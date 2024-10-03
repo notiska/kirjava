@@ -64,9 +64,9 @@ class InvokeVirtual(Instruction):
         return isinstance(other, InvokeVirtual) and self.ref == other.ref
 
     def copy(self) -> "InvokeVirtual":
-        copy = invokevirtual(self.ref)
+        copy = invokevirtual(self.ref)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -158,9 +158,9 @@ class InvokeSpecial(Instruction):
         return isinstance(other, InvokeSpecial) and self.ref == other.ref
 
     def copy(self) -> "InvokeSpecial":
-        copy = invokespecial(self.ref)
+        copy = invokespecial(self.ref)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -268,9 +268,9 @@ class InvokeStatic(Instruction):
         return isinstance(other, InvokeStatic) and self.ref == other.ref
 
     def copy(self) -> "InvokeStatic":
-        copy = invokestatic(self.ref)
+        copy = invokestatic(self.ref)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -364,9 +364,9 @@ class InvokeInterface(Instruction):
         )
 
     def copy(self) -> "InvokeInterface":
-        copy = invokeinterface(self.ref, self.count, self.reserved)
+        copy = invokeinterface(self.ref, self.count, self.reserved)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHBB(self.opcode, pool.add(self.ref), self.count, self.reserved))
@@ -472,9 +472,9 @@ class InvokeDynamic(Instruction):
         return isinstance(other, InvokeDynamic) and self.ref == other.ref and self.reserved == other.reserved
 
     def copy(self) -> "InvokeDynamic":
-        copy = invokedynamic(self.ref, self.reserved)
+        copy = invokedynamic(self.ref, self.reserved)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(self.opcode, pool.add(self.ref), self.reserved))

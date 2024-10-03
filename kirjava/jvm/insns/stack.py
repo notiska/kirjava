@@ -22,6 +22,7 @@ from typing import IO
 from . import Instruction
 from .._struct import *
 from ..fmt.constants import *
+from ...backend import f32, f64, i32, i64
 # from ...model.types import *
 from ...model.values.constants import *
 
@@ -101,13 +102,13 @@ class BIPush(PushConstant):
         value, = stream.read(1)
         return cls(value)
 
-    @property
+    @property  # type: ignore[override]
     def constant(self) -> Integer:
-        return Integer(self.value)
+        return Integer(i32(self.value))
 
     @constant.setter
     def constant(self, value: Integer) -> None:
-        self.value = value.value
+        self.value = int(value.value)
 
     def __init__(self, value: int) -> None:
         super().__init__()
@@ -127,9 +128,9 @@ class BIPush(PushConstant):
         return isinstance(other, BIPush) and self.value == other.value
 
     def copy(self) -> "BIPush":
-        copy = bipush(self.value)
+        copy = bipush(self.value)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.value)))
@@ -158,13 +159,13 @@ class SIPush(PushConstant):
         value, = unpack_H(stream.read(2))
         return cls(value)
 
-    @property
+    @property  # type: ignore[override]
     def constant(self) -> Integer:
-        return Integer(self.value)
+        return Integer(i32(self.value))
 
     @constant.setter
     def constant(self, value: Integer) -> None:
-        self.value = value.value
+        self.value = int(value.value)
 
     def __init__(self, value: int) -> None:
         super().__init__()
@@ -184,9 +185,9 @@ class SIPush(PushConstant):
         return isinstance(other, SIPush) and self.value == other.value
 
     def copy(self) -> "SIPush":
-        copy = sipush(self.value)
+        copy = sipush(self.value)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, self.value))
@@ -235,9 +236,9 @@ class LoadConstant(Instruction):
         return isinstance(other, LoadConstant) and self.opcode == other.opcode and self.info == other.info
 
     def copy(self) -> "LoadConstant":
-        copy = type(self)(self.info)
+        copy = type(self)(self.info)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, pool.add(self.info))))
@@ -336,9 +337,9 @@ class New(Instruction):
         return isinstance(other, New) and self.class_ == other.class_
 
     def copy(self) -> "New":
-        copy = new(self.class_)
+        copy = new(self.class_)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.class_)))
@@ -682,23 +683,23 @@ class Swap(Instruction):
 
 aconst_null = PushConstant.make(0x01, "aconst_null", constant=Null())
 
-iconst_m1 = PushConstant.make(0x02, "iconst_m1", constant=Integer(-1))
-iconst_0  = PushConstant.make(0x03, "iconst_0", constant=Integer(0))
-iconst_1  = PushConstant.make(0x04, "iconst_1", constant=Integer(1))
-iconst_2  = PushConstant.make(0x05, "iconst_2", constant=Integer(2))
-iconst_3  = PushConstant.make(0x06, "iconst_3", constant=Integer(3))
-iconst_4  = PushConstant.make(0x07, "iconst_4", constant=Integer(4))
-iconst_5  = PushConstant.make(0x08, "iconst_5", constant=Integer(5))
+iconst_m1 = PushConstant.make(0x02, "iconst_m1", constant=Integer(i32(-1)))
+iconst_0  = PushConstant.make(0x03, "iconst_0", constant=Integer(i32(0)))
+iconst_1  = PushConstant.make(0x04, "iconst_1", constant=Integer(i32(1)))
+iconst_2  = PushConstant.make(0x05, "iconst_2", constant=Integer(i32(2)))
+iconst_3  = PushConstant.make(0x06, "iconst_3", constant=Integer(i32(3)))
+iconst_4  = PushConstant.make(0x07, "iconst_4", constant=Integer(i32(4)))
+iconst_5  = PushConstant.make(0x08, "iconst_5", constant=Integer(i32(5)))
 
-lconst_0 = PushConstant.make(0x09, "lconst_0", constant=Long(0))
-lconst_1 = PushConstant.make(0x0a, "lconst_1", constant=Long(1))
+lconst_0 = PushConstant.make(0x09, "lconst_0", constant=Long(i64(0)))
+lconst_1 = PushConstant.make(0x0a, "lconst_1", constant=Long(i64(1)))
 
-fconst_0 = PushConstant.make(0x0b, "fconst_0", constant=Float(0.0))  # Float(0x00000000))
-fconst_1 = PushConstant.make(0x0c, "fconst_1", constant=Float(1.0))  # Float(0x3f800000))
-fconst_2 = PushConstant.make(0x0d, "fconst_2", constant=Float(2.0))  # Float(0x40000000))
+fconst_0 = PushConstant.make(0x0b, "fconst_0", constant=Float(f32(0.0)))  # Float(0x00000000))
+fconst_1 = PushConstant.make(0x0c, "fconst_1", constant=Float(f32(1.0)))  # Float(0x3f800000))
+fconst_2 = PushConstant.make(0x0d, "fconst_2", constant=Float(f32(2.0)))  # Float(0x40000000))
 
-dconst_0 = PushConstant.make(0x0e, "dconst_0", constant=Double(0.0))  # Double(0x0000000000000000))
-dconst_1 = PushConstant.make(0x0f, "dconst_1", constant=Double(1.0))  # Double(0x3ff0000000000000))
+dconst_0 = PushConstant.make(0x0e, "dconst_0", constant=Double(f64(0.0)))  # Double(0x0000000000000000))
+dconst_1 = PushConstant.make(0x0f, "dconst_1", constant=Double(f64(1.0)))  # Double(0x3ff0000000000000))
 
 bipush = BIPush.make(0x10, "bipush")
 sipush = SIPush.make(0x11, "sipush")

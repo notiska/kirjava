@@ -16,6 +16,8 @@ __all__ = (
     # "unpack_f", "pack_f", "unpack_q", "pack_q", "unpack_d", "pack_d",
 )
 
+# FIXME: Eventually move away from this and use backend types (u8, u16, etc...).
+
 import struct
 
 _struct_BH  = struct.Struct(">BH")

@@ -212,9 +212,11 @@ class NewArray(Instruction):
         return isinstance(other, NewArray) and self.tag == other.tag
 
     def copy(self) -> "NewArray":
-        copy = newarray(self.tag)
+        # FIXME: Type ignored because we need to support 3.10, so can't use Self type. If support is dropped, need to
+        #        update all occurrences of this.
+        copy = newarray(self.tag)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.tag)))
@@ -288,9 +290,9 @@ class ANewArray(Instruction):
         return isinstance(other, ANewArray) and self.class_ == other.class_
 
     def copy(self) -> "ANewArray":
-        copy = anewarray(self.class_)
+        copy = anewarray(self.class_)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.class_)))
@@ -367,9 +369,9 @@ class MultiANewArray(Instruction):
         return isinstance(other, MultiANewArray) and self.class_ == other.class_ and self.dimensions == other.dimensions
 
     def copy(self) -> "MultiANewArray":
-        copy = multianewarray(self.class_, self.dimensions)
+        copy = multianewarray(self.class_, self.dimensions)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHB(self.opcode, pool.add(self.class_), self.dimensions))

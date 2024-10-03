@@ -61,9 +61,9 @@ class GetStatic(Instruction):
         return isinstance(other, GetStatic) and self.ref == other.ref
 
     def copy(self) -> "GetStatic":
-        copy = getstatic(self.ref)
+        copy = getstatic(self.ref)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -134,9 +134,9 @@ class PutStatic(Instruction):
         return isinstance(other, PutStatic) and self.ref == other.ref
 
     def copy(self) -> "PutStatic":
-        copy = putstatic(self.ref)
+        copy = putstatic(self.ref)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -205,9 +205,9 @@ class GetField(Instruction):
         return isinstance(other, GetField) and self.ref == other.ref
 
     def copy(self) -> "GetField":
-        copy = getfield(self.ref)
+        copy = getfield(self.ref)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))
@@ -286,9 +286,9 @@ class PutField(Instruction):
         return isinstance(other, PutField) and self.ref == other.ref
 
     def copy(self) -> "PutField":
-        copy = putfield(self.ref)
+        copy = putfield(self.ref)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.ref)))

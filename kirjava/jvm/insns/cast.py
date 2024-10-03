@@ -123,9 +123,9 @@ class CheckCast(Instruction):
         return isinstance(other, CheckCast) and self.class_ == other.class_
 
     def copy(self) -> "CheckCast":
-        copy = checkcast(self.class_)
+        copy = checkcast(self.class_)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.class_)))
@@ -182,9 +182,9 @@ class InstanceOf(Instruction):
         return isinstance(other, InstanceOf) and self.class_ == other.class_
 
     def copy(self) -> "InstanceOf":
-        copy = instanceof(self.class_)
+        copy = instanceof(self.class_)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.class_)))

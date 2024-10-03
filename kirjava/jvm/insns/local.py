@@ -259,9 +259,9 @@ class IInc(Instruction):
         return isinstance(other, IInc) and self.index == other.index and self.value == other.value
 
     def copy(self) -> "IInc":
-        copy = iinc(self.index, self.value)
+        copy = iinc(self.index, self.value)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBb(self.opcode, self.index, self.value))
@@ -378,9 +378,9 @@ class IIncWide(IInc):
         return isinstance(other, IIncWide) and self.index == other.index and self.value == other.value
 
     def copy(self) -> "IIncWide":
-        copy = iinc_w(self.index, self.value)
+        copy = iinc_w(self.index, self.value)  # type: ignore[call-arg]
         copy.offset = self.offset
-        return copy
+        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBHh(wide.opcode, self.opcode, self.index, self.value))
