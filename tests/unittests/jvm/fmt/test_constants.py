@@ -7,6 +7,7 @@ from os import SEEK_SET
 from kirjava.backend import *
 from kirjava.jvm.fmt.constants import *
 from kirjava.jvm.fmt.pool import ConstPool
+from kirjava.jvm.version import Version
 
 
 class TestConstants(unittest.TestCase):
@@ -41,14 +42,26 @@ class TestConstants(unittest.TestCase):
     def setUp(self) -> None:
         self.pool = ConstPool()
 
+    def test_abc_attrs(self) -> None:
+        for subclass in ConstInfo.__subclasses__():
+            with self.subTest(subclass.__name__):
+                init = self._DEFAULTS.get(subclass)
+                if init is None:
+                    self.skipTest("Missing default init values for %r." % subclass)
+                info = subclass(*init)  # type: ignore[arg-type]
+                self.assertIsInstance(info.tag, int)
+                self.assertIsInstance(info.wide, bool)
+                self.assertIsInstance(info.since, Version)
+                self.assertIsInstance(info.loadable, bool)
+
     def test_repr_str_eq_copy(self) -> None:
         for subclass in ConstInfo.__subclasses__():
             with self.subTest(subclass.__name__):
                 init = self._DEFAULTS.get(subclass)
                 if init is None:
                     self.skipTest("Missing default init values for %r." % subclass)
+                info_no_index = subclass(*init)  # type: ignore[arg-type]
 
-                info_no_index = subclass(*init)
                 print(repr(info_no_index), str(info_no_index), end=" ")
                 info_index = info_no_index.copy()
                 info_index.index = 2
@@ -66,8 +79,8 @@ class TestConstants(unittest.TestCase):
                 init = self._DEFAULTS.get(subclass)
                 if init is None:
                     self.skipTest("Missing default init values for %r." % subclass)
+                info_init = subclass(*init)  # type: ignore[arg-type]
 
-                info_init = subclass(*init)
                 data = BytesIO()
                 info_init.write(data, self.pool)
                 data_first = data.getvalue()

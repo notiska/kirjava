@@ -13,6 +13,7 @@ __all__ = (
     "Compare", "CompareToZero", "IfEq", "IfNe", "CompareToNull",
     "Jsr", "JsrWide", "Ret", "RetWide",
     "Switch", "TableSwitch", "LookupSwitch",
+    "Return", "AThrow",
 )
 
 import typing
@@ -46,7 +47,7 @@ class Jump(Instruction):
 
     __slots__ = ("delta",)
 
-    throws = False
+    throws = frozenset()
     conditional = False
 
     @classmethod
@@ -519,7 +520,7 @@ class Switch(Instruction):
 
     __slots__ = ("default", "offsets")
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Instruction":
@@ -726,7 +727,7 @@ class Return(Jump):
 
     __slots__ = ()
 
-    throws = True
+    throws = frozenset({Class("java/lang/IllegalMonitorStateException")})
 
     type: Type
 
@@ -781,7 +782,7 @@ class AThrow(Jump):
 
     __slots__ = ()
 
-    throws = True
+    throws = frozenset({throwable_t})  # Specifics (monitor state / NPE) aren't really needed in this case.
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "AThrow":

@@ -72,6 +72,7 @@ if typing.TYPE_CHECKING:
     from ..fmt import ConstPool
     from ..verify import Verifier
     from ..version import Version
+    from ...model.types import Class
 
 
 class Instruction:
@@ -88,8 +89,9 @@ class Instruction:
         The numeric opcode of this instruction.
     mnemonic: str
         The mnemonic of this instruction.
-    throws: bool
-        Whether this instruction could throw an exception upon execution.
+    throws: frozenset[Class]
+        The types of exception that this instruction could throw at link-time and/or
+        run-time.
     mutated: bool
         Used to denote mutated wide variants of instructions caused by a prefixed
         `wide` opcode.
@@ -116,7 +118,7 @@ class Instruction:
     opcode: int
     mnemonic: str
     since: "Version"  # TODO: This (information is a little annoying to track down).
-    throws: bool
+    throws: frozenset["Class"]
 
     mutated = False
 

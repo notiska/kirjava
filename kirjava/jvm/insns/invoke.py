@@ -13,6 +13,7 @@ from . import Instruction
 # from .._desc import parse_method_descriptor
 from .._struct import *
 from ..fmt.constants import *
+from ...model.types import throwable_t
 # from ...model.types import *
 # from ...model.values.constants import Null
 
@@ -39,7 +40,7 @@ class InvokeVirtual(Instruction):
 
     __slots__ = ("ref",)
 
-    throws = True
+    throws = frozenset({throwable_t})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeVirtual":
@@ -133,7 +134,7 @@ class InvokeSpecial(Instruction):
 
     __slots__ = ("ref",)
 
-    throws = True
+    throws = frozenset({throwable_t})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeSpecial":
@@ -243,7 +244,7 @@ class InvokeStatic(Instruction):
 
     __slots__ = ("ref",)
 
-    throws = True
+    throws = frozenset({throwable_t})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeStatic":
@@ -332,7 +333,7 @@ class InvokeInterface(Instruction):
 
     __slots__ = ("ref", "count", "reserved")
 
-    throws = True
+    throws = frozenset({throwable_t})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeInterface":
@@ -446,7 +447,7 @@ class InvokeDynamic(Instruction):
 
     __slots__ = ("ref", "reserved")
 
-    throws = True
+    throws = frozenset({throwable_t})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeDynamic":

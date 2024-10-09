@@ -12,6 +12,7 @@ from os import SEEK_CUR
 from typing import IO
 
 from . import Instruction
+from ...model.types import Class
 # from ...model.types import *
 # from ...model.values.constants import Null
 
@@ -30,7 +31,7 @@ class Nop(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Nop":
@@ -51,7 +52,7 @@ class Nop(Instruction):
     #     ...
 
 
-class Wide(Instruction):  # TODO: Test that we can have random wide instructions thrown in.
+class Wide(Instruction):
     """
     A `wide` instruction.
 
@@ -60,7 +61,7 @@ class Wide(Instruction):  # TODO: Test that we can have random wide instructions
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Instruction:
@@ -100,7 +101,7 @@ class MonitorEnter(Instruction):
 
     __slots__ = ()
 
-    throws = True
+    throws = frozenset({Class("java/lang/NullPointerException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MonitorEnter":
@@ -137,7 +138,7 @@ class MonitorExit(Instruction):
 
     __slots__ = ()
 
-    throws = True
+    throws = frozenset({Class("java/lang/IllegalMonitorStateException"), Class("java/lang/NullPointerException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MonitorExit":
@@ -172,7 +173,7 @@ class Internal(Instruction):  # FIXME: Too broad.
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Internal":
@@ -201,6 +202,8 @@ class Unknown(Instruction):
     """
 
     __slots__ = ("opcode",)
+
+    throws = frozenset()  # FIXME: What exception is thrown upon illegal opcode?
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Unknown":

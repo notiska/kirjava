@@ -6,6 +6,7 @@ __all__ = (
 
 import logging
 import typing
+from typing import Iterable
 
 if typing.TYPE_CHECKING:
     from ..insns import Instruction
@@ -46,9 +47,9 @@ class Block:
     LABEL_RETHROW = -2
     LABEL_OPAQUE  = -3
 
-    def __init__(self, label: int, insns: list["Instruction"] | None = None) -> None:
+    def __init__(self, label: int, insns: Iterable["Instruction"] | None = None) -> None:
         self.label = label
-        self.insns = []
+        self.insns: list["Instruction"] = []
         if insns is not None:
             self.insns.extend(insns)
 

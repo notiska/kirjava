@@ -111,6 +111,18 @@ class TestInstructions(unittest.TestCase):
     def setUp(self) -> None:
         self.pool = ConstPool()
 
+    def test_abc_attrs(self) -> None:
+        for subclass in INSTRUCTIONS:
+            with self.subTest(subclass.mnemonic):
+                init = self._DEFAULTS.get(subclass)
+                if init is None:
+                    self.skipTest("Missing default init values for %r." % subclass)
+                insn = subclass(*init)  # type: ignore[arg-type]
+                self.assertIsInstance(insn.opcode, int)
+                self.assertIsInstance(insn.mnemonic, str)
+                # self.assertIsInstance(insn.since, Version)  # FIXME
+                self.assertIsInstance(insn.throws, frozenset)
+
     def test_repr_str_eq_copy(self) -> None:
         for subclass in INSTRUCTIONS:
             with self.subTest(subclass.mnemonic):

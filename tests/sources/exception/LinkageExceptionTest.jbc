@@ -1,0 +1,80 @@
+version 1.8;
+public class LinkageExceptionTest extends java.lang.Object {
+
+    public static void main(java.lang.String[]) {
+        entry:
+            invokestatic LinkageExceptionTest#void testANewArray()
+            invokestatic LinkageExceptionTest#void testMultiANewArray()
+            invokestatic LinkageExceptionTest#void testCheckCast()
+            invokestatic LinkageExceptionTest#void testInstanceOf()
+            return
+    }
+
+    private static void testANewArray() {
+        entry:
+            iconst_1
+            anewarray abc
+            return
+        catch java.lang.NoClassDefFoundError entry handler
+        handler:
+            pop
+            getstatic java.lang.System#java.io.PrintStream out
+            ldc "Caught linkage error from anewarray."
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+            return
+    }
+
+    private static void testMultiANewArray() {
+        entry:
+            iconst_1
+            iconst_1
+            multianewarray abc[][] 2
+            return
+        catch java.lang.NoClassDefFoundError entry handler
+        handler:
+            pop
+            getstatic java.lang.System#java.io.PrintStream out
+            ldc "Caught linkage error from multianewarray."
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+            return
+    }
+
+    private static void testCheckCast() {
+        entry:
+            ldc "test" // aconst_null
+            checkcast abc // Interesting note is that null does not cause this to throw.
+            pop
+            return
+        catch java.lang.NoClassDefFoundError entry handler
+        handler:
+            pop
+            getstatic java.lang.System#java.io.PrintStream out
+            ldc "Caught linkage error from checkcast."
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+            return
+    }
+
+    private static void testInstanceOf() {
+        entry:
+            ldc "test" // aconst_null
+            instanceof abc
+            pop
+            return
+        catch java.lang.NoClassDefFoundError entry handler
+        handler:
+            pop
+            getstatic java.lang.System#java.io.PrintStream out
+            ldc "Caught linkage error from instanceof."
+            invokevirtual java.io.PrintStream#void println(java.lang.String)
+            return
+    }
+
+    // TODO: Test fields, invokes, etc.
+
+    public void <init>() {
+        entry:
+            aload_0
+            invokespecial java.lang.Object#void <init>()
+            return
+    }
+}

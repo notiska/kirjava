@@ -594,7 +594,7 @@ class Code(AttributeInfo):
         for handler in self.handlers:
             stream.write(pack_HHHH(
                 handler.start_pc, handler.end_pc, handler.handler_pc,
-                pool.add(handler.type) if handler.type is not None else 0,
+                pool.add(handler.class_) if handler.class_ is not None else 0,
             ))
         stream.write(pack_H(len(self.attributes)))
         for attribute in self.attributes:
@@ -620,7 +620,7 @@ class Code(AttributeInfo):
             #     verifier.fatal(self, "invalid handler end pc", handler=handler)
             # if not (0 <= handler.handler_pc < len(self.code)):
             #     verifier.fatal(self, "invalid handler pc", handler=handler)
-            if verifier.check_const_types and handler.type is not None and not isinstance(handler.type, ClassInfo):
+            if verifier.check_const_types and handler.class_ is not None and not isinstance(handler.class_, ClassInfo):
                 verifier.fatal(self, "handler type is not a class constant", handler=handler)
 
         if len(self.attributes) > 65535:
@@ -640,26 +640,26 @@ class Code(AttributeInfo):
             The ending bytecode offset of this handler's active range.
         handler_pc: int
             The handler bytecode offset.
-        type: ConstInfo | None
-            The type of exception this handler catches.
-            If `None`, the type is `java/lang/Throwable` and all exceptions are caught.
+        class_: ConstInfo | None
+            A class constant, used as the type of exception to catch.
+            If `None`, all exceptions are caught.
         """
 
-        __slots__ = ("start_pc", "end_pc", "handler_pc", "type")
+        __slots__ = ("start_pc", "end_pc", "handler_pc", "class_")
 
-        def __init__(self, start_pc: int, end_pc: int, handler_pc: int, type_: ConstInfo | None) -> None:
+        def __init__(self, start_pc: int, end_pc: int, handler_pc: int, class_: ConstInfo | None) -> None:
             self.start_pc = start_pc
             self.end_pc = end_pc
             self.handler_pc = handler_pc
-            self.type = type_
+            self.class_ = class_
 
         def __repr__(self) -> str:
-            return "<Code.ExceptHandler(start_pc=%i, end_pc=%i, handler_pc=%i, type=%s)>" % (
-                self.start_pc, self.end_pc, self.handler_pc, self.type,
+            return "<Code.ExceptHandler(start_pc=%i, end_pc=%i, handler_pc=%i, class_=%s)>" % (
+                self.start_pc, self.end_pc, self.handler_pc, self.class_,
             )
 
         def __str__(self) -> str:
-            return "handler(%i-%i:%i,%s)" % (self.start_pc, self.end_pc, self.handler_pc, self.type)
+            return "handler(%i-%i:%i,%s)" % (self.start_pc, self.end_pc, self.handler_pc, self.class_)
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -667,7 +667,7 @@ class Code(AttributeInfo):
                 self.start_pc == other.start_pc and
                 self.end_pc == other.end_pc and
                 self.handler_pc == other.handler_pc and
-                self.type == other.type
+                self.class_ == other.class_
             )
 
 

@@ -4,7 +4,6 @@ __all__ = (
     "Edge", "Fallthrough", "Jump", "Ret", "Switch", "Catch",
 )
 
-import logging
 import typing
 from typing import Optional
 
@@ -13,8 +12,7 @@ from ...model.types import Class, ReturnAddress
 
 if typing.TYPE_CHECKING:
     from .block import Block
-
-logger = logging.getLogger("ijd.jvm.graph.edge")
+    from ..fmt import ConstInfo
 
 
 class Edge:
@@ -307,13 +305,14 @@ class Catch(Edge):
 
     Attributes
     ----------
-    type: Class
-        The type of exception to catch.
+    class_: ConstInfo | None
+        A class constant, used as the type of exception to catch.
+        If `None`, all exceptions are caught.
     priority: int
         The priority of this catch edge, lower values are checked first.
     """
 
-    __slots__ = ("type", "priority")
+    __slots__ = ("class_", "priority")
 
     symbolic = False
 
@@ -321,18 +320,22 @@ class Catch(Edge):
     def precedence(self) -> int:
         return Edge.PRECEDENCE_CATCH + self.priority
 
-    def __init__(self, source: "Block", target: "Block", type_: Class, priority: int) -> None:
+    @precedence.setter
+    def precedence(self, value: int) -> None:
+        self.priority = value - Edge.PRECEDENCE_CATCH
+
+    def __init__(self, source: "Block", target: "Block", class_: Optional["ConstInfo"], priority: int) -> None:
         super().__init__(source, target)
-        self.type = type_
+        self.class_ = class_
         self.priority = priority
 
     def __repr__(self) -> str:
-        return "<Catch(source=%s, target=%s, type=%s, priority=%i)>" % (
-            self.source, self.target, self.type, self.priority,
+        return "<Catch(source=%s, target=%s, class_=%s, priority=%i)>" % (
+            self.source, self.target, self.class_, self.priority,
         )
 
     def __str__(self) -> str:
-        return "catch [%s priority %i] %s -> %s" % (self.type, self.priority, self.source, self.target)
+        return "catch [%s priority %i] %s -> %s" % (self.class_, self.priority, self.source, self.target)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Target":
     #     frame = frame.copy()

@@ -23,8 +23,8 @@ from . import Instruction
 from .._struct import *
 from ..fmt.constants import *
 from ...backend import f32, f64, i32, i64
-# from ...model.types import *
-from ...model.values.constants import *
+from ...model.types import Class
+from ...model.values.constants import Constant, Double, Float, Integer, Long, Null
 
 if typing.TYPE_CHECKING:
     # from ..analyse.frame import Frame
@@ -47,7 +47,7 @@ class PushConstant(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     constant: Constant
 
@@ -211,7 +211,11 @@ class LoadConstant(Instruction):
 
     __slots__ = ("info",)
 
-    throws = True  # If the constant wasn't resolved (classes, MHs, condys). Later specialisation can be done in IR.
+    @property  # type: ignore[override]
+    def throws(self) -> frozenset[Class]:
+        if isinstance(self.info, (ClassInfo, MethodHandleInfo, DynamicInfo)):
+            return frozenset({Class("java/lang/Error")})  # FIXME: Anything else?
+        return frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadConstant":
@@ -312,7 +316,7 @@ class New(Instruction):
 
     __slots__ = ("class_",)
 
-    throws = True  # If the class could not be resolved.
+    throws = frozenset({Class("java/lang/Error")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "New":
@@ -367,7 +371,7 @@ class Pop(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Pop":
@@ -404,7 +408,7 @@ class Pop2(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Pop2":
@@ -440,7 +444,7 @@ class Dup(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup":
@@ -476,7 +480,7 @@ class DupX1(Instruction):
 
     __slots__ = ()
 
-    can_throw = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DupX1":
@@ -512,7 +516,7 @@ class DupX2(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DupX2":
@@ -548,7 +552,7 @@ class Dup2(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2":
@@ -590,7 +594,7 @@ class Dup2X1(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2X1":
@@ -621,7 +625,7 @@ class Dup2X2(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2X2":
@@ -652,7 +656,7 @@ class Swap(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Swap":

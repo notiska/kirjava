@@ -12,6 +12,7 @@ from . import Instruction
 # from .._desc import parse_field_descriptor
 from .._struct import *
 from ..fmt.constants import ClassInfo, ConstInfo, FieldrefInfo, NameAndTypeInfo
+from ...model.types import Class
 # from ...model.types import *
 # from ...model.values.constants import Null
 
@@ -36,7 +37,10 @@ class GetStatic(Instruction):
 
     __slots__ = ("ref",)
 
-    throws = True
+    # https://docs.oracle.com/javase/specs/jvms/se22/html/jvms-5.html#jvms-5.5
+    # throws = frozenset({Class("java/lang/NoClassDefFoundError"), Class("java/lang/ExceptionInInitializerError")})
+    # Narrow types ^^^ not really needed as `java/lang/Error` encapsulates all.
+    throws = frozenset({Class("java/lang/Error")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "GetStatic":
@@ -109,7 +113,7 @@ class PutStatic(Instruction):
 
     __slots__ = ("ref",)
 
-    throws = True
+    throws = frozenset({Class("java/lang/Error")})  # See above for reasoning.
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PutStatic":
@@ -180,7 +184,7 @@ class GetField(Instruction):
 
     __slots__ = ("ref",)
 
-    throws = True
+    throws = frozenset({Class("java/lang/Error"), Class("java/lang/NullPointerException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "GetField":
@@ -261,7 +265,7 @@ class PutField(Instruction):
 
     __slots__ = ("ref",)
 
-    throws = True
+    throws = frozenset({Class("java/lang/Error"), Class("java/lang/NullPointerException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PutField":

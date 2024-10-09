@@ -40,7 +40,7 @@ class BinOp(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     type: Type
 
@@ -357,7 +357,7 @@ class Negate(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     type: Type
 
@@ -737,6 +737,8 @@ class FloatGCompare(Comparison):
     #         return None
 
 
+_throws = frozenset({Class("java/lang/ArithmeticException")})
+
 iadd            = Addition.make(0x60, "iadd", type=int_t)
 ladd            = Addition.make(0x61, "ladd", type=long_t)
 fadd            = Addition.make(0x62, "fadd", type=float_t)
@@ -749,12 +751,12 @@ imul      = Multiplication.make(0x68, "imul", type=int_t)
 lmul      = Multiplication.make(0x69, "lmul", type=long_t)
 fmul      = Multiplication.make(0x6a, "fmul", type=float_t)
 dmul      = Multiplication.make(0x6b, "dmul", type=double_t)
-idiv            = Division.make(0x6c, "idiv", throws=True, type=int_t)
-ldiv            = Division.make(0x6d, "ldiv", throws=True, type=long_t)
+idiv            = Division.make(0x6c, "idiv", throws=_throws, type=int_t)
+ldiv            = Division.make(0x6d, "ldiv", throws=_throws, type=long_t)
 fdiv            = Division.make(0x6e, "fdiv", type=float_t)
 ddiv            = Division.make(0x6f, "ddiv", type=double_t)
-irem           = Remainder.make(0x70, "irem", throws=True, type=int_t)
-lrem           = Remainder.make(0x71, "lrem", throws=True, type=long_t)
+irem           = Remainder.make(0x70, "irem", throws=_throws, type=int_t)
+lrem           = Remainder.make(0x71, "lrem", throws=_throws, type=long_t)
 frem           = Remainder.make(0x72, "frem", type=float_t)
 drem           = Remainder.make(0x73, "drem", type=double_t)
 ineg              = Negate.make(0x74, "ineg", type=int_t)

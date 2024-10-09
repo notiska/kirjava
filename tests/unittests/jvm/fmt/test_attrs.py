@@ -13,7 +13,7 @@ from kirjava.jvm.fmt.field import *
 from kirjava.jvm.fmt.method import *
 from kirjava.jvm.fmt.stackmap import *
 from kirjava.jvm.insns import *
-from kirjava.jvm.version import JAVA_MAX
+from kirjava.jvm.version import JAVA_MAX, Version
 
 
 class TestAttributes(unittest.TestCase):
@@ -319,6 +319,19 @@ class TestAttributes(unittest.TestCase):
 
     def setUp(self) -> None:
         self.pool = ConstPool()
+
+    def test_abc_attrs(self) -> None:
+        for subclass in AttributeInfo.__subclasses__():
+            with self.subTest(subclass.__name__):
+                init = self._DEFAULTS.get(subclass)
+                if init is None:
+                    self.skipTest("Missing default init values for %r." % subclass)
+                attr = subclass(*init)  # type: ignore[arg-type]
+                self.assertIsInstance(attr.tag, bytes)
+                self.assertIsInstance(attr.since, Version)
+                self.assertIsInstance(attr.locations, frozenset)
+                self.assertIsInstance(attr.name, (ConstInfo, type(None)))
+                self.assertIsInstance(attr.extra, bytes)
 
     def test_repr_str(self) -> None:
         for subclass in AttributeInfo.__subclasses__():

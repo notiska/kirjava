@@ -53,7 +53,7 @@ class LoadLocal(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     type: Type
     index: int
@@ -94,7 +94,7 @@ class StoreLocal(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     type: Type
     index: int
@@ -233,7 +233,7 @@ class IInc(Instruction):
 
     __slots__ = ("index", "value")
 
-    throws = False
+    throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "IInc":

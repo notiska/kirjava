@@ -8,11 +8,11 @@ __all__ = (
 
 import typing
 from collections import defaultdict
-from typing import IO
 
 from . import block, edge
+from ._dis import disassemble
 from .block import Block
-from .edge import Edge
+from .edge import *
 from ...meta import Metadata
 
 if typing.TYPE_CHECKING:
@@ -53,51 +53,29 @@ class Graph:
         "_label",
     )
 
-    # @classmethod
-    # def disassemble(cls, method: MethodInfo, cf: "ClassFile", stream: IO[bytes] | None) -> "Graph":
-    #     """
-    #     Disassembles a method into a JVM control flow graph.
-    #
-    #     Parameters
-    #     ----------
-    #     method: MethodInfo
-    #         The method to disassemble.
-    #     cf: ClassFile
-    #         The class file containing the method.
-    #     stream: IO[bytes] | None
-    #         An optional class file stream to disassemble from.
-    #         Using this may result in more accurate disassembly, but is not required.
-    #
-    #     Returns
-    #     -------
-    #     Graph
-    #         The disassembled JVM control flow graph.
-    #
-    #     Raises
-    #     ------
-    #     ValueError
-    #         If the method has no code attribute.
-    #     """
-    #
-    #     assert not method.is_native, "cannot disassemble native methods"
-    #     assert not method.is_abstract, "cannot disassemble abstract methods"
-    #
-    #     code = None
-    #     for attribute in method.attributes:
-    #         if not isinstance(attribute, Code):
-    #             continue
-    #         elif code is not None:
-    #             # Not even allowed by the JVM with `-Xverify:none`.
-    #             raise ValueError("multiple code attributes in method")
-    #         code = attribute
-    #         # if context.skip_multiple_code_attrs:
-    #         #     break
-    #     if code is None:
-    #         raise ValueError("no code attribute in method")
-    #
-    #     self = cls()
-    #     disassemble(self, code, cf, stream)
-    #     return self
+    @classmethod
+    def disassemble(cls, method: "MethodInfo", cf: "ClassFile") -> tuple["Graph", Metadata]:
+        """
+        Disassembles a method into a JVM control flow graph.
+
+        Parameters
+        ----------
+        method: MethodInfo
+            The method to disassemble.
+        cf: ClassFile
+            The class file containing the method.
+
+        Returns
+        -------
+        Graph
+            The disassembled JVM control flow graph.
+        Metadata
+            Any metadata generated during disassembly.
+        """
+
+        self = cls()
+        meta = disassemble(self, method, cf)
+        return self, meta
 
     def __init__(self) -> None:
         self.blocks: list[Block] = []
@@ -136,5 +114,33 @@ class Graph:
         self.blocks.append(block)
         return block
 
-    def merge_single_successors(self) -> None:
-        ...
+    def fallthrough(self, source: int | Block, target: int | Block) -> Fallthrough:
+        """
+        Creates a fallthrough edge between two blocks.
+
+        Parameters
+        ----------
+        source: int | Block
+            The label or block to fall through from.
+        target: int | Block
+            The label or block to fall through to.
+
+        Returns
+        -------
+        Fallthrough
+            The fallthrough edge created.
+        """
+
+        if not isinstance(source, Block):
+            source = self.blocks[source]
+        if not isinstance(target, Block):
+            target = self.blocks[target]
+
+        edge = Fallthrough(source, target)  # TODO: Checks for duplicate edges, etc.
+        self.edges_out[source].add(edge)
+        self.edges_in[target].add(edge)
+
+        return edge
+
+    # def merge_single_successors(self) -> None:
+    #     ...

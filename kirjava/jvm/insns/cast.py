@@ -31,7 +31,7 @@ class ValueCast(Instruction):
 
     __slots__ = ()
 
-    throws = False
+    throws = frozenset()
 
     type_in:  Primitive
     type_out: Primitive
@@ -98,7 +98,7 @@ class CheckCast(Instruction):
 
     __slots__ = ("class_",)
 
-    throws = True
+    throws = frozenset({Class("java/lang/ClassCastException"), Class("java/lang/Error")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "CheckCast":
@@ -157,7 +157,7 @@ class InstanceOf(Instruction):
 
     __slots__ = ("class_",)
 
-    throws = True  # Can throw if the class is not found. How annoying.
+    throws = frozenset({Class("java/lang/Error")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InstanceOf":

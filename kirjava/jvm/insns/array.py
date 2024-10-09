@@ -38,7 +38,7 @@ class ArrayLoad(Instruction):
 
     __slots__ = ()
 
-    throws = True
+    throws = frozenset({Class("java/lang/ArrayIndexOutOfBoundsException"), Class("java/lang/NullPointerException")})
 
     type: Type
 
@@ -103,7 +103,7 @@ class ArrayStore(Instruction):
 
     __slots__ = ()
 
-    throws = True
+    throws = frozenset({Class("java/lang/ArrayIndexOutOfBoundsException"), Class("java/lang/NullPointerException")})
 
     type: Type
 
@@ -178,7 +178,7 @@ class NewArray(Instruction):
 
     __slots__ = ("tag",)
 
-    throws = True
+    throws = frozenset({Class("java/lang/NegativeArraySizeException")})
 
     TAG_BOOLEAN = 4
     TAG_CHAR    = 5
@@ -265,7 +265,7 @@ class ANewArray(Instruction):
 
     __slots__ = ("class_",)
 
-    throws = True
+    throws = frozenset({Class("java/lang/Error"), Class("java/lang/NegativeArraySizeException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ANewArray":
@@ -342,7 +342,7 @@ class MultiANewArray(Instruction):
 
     __slots__ = ("class_", "dimensions")
 
-    throws = True
+    throws = frozenset({Class("java/lang/Error"), Class("java/lang/NegativeArraySizeException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MultiANewArray":
@@ -426,7 +426,7 @@ class ArrayLength(Instruction):
 
     __slots__ = ()
 
-    throws = True
+    throws = frozenset({Class("java/lang/NullPointerException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ArrayLength":
