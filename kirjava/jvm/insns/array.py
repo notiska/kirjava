@@ -11,6 +11,7 @@ __all__ = (
 )
 
 import typing
+from copy import deepcopy
 from typing import IO
 
 from . import Instruction
@@ -207,6 +208,13 @@ class NewArray(Instruction):
         super().__init__()
         self.tag = tag
 
+    def __copy__(self) -> "NewArray":
+        # FIXME: Type ignored because we need to support 3.10, so can't use Self type. If support is dropped, need to
+        #        update all occurrences of this.
+        copy = newarray(self.tag)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<NewArray(offset=%i, tag=%i)>" % (self.offset, self.tag)
@@ -219,13 +227,6 @@ class NewArray(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NewArray) and self.tag == other.tag
-
-    def copy(self) -> "NewArray":
-        # FIXME: Type ignored because we need to support 3.10, so can't use Self type. If support is dropped, need to
-        #        update all occurrences of this.
-        copy = newarray(self.tag)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.tag)))
@@ -286,6 +287,16 @@ class ANewArray(Instruction):
         super().__init__()
         self.classref = classref
 
+    def __copy__(self) -> "ANewArray":
+        copy = anewarray(self.classref)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "ANewArray":
+        copy = anewarray(deepcopy(self.classref, memo))  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<ANewArray(offset=%i, classref=%s)>" % (self.offset, self.classref)
@@ -298,11 +309,6 @@ class ANewArray(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ANewArray) and self.classref == other.classref
-
-    def copy(self) -> "ANewArray":
-        copy = anewarray(self.classref)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.classref)))
@@ -365,6 +371,16 @@ class MultiANewArray(Instruction):
         self.classref = classref
         self.dimensions = dimensions
 
+    def __copy__(self) -> "MultiANewArray":
+        copy = multianewarray(self.classref, self.dimensions)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "MultiANewArray":
+        copy = multianewarray(deepcopy(self.classref, memo), self.dimensions)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<MultiANewArray(offset=%i, classref=%s, dimensions=%i)>" % (
@@ -383,11 +399,6 @@ class MultiANewArray(Instruction):
             self.classref == other.classref and
             self.dimensions == other.dimensions
         )
-
-    def copy(self) -> "MultiANewArray":
-        copy = multianewarray(self.classref, self.dimensions)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHB(self.opcode, pool.add(self.classref), self.dimensions))

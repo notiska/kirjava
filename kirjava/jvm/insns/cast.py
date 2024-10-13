@@ -8,6 +8,7 @@ __all__ = (
 )
 
 import typing
+from copy import deepcopy
 from typing import IO
 
 from . import Instruction
@@ -118,6 +119,16 @@ class CheckCast(Instruction):
         super().__init__()
         self.classref = classref
 
+    def __copy__(self) -> "CheckCast":
+        copy = checkcast(self.classref)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "CheckCast":
+        copy = checkcast(deepcopy(self.classref, memo))  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<CheckCast(offset=%i, classref=%s)>" % (self.offset, self.classref)
@@ -130,11 +141,6 @@ class CheckCast(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, CheckCast) and self.classref == other.classref
-
-    def copy(self) -> "CheckCast":
-        copy = checkcast(self.classref)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.classref)))
@@ -183,6 +189,16 @@ class InstanceOf(Instruction):
         super().__init__()
         self.classref = classref
 
+    def __copy__(self) -> "InstanceOf":
+        copy = instanceof(self.classref)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "InstanceOf":
+        copy = instanceof(deepcopy(self.classref, memo))  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<InstanceOf(offset=%i, classref=%s)>" % (self.offset, self.classref)
@@ -195,11 +211,6 @@ class InstanceOf(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InstanceOf) and self.classref == other.classref
-
-    def copy(self) -> "InstanceOf":
-        copy = instanceof(self.classref)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.classref)))

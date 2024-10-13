@@ -62,6 +62,11 @@ class Jump(Instruction):
         super().__init__()
         self.delta = delta
 
+    def __copy__(self) -> "Jump":
+        copy = type(self)(self.delta)
+        copy.offset = self.offset
+        return copy
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<Jump(offset=%i, delta=%s)>" % (self.offset, self.delta)
@@ -78,11 +83,6 @@ class Jump(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Jump) and self.opcode == other.opcode and self.delta == other.delta
-
-    def copy(self) -> "Jump":
-        copy = type(self)(self.delta)
-        copy.offset = self.offset
-        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_Bh(self.opcode, self.delta))
@@ -430,6 +430,11 @@ class Ret(Jump):
         super().__init__(None)
         self.index = index
 
+    def __copy__(self) -> "Ret":
+        copy = type(self)(self.index)
+        copy.offset = self.offset
+        return copy
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<Ret(offset=%i, index=%i)>" % (self.offset, self.index)
@@ -439,11 +444,6 @@ class Ret(Jump):
         if self.offset is not None:
             return "%i:ret(%i)" % (self.offset, self.index)
         return "ret(%i)" % self.index
-
-    def copy(self) -> "Ret":
-        copy = type(self)(self.index)
-        copy.offset = self.offset
-        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
@@ -592,6 +592,11 @@ class TableSwitch(Switch):
         self.low = low
         self.high = high
 
+    def __copy__(self) -> "TableSwitch":
+        copy = tableswitch(self.default, self.low, self.high, self.offsets)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<TableSwitch(offset=%i, default=%i, low=%i, high=%i, offsets=%r)>" % (
@@ -624,11 +629,6 @@ class TableSwitch(Switch):
             self.high == other.high and
             self.offsets == other.offsets
         )
-
-    def copy(self) -> "TableSwitch":
-        copy = tableswitch(self.default, self.low, self.high, self.offsets)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -671,6 +671,11 @@ class LookupSwitch(Switch):
             offsets[key] = offset
         return cls(default, offsets)
 
+    def __copy__(self) -> "LookupSwitch":
+        copy = lookupswitch(self.default, self.offsets)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<LookupSwitch(offset=%i, default=%i, offsets=%r)>" % (self.offset, self.default, self.offsets)
@@ -691,11 +696,6 @@ class LookupSwitch(Switch):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LookupSwitch) and self.default == other.default and self.offsets == other.offsets
-
-    def copy(self) -> "LookupSwitch":
-        copy = lookupswitch(self.default, self.offsets)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -743,6 +743,11 @@ class Return(Jump):
     def __init__(self) -> None:
         super().__init__(None)
 
+    def __copy__(self) -> "Return":
+        copy = type(self)()
+        copy.offset = self.offset
+        return copy
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<Return(offset=%i, type=%s)>" % (self.offset, self.type)
@@ -755,11 +760,6 @@ class Return(Jump):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Return) and self.opcode == other.opcode
-
-    def copy(self) -> "Return":
-        copy = type(self)()
-        copy.offset = self.offset
-        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -796,6 +796,11 @@ class AThrow(Jump):
     def __init__(self) -> None:
         super().__init__(None)
 
+    def __copy__(self) -> "AThrow":
+        copy = athrow()
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<AThrow(offset=%i)>" % self.offset
@@ -808,11 +813,6 @@ class AThrow(Jump):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, AThrow)
-
-    def copy(self) -> "AThrow":
-        copy = athrow()
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

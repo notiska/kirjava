@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import copy
 import unittest
 from io import BytesIO
 from os import SEEK_SET
@@ -133,12 +134,20 @@ class TestInstructions(unittest.TestCase):
                 insn_no_offset = subclass(*init)
 
                 print(str(insn_no_offset), repr(insn_no_offset), end=" ")
-                insn_offset = insn_no_offset.copy()
+                insn_offset = copy.copy(insn_no_offset)
                 insn_offset.offset = 30
                 print(str(insn_offset), repr(insn_offset))
 
                 self.assertEqual(insn_no_offset, insn_no_offset)
                 self.assertEqual(insn_no_offset, insn_offset)
+                self.assertIsNot(insn_no_offset, insn_offset)
+
+                insn_deepcopy = copy.deepcopy(insn_offset)
+                self.assertEqual(insn_deepcopy, insn_offset)
+                self.assertEqual(insn_deepcopy, insn_no_offset)
+                self.assertIsNot(insn_deepcopy, insn_offset)
+                self.assertIsNot(insn_deepcopy, insn_no_offset)
+                # TODO: More tests for individual attributes, to ensure that they have been deep copied.
 
                 insn_offset_repr = repr(insn_offset)
                 insn_offset_repr = insn_offset_repr.replace("(offset=%i)" % insn_offset.offset, "")

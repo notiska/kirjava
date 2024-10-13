@@ -17,6 +17,7 @@ __all__ = (
 )
 
 import typing
+from copy import deepcopy
 from typing import IO
 
 from . import Instruction
@@ -116,6 +117,11 @@ class BIPush(PushConstant):
         super().__init__()
         self.value = value
 
+    def __copy__(self) -> "BIPush":
+        copy = bipush(self.value)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<BIPush(offset=%i, value=%i)>" % (self.offset, self.value)
@@ -128,11 +134,6 @@ class BIPush(PushConstant):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, BIPush) and self.value == other.value
-
-    def copy(self) -> "BIPush":
-        copy = bipush(self.value)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.value)))
@@ -173,6 +174,11 @@ class SIPush(PushConstant):
         super().__init__()
         self.value = value
 
+    def __copy__(self) -> "SIPush":
+        copy = sipush(self.value)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<SIPush(offset=%i, value=%i)>" % (self.offset, self.value)
@@ -185,11 +191,6 @@ class SIPush(PushConstant):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SIPush) and self.value == other.value
-
-    def copy(self) -> "SIPush":
-        copy = sipush(self.value)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, self.value))
@@ -225,6 +226,16 @@ class LoadConstant(Instruction):
         super().__init__()
         self.info = info
 
+    def __copy__(self) -> "LoadConstant":
+        copy = type(self)(self.info)
+        copy.offset = self.offset
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "LoadConstant":
+        copy = type(self)(deepcopy(self.info, memo))
+        copy.offset = self.offset
+        return copy
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<LoadConstant(offset=%i, info=%s)>" % (self.offset, self.info)
@@ -237,11 +248,6 @@ class LoadConstant(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LoadConstant) and self.opcode == other.opcode and self.info == other.info
-
-    def copy(self) -> "LoadConstant":
-        copy = type(self)(self.info)
-        copy.offset = self.offset
-        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, pool.add(self.info))))
@@ -345,6 +351,16 @@ class New(Instruction):
         super().__init__()
         self.classref = classref
 
+    def __copy__(self) -> "New":
+        copy = new(self.classref)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "New":
+        copy = new(deepcopy(self.classref, memo))  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<New(offset=%i, classref=%s)>" % (self.offset, self.classref)
@@ -357,11 +373,6 @@ class New(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, New) and self.classref == other.classref
-
-    def copy(self) -> "New":
-        copy = new(self.classref)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.classref)))

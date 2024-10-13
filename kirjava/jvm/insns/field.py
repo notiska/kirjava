@@ -6,6 +6,7 @@ __all__ = (
 )
 
 import typing
+from copy import deepcopy
 from typing import IO
 
 from . import Instruction
@@ -52,6 +53,16 @@ class GetStatic(Instruction):
         super().__init__()
         self.fieldref = fieldref
 
+    def __copy__(self) -> "GetStatic":
+        copy = getstatic(self.fieldref)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "GetStatic":
+        copy = getstatic(deepcopy(self.fieldref, memo))  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<GetStatic(offset=%i, fieldref=%s)>" % (self.offset, self.fieldref)
@@ -64,11 +75,6 @@ class GetStatic(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, GetStatic) and self.fieldref == other.fieldref
-
-    def copy(self) -> "GetStatic":
-        copy = getstatic(self.fieldref)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
@@ -126,6 +132,16 @@ class PutStatic(Instruction):
         super().__init__()
         self.fieldref = fieldref
 
+    def __copy__(self) -> "PutStatic":
+        copy = putstatic(self.fieldref)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "PutStatic":
+        copy = putstatic(deepcopy(self.fieldref, memo))  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<PutStatic(offset=%i, fieldref=%s)>" % (self.offset, self.fieldref)
@@ -138,11 +154,6 @@ class PutStatic(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PutStatic) and self.fieldref == other.fieldref
-
-    def copy(self) -> "PutStatic":
-        copy = putstatic(self.fieldref)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
@@ -198,6 +209,16 @@ class GetField(Instruction):
         super().__init__()
         self.fieldref = fieldref
 
+    def __copy__(self) -> "GetField":
+        copy = getfield(self.fieldref)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "GetField":
+        copy = getfield(deepcopy(self.fieldref, memo))  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<GetField(offset=%i, fieldref=%s)>" % (self.offset, self.fieldref)
@@ -210,11 +231,6 @@ class GetField(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, GetField) and self.fieldref == other.fieldref
-
-    def copy(self) -> "GetField":
-        copy = getfield(self.fieldref)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
@@ -280,6 +296,16 @@ class PutField(Instruction):
         super().__init__()
         self.fieldref = fieldref
 
+    def __copy__(self) -> "PutField":
+        copy = putfield(self.fieldref)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "PutField":
+        copy = putfield(deepcopy(self.fieldref, memo))  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<PutField(offset=%i, fieldref=%s)>" % (self.offset, self.fieldref)
@@ -292,11 +318,6 @@ class PutField(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PutField) and self.fieldref == other.fieldref
-
-    def copy(self) -> "PutField":
-        copy = putfield(self.fieldref)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))

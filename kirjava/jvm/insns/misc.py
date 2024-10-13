@@ -225,6 +225,11 @@ class Unknown(Instruction):
         super().__init__()
         self.opcode = opcode
 
+    def __copy__(self) -> "Unknown":
+        copy = type(self)(self.opcode)
+        copy.offset = self.offset
+        return copy
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<Unknown(offset=%i, opcode=0x%02x)>" % (self.offset, self.opcode)
@@ -237,11 +242,6 @@ class Unknown(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Unknown) and self.opcode == other.opcode
-
-    def copy(self) -> "Unknown":
-        copy = type(self)(self.opcode)
-        copy.offset = self.offset
-        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

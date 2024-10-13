@@ -6,6 +6,7 @@ __all__ = (
 )
 
 import typing
+from copy import deepcopy
 from typing import IO
 
 from . import Instruction
@@ -52,6 +53,16 @@ class InvokeVirtual(Instruction):
         super().__init__()
         self.methodref = methodref
 
+    def __copy__(self) -> "InvokeVirtual":
+        copy = invokevirtual(self.methodref)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "InvokeVirtual":
+        copy = invokevirtual(deepcopy(self.methodref, memo))  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<InvokeVirtual(offset=%i, methodref=%s)>" % (self.offset, self.methodref)
@@ -64,11 +75,6 @@ class InvokeVirtual(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeVirtual) and self.methodref == other.methodref
-
-    def copy(self) -> "InvokeVirtual":
-        copy = invokevirtual(self.methodref)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.methodref)))
@@ -147,6 +153,16 @@ class InvokeSpecial(Instruction):
         super().__init__()
         self.methodref = methodref
 
+    def __copy__(self) -> "InvokeSpecial":
+        copy = invokespecial(self.methodref)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "InvokeSpecial":
+        copy = invokespecial(deepcopy(self.methodref, memo))  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<InvokeSpecial(offset=%i, methodref=%s)>" % (self.offset, self.methodref)
@@ -159,11 +175,6 @@ class InvokeSpecial(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeSpecial) and self.methodref == other.methodref
-
-    def copy(self) -> "InvokeSpecial":
-        copy = invokespecial(self.methodref)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.methodref)))
@@ -258,6 +269,16 @@ class InvokeStatic(Instruction):
         super().__init__()
         self.methodref = methodref
 
+    def __copy__(self) -> "InvokeStatic":
+        copy = invokestatic(self.methodref)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "InvokeStatic":
+        copy = invokestatic(deepcopy(self.methodref, memo))  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<InvokeStatic(offset=%i, methodref=%s)>" % (self.offset, self.methodref)
@@ -270,11 +291,6 @@ class InvokeStatic(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeStatic) and self.methodref == other.methodref
-
-    def copy(self) -> "InvokeStatic":
-        copy = invokestatic(self.methodref)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.methodref)))
@@ -350,6 +366,16 @@ class InvokeInterface(Instruction):
         self.count = count
         self.reserved = reserved
 
+    def __copy__(self) -> "InvokeInterface":
+        copy = invokeinterface(self.methodref, self.count, self.reserved)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "InvokeInterface":
+        copy = invokeinterface(deepcopy(self.methodref, memo), self.count, self.reserved)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<InvokeInterface(offset=%i, methodref=%s, count=%i)>" % (self.offset, self.methodref, self.count)
@@ -367,11 +393,6 @@ class InvokeInterface(Instruction):
             self.count == other.count and
             self.reserved == other.reserved
         )
-
-    def copy(self) -> "InvokeInterface":
-        copy = invokeinterface(self.methodref, self.count, self.reserved)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHBB(self.opcode, pool.add(self.methodref), self.count, self.reserved))
@@ -464,6 +485,16 @@ class InvokeDynamic(Instruction):
         self.indyref = indyref
         self.reserved = reserved
 
+    def __copy__(self) -> "InvokeDynamic":
+        copy = invokedynamic(self.indyref, self.reserved)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "InvokeDynamic":
+        copy = invokedynamic(deepcopy(self.indyref, memo), self.reserved)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<InvokeDynamic(offset=%i, indyref=%s)>" % (self.offset, self.indyref)
@@ -476,11 +507,6 @@ class InvokeDynamic(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeDynamic) and self.indyref == other.indyref and self.reserved == other.reserved
-
-    def copy(self) -> "InvokeDynamic":
-        copy = invokedynamic(self.indyref, self.reserved)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(self.opcode, pool.add(self.indyref), self.reserved))

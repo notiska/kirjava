@@ -73,10 +73,10 @@ class TestConstants(unittest.TestCase):
                 self.assertIsNot(info_no_index, info_index)
 
                 info_deepcopy = copy.deepcopy(info_index)
-                self.assertEqual(info_index, info_deepcopy)
-                self.assertEqual(info_no_index, info_deepcopy)
-                self.assertIsNot(info_index, info_deepcopy)
-                self.assertIsNot(info_no_index, info_deepcopy)
+                self.assertEqual(info_deepcopy, info_index)
+                self.assertEqual(info_deepcopy, info_no_index)
+                self.assertIsNot(info_deepcopy, info_index)
+                self.assertIsNot(info_deepcopy, info_no_index)
 
                 self.assertEqual(repr(info_no_index), repr(info_index).replace("index=%i, " % info_index.index, ""))
                 self.assertEqual(str(info_no_index), str(info_index).replace("#%i:" % info_index.index, ""))

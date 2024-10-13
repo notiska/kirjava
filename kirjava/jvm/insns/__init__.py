@@ -105,8 +105,7 @@ class Instruction:
         Looks up an instruction given an opcode.
     read(stream: IO[bytes], pool: ConstPool) -> Instruction
         Reads an instruction from a binary stream.
-    copy(self) -> Instruction
-        Creates a copy of this instruction.
+
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes this instruction to the binary stream.
     link(self) -> Instruction
@@ -230,6 +229,11 @@ class Instruction:
     def __init__(self) -> None:
         self.offset: int | None = None
 
+    def __copy__(self) -> "Instruction":
+        copy = type(self)()
+        copy.offset = self.offset
+        return copy
+
     def __repr__(self) -> str:
         # return "<Instruction(offset=%s, opcode=0x%x, mnemonic=%r)>" % (self.offset, self.opcode, self.mnemonic)
         raise NotImplementedError("repr() is not implemented for %r" % type(self))
@@ -241,16 +245,6 @@ class Instruction:
 
     def __eq__(self, other: object) -> bool:
         raise NotImplementedError("== is not implemented for %r" % type(self))
-
-    def copy(self) -> "Instruction":
-        """
-        Creates a copy of this instruction.
-        """
-
-        # raise NotImplementedError("copy() is not implemented for %r" % type(self))
-        copy = type(self)()
-        copy.offset = self.offset
-        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
@@ -349,15 +343,15 @@ class CodeIOWrapper(BytesIO):  # Extended only for type hinting, BufferedIOBase 
         return self.delegate.write(data)
 
 
-from .arithmetic import *
-from .array import *
-from .cast import *
-from .field import *
-from .flow import *
-from .invoke import *
-from .local import *
-from .misc import *
-from .stack import *
+from .arithmetic import *  # noqa E402
+from .array import *       # noqa E402
+from .cast import *        # noqa E402
+from .field import *       # noqa E402
+from .flow import *        # noqa E402
+from .invoke import *      # noqa E402
+from .local import *       # noqa E402
+from .misc import *        # noqa E402
+from .stack import *       # noqa E402
 
 INSTRUCTIONS = (
     iadd, ladd, fadd, dadd,

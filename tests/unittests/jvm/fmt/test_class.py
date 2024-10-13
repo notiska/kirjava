@@ -4,7 +4,7 @@ import inspect
 import os
 import unittest
 from io import BytesIO
-from typing import Iterator
+from typing import IO, Iterator
 
 from kirjava.jvm.fmt import ClassFile
 
@@ -31,6 +31,8 @@ class TestClassFile(unittest.TestCase):
 
         for file in self.files:
             with self.subTest("Read file", file=file):
+                stream: IO[bytes]  # mypy
+
                 with open(file, "rb") as stream:
                     data = stream.read()
                 cf, meta = ClassFile.read(BytesIO(data))

@@ -151,6 +151,11 @@ class LoadLocalAt(LoadLocal):
         super().__init__()
         self.index = index
 
+    def __copy__(self) -> "LoadLocalAt":
+        copy = type(self)(self.index)
+        copy.offset = self.offset
+        return copy
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<LoadLocalAt(offset=%i, type=%s, index=%i)>" % (self.offset, self.type, self.index)
@@ -163,11 +168,6 @@ class LoadLocalAt(LoadLocal):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LoadLocalAt) and self.opcode == other.opcode and self.index == other.index
-
-    def copy(self) -> "LoadLocalAt":
-        copy = type(self)(self.index)
-        copy.offset = self.offset
-        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
@@ -195,6 +195,11 @@ class StoreLocalAt(StoreLocal):
         super().__init__()
         self.index = index
 
+    def __copy__(self) -> "StoreLocalAt":
+        copy = type(self)(self.index)
+        copy.offset = self.offset
+        return copy
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<StoreLocalAt(offset=%i, type=%s, index=%i)>" % (self.offset, self.type, self.index)
@@ -207,11 +212,6 @@ class StoreLocalAt(StoreLocal):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, StoreLocalAt) and self.opcode == other.opcode and self.index == other.index
-
-    def copy(self) -> "StoreLocalAt":
-        copy = type(self)(self.index)
-        copy.offset = self.offset
-        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
@@ -251,6 +251,11 @@ class IInc(Instruction):
         self.index = index
         self.value = value
 
+    def __copy__(self) -> "IInc":
+        copy = iinc(self.index, self.value)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<IInc(offset=%i, index=%i, value=%i)>" % (self.offset, self.index, self.value)
@@ -263,11 +268,6 @@ class IInc(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, IInc) and self.index == other.index and self.value == other.value
-
-    def copy(self) -> "IInc":
-        copy = iinc(self.index, self.value)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBb(self.opcode, self.index, self.value))
@@ -370,6 +370,11 @@ class IIncWide(IInc):
         index, value = unpack_Hh(stream.read(4))
         return cls(index, value)
 
+    def __copy__(self) -> "IIncWide":
+        copy = iinc_w(self.index, self.value)  # type: ignore[call-arg]
+        copy.offset = self.offset
+        return copy  # type: ignore[return-value]
+
     def __repr__(self) -> str:
         if self.offset is not None:
             return "<IIncWide(offset=%i, index=%i, value=%i)>" % (self.offset, self.index, self.value)
@@ -382,11 +387,6 @@ class IIncWide(IInc):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, IIncWide) and self.index == other.index and self.value == other.value
-
-    def copy(self) -> "IIncWide":
-        copy = iinc_w(self.index, self.value)  # type: ignore[call-arg]
-        copy.offset = self.offset
-        return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBHh(wide.opcode, self.opcode, self.index, self.value))
