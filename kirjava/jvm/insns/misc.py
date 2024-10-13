@@ -31,7 +31,9 @@ class Nop(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Nop":
@@ -61,7 +63,9 @@ class Wide(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Instruction:
@@ -101,7 +105,9 @@ class MonitorEnter(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset({Class("java/lang/NullPointerException")})
+    lt_throws = frozenset()
+    rt_throws = frozenset({Class("java/lang/NullPointerException")})
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MonitorEnter":
@@ -138,7 +144,9 @@ class MonitorExit(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset({Class("java/lang/IllegalMonitorStateException"), Class("java/lang/NullPointerException")})
+    lt_throws = frozenset()
+    rt_throws = frozenset({Class("java/lang/IllegalMonitorStateException"), Class("java/lang/NullPointerException")})
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MonitorExit":
@@ -173,7 +181,9 @@ class Internal(Instruction):  # FIXME: Too broad.
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Internal":
@@ -203,7 +213,9 @@ class Unknown(Instruction):
 
     __slots__ = ("opcode",)
 
-    throws = frozenset()  # FIXME: What exception is thrown upon illegal opcode?
+    lt_throws = frozenset()  # FIXME: What exception is thrown upon illegal opcode?
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Unknown":

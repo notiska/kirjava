@@ -117,11 +117,12 @@ class TestInstructions(unittest.TestCase):
                 init = self._DEFAULTS.get(subclass)
                 if init is None:
                     self.skipTest("Missing default init values for %r." % subclass)
-                insn = subclass(*init)  # type: ignore[arg-type]
+                insn = subclass(*init)
                 self.assertIsInstance(insn.opcode, int)
                 self.assertIsInstance(insn.mnemonic, str)
                 # self.assertIsInstance(insn.since, Version)  # FIXME
-                self.assertIsInstance(insn.throws, frozenset)
+                self.assertIsInstance(insn.lt_throws, frozenset)
+                self.assertIsInstance(insn.rt_throws, frozenset)
 
     def test_repr_str_eq_copy(self) -> None:
         for subclass in INSTRUCTIONS:
@@ -129,7 +130,7 @@ class TestInstructions(unittest.TestCase):
                 init = self._DEFAULTS.get(subclass)
                 if init is None:
                     self.skipTest("Missing default init values for %r." % subclass)
-                insn_no_offset = subclass(*init)  # type: ignore[arg-type]
+                insn_no_offset = subclass(*init)
 
                 print(str(insn_no_offset), repr(insn_no_offset), end=" ")
                 insn_offset = insn_no_offset.copy()
@@ -154,7 +155,7 @@ class TestInstructions(unittest.TestCase):
                 init = self._DEFAULTS.get(subclass)
                 if init is None:
                     self.skipTest("Missing default init values for %r." % subclass)
-                insn_init = subclass(*init)  # type: ignore[arg-type]
+                insn_init = subclass(*init)
 
                 data = BytesIO()
                 insn_init.write(data, self.pool)
@@ -169,3 +170,5 @@ class TestInstructions(unittest.TestCase):
                 data = BytesIO()
                 insn_read.write(data, self.pool)
                 self.assertEqual(data_first, data.getvalue())
+
+    # TODO: Linkage tests.

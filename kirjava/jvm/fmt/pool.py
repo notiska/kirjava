@@ -25,8 +25,6 @@ class ConstPool:
 
     Attributes
     ----------
-    maximum: int
-        The maximum valid index of this constant pool.
     entries: dict[int, ConstInfo]
         All the entries in this constant pool, mapped to their indices.
         Updating this collection will not update the underlying pool.
@@ -35,18 +33,19 @@ class ConstPool:
     -------
     read(stream: IO[bytes]) -> ConstPool
         Reads a constant pool from a binary stream.
+
     write(self, stream: IO[bytes]) -> None
         Writes this constant pool to the binary stream.
     verify(self, verifier: Verifier, cf: ClassFile) -> None
         Verifies that this constant pool is valid.
-    clear(self) -> None
-        Clears all the entries from this constant pool.
-    add(self, info: ConstInfo) -> int
-        Adds a constant to the end of this constant pool.
-    extend(self, constants: Iterable[ConstInfo] | ConstPool) -> None
-        Adds multiple constants to the end of this constant pool.
+    add(self, info: ConstInfo, low: bool = False) -> int
+        Adds a constant to this constant pool.
+    extend(self, infos: Iterable[ConstInfo] | ConstPool) -> None
+        Extends this constant pool with a sequence of constants.
     index(self, info: ConstInfo) -> int
-        Gets the index of a constant in this constant pool.
+        Returns the index of the first occurrence of a constant in this constant pool.
+    clear(self) -> None
+        Clears all entries from this constant pool.
     """
 
     # insert(self, index: int, info: ConstInfo) -> None
@@ -56,7 +55,7 @@ class ConstPool:
     # remove(self, info: ConstInfo) -> None
     #     Removes a constant from this constant pool.
 
-    __slots__ = ("_contiguous", "_non_contiguous", "_index")
+    __slots__ = ("_contiguous", "_non_contiguous", "_low", "_index")
 
     @classmethod
     def read(cls, stream: IO[bytes]) -> "ConstPool":
@@ -77,25 +76,23 @@ class ConstPool:
             self[self._index] = info
 
         for entry in self._contiguous[1:]:
-            entry.populate(self)
+            entry.deref(self)
 
         return self
-
-    @property
-    def maximum(self) -> int:
-        return self._index
 
     @property
     def entries(self) -> dict[int, ConstInfo]:
         return {index: entry for index, entry in enumerate(self._contiguous) if not isinstance(entry, ConstIndex)}
 
-    def __init__(self) -> None:
+    def __init__(self, infos: Union[Iterable[ConstInfo], "ConstPool"] | None = None) -> None:
         self._contiguous: list[ConstInfo] = [ConstIndex(0)]
         self._non_contiguous: dict[int, ConstInfo] = {}
+        self._low: list[ConstInfo] = []
 
         self._index = 1  # The index of the last "valid" entry in this constant pool.
 
-        # TODO: Some way of requesting low indices (<=255) when adding to the pool.
+        if infos is not None:
+            self.extend(infos)
 
     def __repr__(self) -> str:
         return "<ConstPool(entries=%r)>" % (self.entries,)
@@ -144,6 +141,9 @@ class ConstPool:
         if index < 1 or index >= self._index:
             raise IndexError("provided index %i is outside of the valid range of this constant pool" % index)
         self[index] = None
+
+    def __len__(self) -> int:
+        return self._index
 
     def write(self, stream: IO[bytes]) -> None:
         """
@@ -196,24 +196,19 @@ class ConstPool:
         for entry in self._contiguous:
             entry.verify(verifier)
 
-    def clear(self) -> None:
+    def add(self, info: ConstInfo, low: bool = False) -> int:
         """
-        Clears all the entries from this constant pool.
-        """
+        Adds a constant to this constant pool.
 
-        self._contiguous.clear()
-        self._non_contiguous.clear()
-        self._index = 1
-        self._contiguous.append(ConstIndex(0))
-
-    def add(self, info: ConstInfo) -> int:
-        """
-        Adds a constant to the end of this constant pool.
+        The constant will usually be added at the end, but may be added at a lower
+        index if requested.
 
         Parameters
         ----------
         info: ConstInfo
             The constant to add.
+        low: bool
+            Whether to request a low index (<=255) for this constant.
 
         Returns
         -------
@@ -231,6 +226,16 @@ class ConstPool:
         index = self._index
         self[self._index] = info
         return index
+
+    def extend(self, infos: Union[Iterable[ConstInfo], "ConstPool"]) -> None:
+        """
+        Extends this constant pool with a sequence of constants.
+        """
+
+        if isinstance(infos, ConstPool):
+            infos = infos.entries.values()[1:]  # We need to skip the initial 0 index.
+        for infos in infos:
+            self.add(infos)
 
     # def insert(self, index: int, info: ConstInfo) -> None:
     #     """
@@ -251,49 +256,15 @@ class ConstPool:
     #
     #     ...
 
-    def extend(self, constants: Union[Iterable[ConstInfo], "ConstPool"]) -> None:
-        """
-        Adds multiple constants to the end of this constant pool.
-
-        Parameters
-        ----------
-        constants: Iterable[ConstInfo] | ConstPool
-            The constants to add.
-        """
-
-        if isinstance(constants, ConstPool):
-            constants = constants.entries.values()
-        for constant in constants:
-            self.add(constant)
-
-    def index(self, info: ConstInfo) -> int:
-        """
-        Gets the index of a constant in this constant pool.
-
-        Parameters
-        ----------
-        info: ConstInfo
-            The constant to get the index of.
-
-        Returns
-        -------
-        int
-            The index of the constant in this constant pool.
-            If the constant is not present in this constant pool, `-1` is returned.
-        """
-
-        # First we'll search for an exact entry match, then fallback to default behaviour if this fails. This is to
-        # attempt to preserve the original order of the constant pool.
-        if info.index is not None:
-            for index, entry in enumerate(self._contiguous):
-                # if entry is info:  # May not be valid under certain circumstances.
-                if entry.index == info.index and entry == info:
-                    return index
-
-        for index, entry in enumerate(self._contiguous):
-            if entry == info:
-                return index
-        return -1
+    # def remove(self, info: ConstInfo) -> None:
+    #     """
+    #     Removes a constant from this constant pool.
+    #
+    #     Parameters
+    #     ----------
+    #     info: ConstInfo
+    #         The constant to remove.
+    #     """
 
     # def pop(self, index: int = -1) -> ConstInfo:
     #     """
@@ -329,12 +300,36 @@ class ConstPool:
     #
     #     return ref
 
-    # def remove(self, info: ConstInfo) -> None:
-    #     """
-    #     Removes a constant from this constant pool.
-    #
-    #     Parameters
-    #     ----------
-    #     info: ConstInfo
-    #         The constant to remove.
-    #     """
+    def index(self, info: ConstInfo) -> int:
+        """
+        Returns the index of the first occurrence of a constant in this constant pool.
+
+        Returns
+        -------
+        int
+            The index of the constant, `-1` if not present.
+        """
+
+        # First we'll search for an exact entry match, then fallback to default behaviour if this fails. This is to
+        # attempt to preserve the original order of the constant pool.
+        if info.index is not None:
+            for index, entry in enumerate(self._contiguous):
+                # if entry is info:  # May not be valid under certain circumstances.
+                if entry.index == info.index and entry == info:
+                    return index
+
+        for index, entry in enumerate(self._contiguous):
+            if entry == info:
+                return index
+        return -1
+
+    def clear(self) -> None:
+        """
+        Clears all entries from this constant pool.
+        """
+
+        self._contiguous.clear()
+        self._non_contiguous.clear()
+        self._low.clear()
+        self._index = 1
+        self._contiguous.append(ConstIndex(0))

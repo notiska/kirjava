@@ -13,7 +13,7 @@ from . import Instruction
 # from .._desc import parse_method_descriptor
 from .._struct import *
 from ..fmt.constants import *
-from ...model.types import throwable_t
+from ...model.types import error_t, throwable_t
 # from ...model.types import *
 # from ...model.values.constants import Null
 
@@ -34,43 +34,44 @@ class InvokeVirtual(Instruction):
 
     Attributes
     ----------
-    ref: ConstInfo
+    methodref: ConstInfo
         A method reference constant, used as the method to invoke.
     """
 
-    __slots__ = ("ref",)
+    __slots__ = ("methodref",)
 
-    throws = frozenset({throwable_t})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset({throwable_t})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeVirtual":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, ref: ConstInfo) -> None:
+    def __init__(self, methodref: ConstInfo) -> None:
         super().__init__()
-        self.ref = ref
+        self.methodref = methodref
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<InvokeVirtual(offset=%i, ref=%s)>" % (self.offset, self.ref)
-        return "<InvokeVirtual(ref=%s)>" % self.ref
+            return "<InvokeVirtual(offset=%i, methodref=%s)>" % (self.offset, self.methodref)
+        return "<InvokeVirtual(methodref=%s)>" % self.methodref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:invokevirtual(%s)" % (self.offset, self.ref)
-        return "invokevirtual(%s)" % self.ref
+            return "%i:invokevirtual(%s)" % (self.offset, self.methodref)
+        return "invokevirtual(%s)" % self.methodref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, InvokeVirtual) and self.ref == other.ref
+        return isinstance(other, InvokeVirtual) and self.methodref == other.methodref
 
     def copy(self) -> "InvokeVirtual":
-        copy = invokevirtual(self.ref)  # type: ignore[call-arg]
+        copy = invokevirtual(self.methodref)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, pool.add(self.ref)))
+        stream.write(pack_BH(self.opcode, pool.add(self.methodref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, MethodrefInfo):
@@ -128,43 +129,44 @@ class InvokeSpecial(Instruction):
 
     Attributes
     ----------
-    ref: ConstInfo
+    methodref: ConstInfo
         A method reference constant, used as the method to invoke.
     """
 
-    __slots__ = ("ref",)
+    __slots__ = ("methodref",)
 
-    throws = frozenset({throwable_t})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset({throwable_t})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeSpecial":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, ref: ConstInfo) -> None:
+    def __init__(self, methodref: ConstInfo) -> None:
         super().__init__()
-        self.ref = ref
+        self.methodref = methodref
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<InvokeSpecial(offset=%i, ref=%s)>" % (self.offset, self.ref)
-        return "<InvokeSpecial(ref=%s)>" % self.ref
+            return "<InvokeSpecial(offset=%i, methodref=%s)>" % (self.offset, self.methodref)
+        return "<InvokeSpecial(methodref=%s)>" % self.methodref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:invokespecial(%s)" % (self.offset, self.ref)
-        return "invokespecial(%s)" % self.ref
+            return "%i:invokespecial(%s)" % (self.offset, self.methodref)
+        return "invokespecial(%s)" % self.methodref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, InvokeSpecial) and self.ref == other.ref
+        return isinstance(other, InvokeSpecial) and self.methodref == other.methodref
 
     def copy(self) -> "InvokeSpecial":
-        copy = invokespecial(self.ref)  # type: ignore[call-arg]
+        copy = invokespecial(self.methodref)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, pool.add(self.ref)))
+        stream.write(pack_BH(self.opcode, pool.add(self.methodref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, (MethodrefInfo, InterfaceMethodrefInfo)):
@@ -238,43 +240,44 @@ class InvokeStatic(Instruction):
 
     Attributes
     ----------
-    ref: ConstInfo
+    methodref: ConstInfo
         A method reference constant, used as the method to invoke.
     """
 
-    __slots__ = ("ref",)
+    __slots__ = ("methodref",)
 
-    throws = frozenset({throwable_t})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset({throwable_t})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeStatic":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, ref: ConstInfo) -> None:
+    def __init__(self, methodref: ConstInfo) -> None:
         super().__init__()
-        self.ref = ref
+        self.methodref = methodref
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<InvokeStatic(offset=%i, ref=%s)>" % (self.offset, self.ref)
-        return "<InvokeStatic(ref=%s)>" % self.ref
+            return "<InvokeStatic(offset=%i, methodref=%s)>" % (self.offset, self.methodref)
+        return "<InvokeStatic(methodref=%s)>" % self.methodref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:invokestatic(%s)" % (self.offset, self.ref)
-        return "invokestatic(%s)" % self.ref
+            return "%i:invokestatic(%s)" % (self.offset, self.methodref)
+        return "invokestatic(%s)" % self.methodref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, InvokeStatic) and self.ref == other.ref
+        return isinstance(other, InvokeStatic) and self.methodref == other.methodref
 
     def copy(self) -> "InvokeStatic":
-        copy = invokestatic(self.ref)  # type: ignore[call-arg]
+        copy = invokestatic(self.methodref)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, pool.add(self.ref)))
+        stream.write(pack_BH(self.opcode, pool.add(self.methodref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, MethodrefInfo):
@@ -323,7 +326,7 @@ class InvokeInterface(Instruction):
 
     Attributes
     ----------
-    ref: ConstInfo
+    methodref: ConstInfo
         An interface method reference constant, used as the method to invoke.
     count: int
         The number of arguments to the method.
@@ -331,46 +334,47 @@ class InvokeInterface(Instruction):
         A reserved byte, should be 0.
     """
 
-    __slots__ = ("ref", "count", "reserved")
+    __slots__ = ("methodref", "count", "reserved")
 
-    throws = frozenset({throwable_t})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset({throwable_t})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeInterface":
         index, count, reserved = unpack_HBB(stream.read(4))
         return cls(pool[index], count, reserved)
 
-    def __init__(self, ref: ConstInfo, count: int, reserved: int) -> None:
+    def __init__(self, methodref: ConstInfo, count: int, reserved: int) -> None:
         super().__init__()
-        self.ref = ref
+        self.methodref = methodref
         self.count = count
         self.reserved = reserved
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<InvokeInterface(offset=%i, ref=%s, count=%i)>" % (self.offset, self.ref, self.count)
-        return "<InvokeInterface(ref=%s, count=%i)>" % (self.ref, self.count)
+            return "<InvokeInterface(offset=%i, methodref=%s, count=%i)>" % (self.offset, self.methodref, self.count)
+        return "<InvokeInterface(methodref=%s, count=%i)>" % (self.methodref, self.count)
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:invokeinterface(%s,%i)" % (self.offset, self.ref, self.count)
-        return "invokeinterface(%s,%i)" % (self.ref, self.count)
+            return "%i:invokeinterface(%s,%i)" % (self.offset, self.methodref, self.count)
+        return "invokeinterface(%s,%i)" % (self.methodref, self.count)
 
     def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, InvokeInterface) and
-            self.ref == other.ref and
+            self.methodref == other.methodref and
             self.count == other.count and
             self.reserved == other.reserved
         )
 
     def copy(self) -> "InvokeInterface":
-        copy = invokeinterface(self.ref, self.count, self.reserved)  # type: ignore[call-arg]
+        copy = invokeinterface(self.methodref, self.count, self.reserved)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BHBB(self.opcode, pool.add(self.ref), self.count, self.reserved))
+        stream.write(pack_BHBB(self.opcode, pool.add(self.methodref), self.count, self.reserved))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     # TODO: Verify count is equal to argument size.
@@ -438,47 +442,48 @@ class InvokeDynamic(Instruction):
 
     Attributes
     ----------
-    ref: ConstInfo
+    indyref: ConstInfo
         An invoke dynamic constant, used as the method to invoke in order to compute
         the callsite.
     reserved: int
         Two reserved bytes, should be 0.
     """
 
-    __slots__ = ("ref", "reserved")
+    __slots__ = ("indyref", "reserved")
 
-    throws = frozenset({throwable_t})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset({throwable_t})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeDynamic":
         index, reserved = unpack_HH(stream.read(4))
         return cls(pool[index], reserved)
 
-    def __init__(self, ref: ConstInfo, reserved: int) -> None:
+    def __init__(self, indyref: ConstInfo, reserved: int) -> None:
         super().__init__()
-        self.ref = ref
+        self.indyref = indyref
         self.reserved = reserved
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<InvokeDynamic(offset=%i, ref=%s)>" % (self.offset, self.ref)
-        return "<InvokeDynamic(ref=%s)>" % self.ref
+            return "<InvokeDynamic(offset=%i, indyref=%s)>" % (self.offset, self.indyref)
+        return "<InvokeDynamic(indyref=%s)>" % self.indyref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:invokedynamic(%s)" % (self.offset, self.ref)
-        return "invokedynamic(%s)" % self.ref
+            return "%i:invokedynamic(%s)" % (self.offset, self.indyref)
+        return "invokedynamic(%s)" % self.indyref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, InvokeDynamic) and self.ref == other.ref and self.reserved == other.reserved
+        return isinstance(other, InvokeDynamic) and self.indyref == other.indyref and self.reserved == other.reserved
 
     def copy(self) -> "InvokeDynamic":
-        copy = invokedynamic(self.ref, self.reserved)  # type: ignore[call-arg]
+        copy = invokedynamic(self.indyref, self.reserved)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BHH(self.opcode, pool.add(self.ref), self.reserved))
+        stream.write(pack_BHH(self.opcode, pool.add(self.indyref), self.reserved))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, InvokeDynamicInfo):

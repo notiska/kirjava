@@ -7,12 +7,12 @@ __all__ = (
     "fconst_0", "fconst_1", "fconst_2",
     "dconst_0", "dconst_1",
     "bipush", "sipush",
-    "ldc", "ldc_w", "ldc2_w",
-    "new",
+    "ldc", "ldc_w", "ldc2_w",  # "ldc_l", "ldc_wl", "ldc2_wl",
+    "new",  # "new_l",
     "pop", "pop2", "dup", "dup_x1", "dup_x2", "dup2", "dup2_x1", "dup2_x2", "swap",
     "PushConstant", "BIPush", "SIPush",
-    "LoadConstant", "LoadConstantWide",
-    "New",
+    "LoadConstant", "LoadConstantWide",  # "LoadConstantLinked", "LoadConstantWideLinked",
+    "New",  # "NewLinked",
     "Pop", "Pop2", "Dup", "DupX1", "DupX2", "Dup2", "Dup2X1", "Dup2X2", "Swap",
 )
 
@@ -23,7 +23,7 @@ from . import Instruction
 from .._struct import *
 from ..fmt.constants import *
 from ...backend import f32, f64, i32, i64
-from ...model.types import Class
+from ...model.types import error_t, Class
 from ...model.values.constants import Constant, Double, Float, Integer, Long, Null
 
 if typing.TYPE_CHECKING:
@@ -47,7 +47,9 @@ class PushConstant(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     constant: Constant
 
@@ -211,11 +213,8 @@ class LoadConstant(Instruction):
 
     __slots__ = ("info",)
 
-    @property  # type: ignore[override]
-    def throws(self) -> frozenset[Class]:
-        if isinstance(self.info, (ClassInfo, MethodHandleInfo, DynamicInfo)):
-            return frozenset({Class("java/lang/Error")})  # FIXME: Anything else?
-        return frozenset()
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadConstant":
@@ -240,9 +239,9 @@ class LoadConstant(Instruction):
         return isinstance(other, LoadConstant) and self.opcode == other.opcode and self.info == other.info
 
     def copy(self) -> "LoadConstant":
-        copy = type(self)(self.info)  # type: ignore[call-arg]
+        copy = type(self)(self.info)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, pool.add(self.info))))
@@ -302,6 +301,24 @@ class LoadConstantWide(LoadConstant):
         stream.write(pack_BH(self.opcode, pool.add(self.info)))
 
 
+# class LoadConstantLinked(LoadConstant):
+#     """
+#     A linked `ldc` instruction.
+#     """
+#
+#     lt_throws = frozenset()
+#     linked = True
+
+
+# class LoadConstantWideLinked(LoadConstantLinked):
+#     """
+#     A linked wide constant load instruction.
+#     """
+#
+#     lt_throws = frozenset()
+#     linked = True
+
+
 class New(Instruction):
     """
     A `new` instruction.
@@ -310,43 +327,44 @@ class New(Instruction):
 
     Attributes
     ----------
-    class_: ConstInfo
-        A class constant, used as the class to instantiate.
+    classref: ConstInfo
+        A class constant, used as the type to instantiate.
     """
 
-    __slots__ = ("class_",)
+    __slots__ = ("classref",)
 
-    throws = frozenset({Class("java/lang/Error")})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset()  # TODO: True?
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "New":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, class_: ConstInfo) -> None:
+    def __init__(self, classref: ConstInfo) -> None:
         super().__init__()
-        self.class_ = class_
+        self.classref = classref
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<New(offset=%i, class_=%s)>" % (self.offset, self.class_)
-        return "<New(class_=%s)>" % self.class_
+            return "<New(offset=%i, classref=%s)>" % (self.offset, self.classref)
+        return "<New(classref=%s)>" % self.classref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:new(%s)" % (self.offset, self.class_)
-        return "new(%s)" % self.class_
+            return "%i:new(%s)" % (self.offset, self.classref)
+        return "new(%s)" % self.classref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, New) and self.class_ == other.class_
+        return isinstance(other, New) and self.classref == other.classref
 
     def copy(self) -> "New":
-        copy = new(self.class_)  # type: ignore[call-arg]
+        copy = new(self.classref)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, pool.add(self.class_)))
+        stream.write(pack_BH(self.opcode, pool.add(self.classref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
@@ -362,6 +380,15 @@ class New(Instruction):
     #     codegen.emit(IRNew(step, variable, class_))
 
 
+# class NewLinked(New):
+#     """
+#     A linked `new` instruction.
+#     """
+#
+#     lt_throws = frozenset()
+#     linked = True
+
+
 class Pop(Instruction):
     """
     A `pop` instruction.
@@ -371,7 +398,9 @@ class Pop(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Pop":
@@ -408,7 +437,9 @@ class Pop2(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Pop2":
@@ -444,7 +475,9 @@ class Dup(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup":
@@ -480,7 +513,9 @@ class DupX1(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DupX1":
@@ -516,7 +551,9 @@ class DupX2(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DupX2":
@@ -552,7 +589,9 @@ class Dup2(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2":
@@ -594,7 +633,9 @@ class Dup2X1(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2X1":
@@ -625,7 +666,9 @@ class Dup2X2(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2X2":
@@ -656,7 +699,9 @@ class Swap(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Swap":
@@ -708,11 +753,15 @@ dconst_1 = PushConstant.make(0x0f, "dconst_1", constant=Double(f64(1.0)))  # Dou
 bipush = BIPush.make(0x10, "bipush")
 sipush = SIPush.make(0x11, "sipush")
 
-ldc        = LoadConstant.make(0x12, "ldc")
-ldc_w  = LoadConstantWide.make(0x13, "ldc_w")
-ldc2_w = LoadConstantWide.make(0x14, "ldc2_w")
+ldc               = LoadConstant.make(0x12, "ldc")
+ldc_w         = LoadConstantWide.make(0x13, "ldc_w")
+ldc2_w        = LoadConstantWide.make(0x14, "ldc2_w")
+# ldc_l       = LoadConstantLinked.make(0x12, "ldc_l")
+# ldc_wl  = LoadConstantWideLinked.make(0x13, "ldc_wl")
+# ldc2_wl = LoadConstantWideLinked.make(0x14, "ldc2_wl")
 
-new = New.make(0xbb, "new")
+new         = New.make(0xbb, "new")
+# new_l = NewLinked.make(0xbb, "new_l")
 
 pop        = Pop.make(0x57, "pop")
 pop2      = Pop2.make(0x58, "pop2")

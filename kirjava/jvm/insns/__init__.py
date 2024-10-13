@@ -89,12 +89,15 @@ class Instruction:
         The numeric opcode of this instruction.
     mnemonic: str
         The mnemonic of this instruction.
-    throws: frozenset[Class]
-        The types of exception that this instruction could throw at link-time and/or
-        run-time.
+    lt_throws: frozenset[Class]
+        The types of exception that this instruction can throw at link time.
+    rt_throws: frozenset[Class]
+        The types of exception that this instruction can throw at run time.
     mutated: bool
         Used to denote mutated wide variants of instructions caused by a prefixed
         `wide` opcode.
+    linked: bool
+        Used to denote that this is a linked version of an instruction.
 
     Methods
     -------
@@ -106,6 +109,8 @@ class Instruction:
         Creates a copy of this instruction.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes this instruction to the binary stream.
+    link(self) -> Instruction
+        Creates a linked version of this instruction.
     verify(self, verifier: Verifier) -> None
         Verifies that this instruction is valid.
     """
@@ -118,9 +123,12 @@ class Instruction:
     opcode: int
     mnemonic: str
     since: "Version"  # TODO: This (information is a little annoying to track down).
-    throws: frozenset["Class"]
+
+    lt_throws: frozenset["Class"]
+    rt_throws: frozenset["Class"]
 
     mutated = False
+    linked  = False
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Instruction":
@@ -257,6 +265,20 @@ class Instruction:
         """
 
         raise NotImplementedError("write() is not implemented for %r" % type(self))
+
+    def link(self) -> "Instruction":  # TODO: This.
+        """
+        Creates a linked version of this instruction.
+
+        Returns
+        -------
+        Instruction
+            The linked instruction.
+        """
+
+        # if self.linked
+        #     return self
+        raise NotImplementedError("link() is not implemented for %r" % type(self))
 
     def verify(self, verifier: "Verifier") -> None:
         """

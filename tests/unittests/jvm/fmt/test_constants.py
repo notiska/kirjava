@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import copy
 import unittest
 from io import BytesIO
 from os import SEEK_SET
@@ -60,15 +61,22 @@ class TestConstants(unittest.TestCase):
                 init = self._DEFAULTS.get(subclass)
                 if init is None:
                     self.skipTest("Missing default init values for %r." % subclass)
-                info_no_index = subclass(*init)  # type: ignore[arg-type]
+                info_no_index = subclass(*init)
 
                 print(repr(info_no_index), str(info_no_index), end=" ")
-                info_index = info_no_index.copy()
+                info_index = copy.copy(info_no_index)
                 info_index.index = 2
                 print(repr(info_index), str(info_index))
 
                 self.assertEqual(info_no_index, info_no_index)
                 self.assertEqual(info_no_index, info_index)
+                self.assertIsNot(info_no_index, info_index)
+
+                info_deepcopy = copy.deepcopy(info_index)
+                self.assertEqual(info_index, info_deepcopy)
+                self.assertEqual(info_no_index, info_deepcopy)
+                self.assertIsNot(info_index, info_deepcopy)
+                self.assertIsNot(info_no_index, info_deepcopy)
 
                 self.assertEqual(repr(info_no_index), repr(info_index).replace("index=%i, " % info_index.index, ""))
                 self.assertEqual(str(info_no_index), str(info_index).replace("#%i:" % info_index.index, ""))

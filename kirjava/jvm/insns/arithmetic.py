@@ -40,7 +40,9 @@ class BinOp(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     type: Type
 
@@ -357,7 +359,9 @@ class Negate(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    lt_throws = frozenset()
+    rt_throws = frozenset()
+    linked = True
 
     type: Type
 

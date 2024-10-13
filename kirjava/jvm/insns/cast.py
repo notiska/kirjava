@@ -2,8 +2,9 @@
 
 __all__ = (
     "i2l", "i2f", "i2d", "l2i", "l2f", "l2d", "f2i", "f2l", "f2d", "d2i", "d2l", "d2f", "i2b", "i2c", "i2s",
-    "checkcast", "instanceof",
-    "ValueCast", "Truncate", "CheckCast", "InstanceOf",
+    "checkcast", "instanceof",  # "checkcast_l", "instanceof_l",
+    "ValueCast", "Truncate",
+    "CheckCast", "InstanceOf",  # "CheckCastLinked", "InstanceOfLinked",
 )
 
 import typing
@@ -31,7 +32,9 @@ class ValueCast(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset()
+    rt_throws = frozenset()
+    lt_throws = frozenset()
+    linked = True
 
     type_in:  Primitive
     type_out: Primitive
@@ -94,41 +97,47 @@ class CheckCast(Instruction):
     A `checkcast` instruction.
 
     Performs a type cast (reference to reference) on a reference stack value.
+
+    Attributes
+    ----------
+    classref: ConstInfo
+        A class constant, used as the type to cast to.
     """
 
-    __slots__ = ("class_",)
+    __slots__ = ("classref",)
 
-    throws = frozenset({Class("java/lang/ClassCastException"), Class("java/lang/Error")})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset({Class("java/lang/ClassCastException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "CheckCast":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, class_: ConstInfo) -> None:
+    def __init__(self, classref: ConstInfo) -> None:
         super().__init__()
-        self.class_ = class_
+        self.classref = classref
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<CheckCast(offset=%i, class_=%s)>" % (self.offset, self.class_)
-        return "<CheckCast(class_=%s)>" % self.class_
+            return "<CheckCast(offset=%i, classref=%s)>" % (self.offset, self.classref)
+        return "<CheckCast(classref=%s)>" % self.classref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:checkcast(%s)" % (self.offset, self.class_)
-        return "checkcast(%s)" % self.class_
+            return "%i:checkcast(%s)" % (self.offset, self.classref)
+        return "checkcast(%s)" % self.classref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, CheckCast) and self.class_ == other.class_
+        return isinstance(other, CheckCast) and self.classref == other.classref
 
     def copy(self) -> "CheckCast":
-        copy = checkcast(self.class_)  # type: ignore[call-arg]
+        copy = checkcast(self.classref)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, pool.add(self.class_)))
+        stream.write(pack_BH(self.opcode, pool.add(self.classref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
@@ -153,41 +162,47 @@ class InstanceOf(Instruction):
 
     Checks if a reference stack value is an instance of a class or pseudo-class
     (arrays).
+
+    Attributes
+    ----------
+    classref: ConstInfo
+        A class constant, used as the type to check against.
     """
 
-    __slots__ = ("class_",)
+    __slots__ = ("classref",)
 
-    throws = frozenset({Class("java/lang/Error")})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InstanceOf":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, class_: ConstInfo) -> None:
+    def __init__(self, classref: ConstInfo) -> None:
         super().__init__()
-        self.class_ = class_
+        self.classref = classref
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<InstanceOf(offset=%i, class_=%s)>" % (self.offset, self.class_)
-        return "<InstanceOf(class_=%s)>" % self.class_
+            return "<InstanceOf(offset=%i, classref=%s)>" % (self.offset, self.classref)
+        return "<InstanceOf(classref=%s)>" % self.classref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:instanceof(%s)" % (self.offset, self.class_)
-        return "instanceof(%s)" % self.class_
+            return "%i:instanceof(%s)" % (self.offset, self.classref)
+        return "instanceof(%s)" % self.classref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, InstanceOf) and self.class_ == other.class_
+        return isinstance(other, InstanceOf) and self.classref == other.classref
 
     def copy(self) -> "InstanceOf":
-        copy = instanceof(self.class_)  # type: ignore[call-arg]
+        copy = instanceof(self.classref)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, pool.add(self.class_)))
+        stream.write(pack_BH(self.opcode, pool.add(self.classref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
@@ -219,6 +234,24 @@ class InstanceOf(Instruction):
     #     codegen.emit(IRInstanceOf(step, variable, codegen.value(value), self.class_.unwrap().as_rtype()))
 
 
+# class CheckCastLinked(CheckCast):
+#     """
+#     A linked `checkcast` instruction.
+#     """
+#
+#     lt_throws = frozenset()
+#     linked = True
+#
+#
+# class InstanceOfLinked(InstanceOf):
+#     """
+#     A linked `instanceof` instruction.
+#     """
+#
+#     lt_throws = frozenset()
+#     linked = True
+
+
 i2l = ValueCast.make(0x85, "i2l", type_in=int_t, type_out=long_t)
 i2f = ValueCast.make(0x86, "i2f", type_in=int_t, type_out=float_t)
 i2d = ValueCast.make(0x87, "i2d", type_in=int_t, type_out=double_t)
@@ -236,5 +269,7 @@ i2b = Truncate.make(0x91, "i2b", type_out=byte_t)
 i2c = Truncate.make(0x92, "i2c", type_out=char_t)
 i2s = Truncate.make(0x93, "i2s", type_out=short_t)
 
-checkcast  = CheckCast.make(0xc0, "checkcast")
-instanceof = InstanceOf.make(0xc1, "instanceof")
+checkcast           = CheckCast.make(0xc0, "checkcast")
+instanceof         = InstanceOf.make(0xc1, "instanceof")
+# checkcast_l   = CheckCastLinked.make(0xc0, "checkcast_l")
+# instanceof_l = InstanceOfLinked.make(0xc1, "instanceof_l")

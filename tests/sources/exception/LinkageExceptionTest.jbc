@@ -42,7 +42,7 @@ public class LinkageExceptionTest extends java.lang.Object {
     private static void testCheckCast() {
         entry:
             ldc "test" // aconst_null
-            checkcast abc // Interesting note is that null does not cause this to throw.
+            checkcast abc // Won't throw on null due to order of operation.
             pop
             return
         catch java.lang.NoClassDefFoundError entry handler

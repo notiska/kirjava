@@ -12,6 +12,7 @@ __all__ = (
 )
 
 import typing
+from copy import deepcopy
 from functools import cache
 from typing import IO
 
@@ -25,6 +26,8 @@ if typing.TYPE_CHECKING:
     from ..verify import Verifier
 
 
+# FIXME: It would be nice to have some external indication as to preferred type? Due to reasons attributes may have to
+#        be marked as type `ConstInfo`, but ideally are i.e. `UTF8Info`. Could be done with generics?
 class ConstInfo:
     """
     A cp_info struct/union.
@@ -52,10 +55,8 @@ class ConstInfo:
     lookup(tag: int) -> type[ConstInfo] | None
         Looks up a constant info type by tag.
 
-    copy(self) -> ConstInfo
-        Creates a copy of this cosntant.
-    populate(self, pool: ConstPool) -> None
-        Dereferences any indices in the constant.
+    deref(self, pool: ConstPool) -> None
+        Dereferences any indices in this constant.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes the constant info to a binary stream.
     verify(self, verifier: Verifier) -> None
@@ -120,6 +121,7 @@ class ConstInfo:
             raise ValueError("unknown constant pool tag %i" % tag)
         info = subclass._read(stream, pool)
         info.index = pool.maximum
+        info.index = len(pool)
         return info
 
     # @staticmethod
@@ -164,6 +166,12 @@ class ConstInfo:
     def __init__(self, index: int | None = None) -> None:
         self.index = index
 
+    def __copy__(self) -> "ConstInfo":
+        raise NotImplementedError(f"copy.copy() is not implemented for {self!r}")
+
+    # def __deepcopy__(self, memo: dict[int, object]) -> "ConstInfo":
+    #     raise NotImplementedError("copy.deepcopy() is not implemented for %r" % type(self))
+
     def __repr__(self) -> str:
         raise NotImplementedError("repr() is not implemented for %r" % type(self))
 
@@ -183,16 +191,9 @@ class ConstInfo:
     # def __set__(self, instance: object, value: "ConstInfo") -> None:
     #     instance.__dict__[self.__name__] = value
 
-    def copy(self) -> "ConstInfo":
+    def deref(self, pool: "ConstPool") -> None:
         """
-        Creates a copy of this constant.
-        """
-
-        raise NotImplementedError("copy() is not implemented for %r" % type(self))
-
-    def populate(self, pool: "ConstPool") -> None:
-        """
-        Dereferences any indices in the constant.
+        Dereferences any indices in this constant.
 
         Parameters
         ----------
@@ -200,7 +201,7 @@ class ConstInfo:
             The constant pool to dereference from.
         """
 
-        raise NotImplementedError("populate() is not implemented for %r" % type(self))
+        raise NotImplementedError("deref() is not implemented for %r" % type(self))
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
@@ -265,11 +266,14 @@ class ConstIndex(ConstInfo):
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ConstIndex":
-        return cls(pool.maximum)  # Shouldn't really happen, though.
+        return cls(len(pool))  # Shouldn't really happen, though.
 
     def __init__(self, index: int) -> None:
         super().__init__(index)
         self.index: int
+
+    def __copy__(self) -> "ConstIndex":
+        return ConstIndex(self.index)
 
     def __repr__(self) -> str:
         return "<ConstIndex(index=%i)>" % self.index
@@ -280,10 +284,7 @@ class ConstIndex(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ConstIndex) and self.index == other.index
 
-    def copy(self) -> "ConstIndex":
-        return ConstIndex(self.index)
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         ...
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -326,6 +327,11 @@ class UTF8Info(ConstInfo):
         super().__init__()
         self.value = value
 
+    def __copy__(self) -> "UTF8Info":
+        copy = UTF8Info(self.value)
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<UTF8Info(index=%i, value=%r)>" % (self.index, self.value)
@@ -339,12 +345,7 @@ class UTF8Info(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, UTF8Info) and self.value == other.value
 
-    def copy(self) -> "UTF8Info":
-        copy = UTF8Info(self.value)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         ...
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -393,6 +394,11 @@ class IntegerInfo(ConstInfo):
         super().__init__()
         self.value = value
 
+    def __copy__(self) -> "IntegerInfo":
+        copy = IntegerInfo(self.value)
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<IntegerInfo(index=%i, value=%r)>" % (self.index, self.value)
@@ -406,12 +412,7 @@ class IntegerInfo(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, IntegerInfo) and self.value == other.value
 
-    def copy(self) -> "IntegerInfo":
-        copy = IntegerInfo(self.value)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         ...
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -452,6 +453,11 @@ class FloatInfo(ConstInfo):
         super().__init__()
         self.value = value
 
+    def __copy__(self) -> "FloatInfo":
+        copy = FloatInfo(self.value)
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<FloatInfo(index=%i, value=%r)>" % (self.index, self.value)
@@ -472,12 +478,7 @@ class FloatInfo(ConstInfo):
             return True
         return False
 
-    def copy(self) -> "FloatInfo":
-        copy = FloatInfo(self.value)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         ...
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -518,6 +519,11 @@ class LongInfo(ConstInfo):
         super().__init__()
         self.value = value
 
+    def __copy__(self) -> "LongInfo":
+        copy = LongInfo(self.value)
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<LongInfo(index=%i, value=%r)>" % (self.index, self.value)
@@ -531,12 +537,7 @@ class LongInfo(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LongInfo) and self.value == other.value
 
-    def copy(self) -> "LongInfo":
-        copy = LongInfo(self.value)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         ...
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -577,6 +578,11 @@ class DoubleInfo(ConstInfo):
         super().__init__()
         self.value = value
 
+    def __copy__(self) -> "DoubleInfo":
+        copy = DoubleInfo(self.value)
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<DoubleInfo(index=%i, value=%r)>" % (self.index, self.value)
@@ -596,12 +602,7 @@ class DoubleInfo(ConstInfo):
             return True
         return False
 
-    def copy(self) -> "DoubleInfo":
-        copy = DoubleInfo(self.value)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         ...
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -643,6 +644,16 @@ class ClassInfo(ConstInfo):
         super().__init__()
         self.name = name
 
+    def __copy__(self) -> "ClassInfo":
+        copy = ClassInfo(self.name)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "ClassInfo":
+        copy = ClassInfo(deepcopy(self.name, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<ClassInfo(index=%i, name=%s)>" % (self.index, self.name)
@@ -657,12 +668,7 @@ class ClassInfo(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ClassInfo) and self.name == other.name
 
-    def copy(self) -> "ClassInfo":
-        copy = ClassInfo(self.name)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.name, ConstIndex):
             self.name = pool[self.name.index]
 
@@ -707,6 +713,16 @@ class StringInfo(ConstInfo):
         super().__init__()
         self.value = value
 
+    def __copy__(self) -> "StringInfo":
+        copy = StringInfo(self.value)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "StringInfo":
+        copy = StringInfo(deepcopy(self.value, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<StringInfo(index=%i, value=%s)>" % (self.index, self.value)
@@ -720,12 +736,7 @@ class StringInfo(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, StringInfo) and self.value == other.value
 
-    def copy(self) -> "StringInfo":
-        copy = StringInfo(self.value)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.value, ConstIndex):
             self.value = pool[self.value.index]
 
@@ -774,6 +785,16 @@ class FieldrefInfo(ConstInfo):
         self.class_ = class_
         self.name_and_type = name_and_type
 
+    def __copy__(self) -> "FieldrefInfo":
+        copy = FieldrefInfo(self.class_, self.name_and_type)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "FieldrefInfo":
+        copy = FieldrefInfo(deepcopy(self.class_, memo), deepcopy(self.name_and_type, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<FieldrefInfo(index=%i, class_=%s, name_and_type=%s)>" % (
@@ -793,12 +814,7 @@ class FieldrefInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def copy(self) -> "FieldrefInfo":
-        copy = FieldrefInfo(self.class_, self.name_and_type)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.class_, ConstIndex):
             self.class_ = pool[self.class_.index]
         if isinstance(self.name_and_type, ConstIndex):
@@ -847,6 +863,16 @@ class MethodrefInfo(ConstInfo):
         self.class_ = class_
         self.name_and_type = name_and_type
 
+    def __copy__(self) -> "MethodrefInfo":
+        copy = MethodrefInfo(self.class_, self.name_and_type)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "MethodrefInfo":
+        copy = MethodrefInfo(deepcopy(self.class_, memo), deepcopy(self.name_and_type, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<MethodrefInfo(index=%i, class_=%s, name_and_type=%s)>" % (
@@ -866,12 +892,7 @@ class MethodrefInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def copy(self) -> "MethodrefInfo":
-        copy = MethodrefInfo(self.class_, self.name_and_type)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.class_, ConstIndex):
             self.class_ = pool[self.class_.index]
         if isinstance(self.name_and_type, ConstIndex):
@@ -920,6 +941,16 @@ class InterfaceMethodrefInfo(ConstInfo):
         self.class_ = class_
         self.name_and_type = name_and_type
 
+    def __copy__(self) -> "InterfaceMethodrefInfo":
+        copy = InterfaceMethodrefInfo(self.class_, self.name_and_type)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "InterfaceMethodrefInfo":
+        copy = InterfaceMethodrefInfo(deepcopy(self.class_, memo), deepcopy(self.name_and_type, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<InterfaceMethodrefInfo(index=%i, class_=%s, name_and_type=%s)>" % (
@@ -939,12 +970,7 @@ class InterfaceMethodrefInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def copy(self) -> "InterfaceMethodrefInfo":
-        copy = InterfaceMethodrefInfo(self.class_, self.name_and_type)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.class_, ConstIndex):
             self.class_ = pool[self.class_.index]
         if isinstance(self.name_and_type, ConstIndex):
@@ -992,6 +1018,16 @@ class NameAndTypeInfo(ConstInfo):
         self.name = name
         self.descriptor = descriptor
 
+    def __copy__(self) -> "NameAndTypeInfo":
+        copy = NameAndTypeInfo(self.name, self.descriptor)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "NameAndTypeInfo":
+        copy = NameAndTypeInfo(deepcopy(self.name, memo), deepcopy(self.descriptor, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<NameAndTypeInfo(index=%i, name=%s, descriptor=%s)>" % (
@@ -1007,12 +1043,7 @@ class NameAndTypeInfo(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NameAndTypeInfo) and self.name == other.name and self.descriptor == other.descriptor
 
-    def copy(self) -> "NameAndTypeInfo":
-        copy = NameAndTypeInfo(self.name, self.descriptor)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.name, ConstIndex):
             self.name = pool[self.name.index]
         if isinstance(self.descriptor, ConstIndex):
@@ -1099,6 +1130,16 @@ class MethodHandleInfo(ConstInfo):
         self.kind = kind
         self.ref = ref
 
+    def __copy__(self) -> "MethodHandleInfo":
+        copy = MethodHandleInfo(self.kind, self.ref)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "MethodHandleInfo":
+        copy = MethodHandleInfo(self.kind, deepcopy(self.ref, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<MethodHandleInfo(index=%i, kind=%i, ref=%s)>" % (self.index, self.kind, self.ref)
@@ -1112,12 +1153,7 @@ class MethodHandleInfo(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MethodHandleInfo) and self.kind == other.kind and self.ref == other.ref
 
-    def copy(self) -> "MethodHandleInfo":
-        copy = MethodHandleInfo(self.kind, self.ref)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.ref, ConstIndex):
             self.ref = pool[self.ref.index]
 
@@ -1241,6 +1277,16 @@ class MethodTypeInfo(ConstInfo):
         super().__init__()
         self.descriptor = descriptor
 
+    def __copy__(self) -> "MethodTypeInfo":
+        copy = MethodTypeInfo(self.descriptor)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "MethodTypeInfo":
+        copy = MethodTypeInfo(deepcopy(self.descriptor, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<MethodTypeInfo(index=%i, descriptor=%s)>" % (self.index, self.descriptor)
@@ -1254,12 +1300,7 @@ class MethodTypeInfo(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MethodTypeInfo) and self.descriptor == other.descriptor
 
-    def copy(self) -> "MethodTypeInfo":
-        copy = MethodTypeInfo(self.descriptor)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.descriptor, ConstIndex):
             self.descriptor = pool[self.descriptor.index]
 
@@ -1309,6 +1350,16 @@ class DynamicInfo(ConstInfo):
         self.attr_index = attr_index
         self.name_and_type = name_and_type
 
+    def __copy__(self) -> "DynamicInfo":
+        copy = DynamicInfo(self.attr_index, self.name_and_type)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "DynamicInfo":
+        copy = DynamicInfo(self.attr_index, deepcopy(self.name_and_type, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<DynamicInfo(index=%i, attr_index=%i, name_and_type=%s)>" % (
@@ -1328,12 +1379,7 @@ class DynamicInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def copy(self) -> "DynamicInfo":
-        copy = DynamicInfo(self.attr_index, self.name_and_type)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.name_and_type, ConstIndex):
             self.name_and_type = pool[self.name_and_type.index]
 
@@ -1384,6 +1430,16 @@ class InvokeDynamicInfo(ConstInfo):
         self.attr_index = attr_index
         self.name_and_type = name_and_type
 
+    def __copy__(self) -> "InvokeDynamicInfo":
+        copy = InvokeDynamicInfo(self.attr_index, self.name_and_type)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "InvokeDynamicInfo":
+        copy = InvokeDynamicInfo(self.attr_index, deepcopy(self.name_and_type, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<InvokeDynamicInfo(index=%i, attr_index=%i, name_and_type=%s)>" % (
@@ -1403,12 +1459,7 @@ class InvokeDynamicInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def copy(self) -> "InvokeDynamicInfo":
-        copy = InvokeDynamicInfo(self.attr_index, self.name_and_type)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.name_and_type, ConstIndex):
             self.name_and_type = pool[self.name_and_type.index]
 
@@ -1450,6 +1501,16 @@ class ModuleInfo(ConstInfo):
         super().__init__()
         self.name = name
 
+    def __copy__(self) -> "ModuleInfo":
+        copy = ModuleInfo(self.name)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "ModuleInfo":
+        copy = ModuleInfo(deepcopy(self.name, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<ModuleInfo(index=%i, name=%s)>" % (self.index, self.name)
@@ -1463,12 +1524,7 @@ class ModuleInfo(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ModuleInfo) and self.name == other.name
 
-    def copy(self) -> "ModuleInfo":
-        copy = ModuleInfo(self.name)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.name, ConstIndex):
             self.name = pool[self.name.index]
 
@@ -1506,6 +1562,16 @@ class PackageInfo(ConstInfo):
         super().__init__()
         self.name = name
 
+    def __copy__(self) -> "PackageInfo":
+        copy = PackageInfo(self.name)
+        copy.index = self.index
+        return copy
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "PackageInfo":
+        copy = PackageInfo(deepcopy(self.name, memo))
+        copy.index = self.index
+        return copy
+
     def __repr__(self) -> str:
         if self.index is not None:
             return "<PackageInfo(index=%i, name=%s)>" % (self.index, self.name)
@@ -1519,12 +1585,7 @@ class PackageInfo(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PackageInfo) and self.name == other.name
 
-    def copy(self) -> "PackageInfo":
-        copy = PackageInfo(self.name)
-        copy.index = self.index
-        return copy
-
-    def populate(self, pool: "ConstPool") -> None:
+    def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.name, ConstIndex):
             self.name = pool[self.name.index]
 

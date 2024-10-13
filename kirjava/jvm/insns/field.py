@@ -12,7 +12,7 @@ from . import Instruction
 # from .._desc import parse_field_descriptor
 from .._struct import *
 from ..fmt.constants import ClassInfo, ConstInfo, FieldrefInfo, NameAndTypeInfo
-from ...model.types import Class
+from ...model.types import error_t, Class
 # from ...model.types import *
 # from ...model.values.constants import Null
 
@@ -31,46 +31,47 @@ class GetStatic(Instruction):
 
     Attributes
     ----------
-    ref: ConstInfo
+    fieldref: ConstInfo
         A field reference constant, used as the static field to get.
     """
 
-    __slots__ = ("ref",)
+    __slots__ = ("fieldref",)
 
     # https://docs.oracle.com/javase/specs/jvms/se22/html/jvms-5.html#jvms-5.5
     # throws = frozenset({Class("java/lang/NoClassDefFoundError"), Class("java/lang/ExceptionInInitializerError")})
     # Narrow types ^^^ not really needed as `java/lang/Error` encapsulates all.
-    throws = frozenset({Class("java/lang/Error")})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "GetStatic":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, ref: ConstInfo) -> None:
+    def __init__(self, fieldref: ConstInfo) -> None:
         super().__init__()
-        self.ref = ref
+        self.fieldref = fieldref
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<GetStatic(offset=%i, ref=%s)>" % (self.offset, self.ref)
-        return "<GetStatic(ref=%s)>" % self.ref
+            return "<GetStatic(offset=%i, fieldref=%s)>" % (self.offset, self.fieldref)
+        return "<GetStatic(fieldref=%s)>" % self.fieldref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:getstatic(%s)" % (self.offset, self.ref)
-        return "getstatic(%s)" % self.ref
+            return "%i:getstatic(%s)" % (self.offset, self.fieldref)
+        return "getstatic(%s)" % self.fieldref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, GetStatic) and self.ref == other.ref
+        return isinstance(other, GetStatic) and self.fieldref == other.fieldref
 
     def copy(self) -> "GetStatic":
-        copy = getstatic(self.ref)  # type: ignore[call-arg]
+        copy = getstatic(self.fieldref)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, pool.add(self.ref)))
+        stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
@@ -107,43 +108,44 @@ class PutStatic(Instruction):
 
     Attributes
     ----------
-    ref: ConstInfo
+    fieldref: ConstInfo
         A field reference constant, used as the static field to set.
     """
 
-    __slots__ = ("ref",)
+    __slots__ = ("fieldref",)
 
-    throws = frozenset({Class("java/lang/Error")})  # See above for reasoning.
+    lt_throws = frozenset({error_t})  # See above for reasoning.
+    rt_throws = frozenset()
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PutStatic":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, ref: ConstInfo) -> None:
+    def __init__(self, fieldref: ConstInfo) -> None:
         super().__init__()
-        self.ref = ref
+        self.fieldref = fieldref
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<PutStatic(offset=%i, ref=%s)>" % (self.offset, self.ref)
-        return "<PutStatic(ref=%s)>" % self.ref
+            return "<PutStatic(offset=%i, fieldref=%s)>" % (self.offset, self.fieldref)
+        return "<PutStatic(fieldref=%s)>" % self.fieldref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:putstatic(%s)" % (self.offset, self.ref)
-        return "putstatic(%s)" % self.ref
+            return "%i:putstatic(%s)" % (self.offset, self.fieldref)
+        return "putstatic(%s)" % self.fieldref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, PutStatic) and self.ref == other.ref
+        return isinstance(other, PutStatic) and self.fieldref == other.fieldref
 
     def copy(self) -> "PutStatic":
-        copy = putstatic(self.ref)  # type: ignore[call-arg]
+        copy = putstatic(self.fieldref)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, pool.add(self.ref)))
+        stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
@@ -178,43 +180,44 @@ class GetField(Instruction):
 
     Attributes
     ----------
-    ref: ConstInfo
+    fieldref: ConstInfo
         A field reference constant, used as the field to get.
     """
 
-    __slots__ = ("ref",)
+    __slots__ = ("fieldref",)
 
-    throws = frozenset({Class("java/lang/Error"), Class("java/lang/NullPointerException")})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset({Class("java/lang/NullPointerException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "GetField":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, ref: ConstInfo) -> None:
+    def __init__(self, fieldref: ConstInfo) -> None:
         super().__init__()
-        self.ref = ref
+        self.fieldref = fieldref
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<GetField(offset=%i, ref=%s)>" % (self.offset, self.ref)
-        return "<GetField(ref=%s)>" % self.ref
+            return "<GetField(offset=%i, fieldref=%s)>" % (self.offset, self.fieldref)
+        return "<GetField(fieldref=%s)>" % self.fieldref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:getfield(%s)" % (self.offset, self.ref)
-        return "getfield(%s)" % self.ref
+            return "%i:getfield(%s)" % (self.offset, self.fieldref)
+        return "getfield(%s)" % self.fieldref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, GetField) and self.ref == other.ref
+        return isinstance(other, GetField) and self.fieldref == other.fieldref
 
     def copy(self) -> "GetField":
-        copy = getfield(self.ref)  # type: ignore[call-arg]
+        copy = getfield(self.fieldref)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, pool.add(self.ref)))
+        stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
@@ -259,43 +262,44 @@ class PutField(Instruction):
 
     Attributes
     ----------
-    ref: ConstInfo
+    fieldref: ConstInfo
         A field reference constant, used as the field to set.
     """
 
-    __slots__ = ("ref",)
+    __slots__ = ("fieldref",)
 
-    throws = frozenset({Class("java/lang/Error"), Class("java/lang/NullPointerException")})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset({Class("java/lang/NullPointerException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PutField":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, ref: ConstInfo) -> None:
+    def __init__(self, fieldref: ConstInfo) -> None:
         super().__init__()
-        self.ref = ref
+        self.fieldref = fieldref
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<PutField(offset=%i, ref=%s)>" % (self.offset, self.ref)
-        return "<PutField(ref=%s)>" % self.ref
+            return "<PutField(offset=%i, fieldref=%s)>" % (self.offset, self.fieldref)
+        return "<PutField(fieldref=%s)>" % self.fieldref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:putfield(%s)" % (self.offset, self.ref)
-        return "putfield(%s)" % self.ref
+            return "%i:putfield(%s)" % (self.offset, self.fieldref)
+        return "putfield(%s)" % self.fieldref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, PutField) and self.ref == other.ref
+        return isinstance(other, PutField) and self.fieldref == other.fieldref
 
     def copy(self) -> "PutField":
-        copy = putfield(self.ref)  # type: ignore[call-arg]
+        copy = putfield(self.fieldref)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, pool.add(self.ref)))
+        stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):

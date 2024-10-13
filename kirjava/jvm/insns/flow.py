@@ -47,7 +47,10 @@ class Jump(Instruction):
 
     __slots__ = ("delta",)
 
-    throws = frozenset()
+    rt_throws = frozenset()
+    lt_throws = frozenset()
+    linked = True
+
     conditional = False
 
     @classmethod
@@ -520,7 +523,9 @@ class Switch(Instruction):
 
     __slots__ = ("default", "offsets")
 
-    throws = frozenset()
+    rt_throws = frozenset()
+    lt_throws = frozenset()
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Instruction":
@@ -727,7 +732,7 @@ class Return(Jump):
 
     __slots__ = ()
 
-    throws = frozenset({Class("java/lang/IllegalMonitorStateException")})
+    rt_throws = frozenset({Class("java/lang/IllegalMonitorStateException")})
 
     type: Type
 
@@ -782,7 +787,7 @@ class AThrow(Jump):
 
     __slots__ = ()
 
-    throws = frozenset({throwable_t})  # Specifics (monitor state / NPE) aren't really needed in this case.
+    rt_throws = frozenset({throwable_t})  # Specifics (monitor state / NPE) aren't really needed in this case.
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "AThrow":

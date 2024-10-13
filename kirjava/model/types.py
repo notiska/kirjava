@@ -12,7 +12,7 @@ __all__ = (
 
     "uninitialized_t", "uninitialized_this_t",
 
-    "object_t", "class_t", "throwable_t", "string_t",
+    "object_t", "class_t", "string_t", "throwable_t", "error_t", "exception_t",
     "method_type_t", "method_handle_t",
 
     "boxed_boolean_t", "boxed_byte_t", "boxed_short_t", "boxed_char_t", "boxed_int_t", "boxed_long_t",
@@ -61,6 +61,8 @@ class Type:
     """
 
     __slots__ = ("__weakref__", "name", "wide", "abstract", "_hash")
+
+    # TODO: Should make these properties read-only rather than having them as attrs.
 
     def __init__(self, name: str, *, wide: bool = False, abstract: bool = False) -> None:
         self.name = name
@@ -651,8 +653,10 @@ uninitialized_this_t = _UninitializedThis()
 # Important class types
 object_t    = Class("java/lang/Object")
 class_t     = Class("java/lang/Class")
-throwable_t = Class("java/lang/Throwable")
 string_t    = Class("java/lang/String")
+throwable_t = Class("java/lang/Throwable")
+error_t     = Class("java/lang/Error")
+exception_t = Class("java/lang/Exception")
 
 method_type_t   = Class("java/lang/invoke/MethodType")
 method_handle_t = Class("java/lang/invoke/MethodHandle")

@@ -3,8 +3,11 @@
 __all__ = (
     "iaload", "laload", "faload", "daload", "aaload", "baload", "caload", "saload",
     "iastore", "lastore", "fastore", "dastore", "aastore", "bastore", "castore", "sastore",
-    "newarray", "anewarray", "multianewarray", "arraylength",
-    "ArrayLoad", "ArrayStore", "NewArray", "ANewArray", "MultiANewArray", "ArrayLength",
+    "newarray", "anewarray", "multianewarray",  # "anewarray_l", "multianewarray_l",
+    "arraylength",
+    "ArrayLoad", "ArrayStore", "NewArray",
+    "ANewArray", "MultiANewArray",  # "ANewArrayLinked", "MultiANewArrayLinked",
+    "ArrayLength",
 )
 
 import typing
@@ -38,7 +41,9 @@ class ArrayLoad(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset({Class("java/lang/ArrayIndexOutOfBoundsException"), Class("java/lang/NullPointerException")})
+    lt_throws = frozenset()
+    rt_throws = frozenset({Class("java/lang/ArrayIndexOutOfBoundsException"), Class("java/lang/NullPointerException")})
+    linked = True
 
     type: Type
 
@@ -103,7 +108,9 @@ class ArrayStore(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset({Class("java/lang/ArrayIndexOutOfBoundsException"), Class("java/lang/NullPointerException")})
+    lt_throws = frozenset()
+    rt_throws = frozenset({Class("java/lang/ArrayIndexOutOfBoundsException"), Class("java/lang/NullPointerException")})
+    linked = True
 
     type: Type
 
@@ -178,7 +185,9 @@ class NewArray(Instruction):
 
     __slots__ = ("tag",)
 
-    throws = frozenset({Class("java/lang/NegativeArraySizeException")})
+    lt_throws = frozenset()
+    rt_throws = frozenset({Class("java/lang/NegativeArraySizeException")})
+    linked = True
 
     TAG_BOOLEAN = 4
     TAG_CHAR    = 5
@@ -259,43 +268,44 @@ class ANewArray(Instruction):
 
     Attributes
     ----------
-    class_: ConstInfo
+    classref: ConstInfo
         A class constant, used as the type of the array to create.
     """
 
-    __slots__ = ("class_",)
+    __slots__ = ("classref",)
 
-    throws = frozenset({Class("java/lang/Error"), Class("java/lang/NegativeArraySizeException")})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset({Class("java/lang/NegativeArraySizeException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ANewArray":
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, class_: ConstInfo) -> None:
+    def __init__(self, classref: ConstInfo) -> None:
         super().__init__()
-        self.class_ = class_
+        self.classref = classref
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<ANewArray(offset=%i, class_=%s)>" % (self.offset, self.class_)
-        return "<ANewArray(class_=%s)>" % self.class_
+            return "<ANewArray(offset=%i, classref=%s)>" % (self.offset, self.classref)
+        return "<ANewArray(classref=%s)>" % self.classref
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:anewarray(%s)" % (self.offset, self.class_)
-        return "anewarray(%s)" % self.class_
+            return "%i:anewarray(%s)" % (self.offset, self.classref)
+        return "anewarray(%s)" % self.classref
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, ANewArray) and self.class_ == other.class_
+        return isinstance(other, ANewArray) and self.classref == other.classref
 
     def copy(self) -> "ANewArray":
-        copy = anewarray(self.class_)  # type: ignore[call-arg]
+        copy = anewarray(self.classref)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(self.opcode, pool.add(self.class_)))
+        stream.write(pack_BH(self.opcode, pool.add(self.classref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
@@ -334,47 +344,53 @@ class MultiANewArray(Instruction):
 
     Attributes
     ----------
-    class_: ConstInfo
+    classref: ConstInfo
         A class constant, used as the type of the array to create.
     dimensions: int
         The number of dimensions to create.
     """
 
-    __slots__ = ("class_", "dimensions")
+    __slots__ = ("classref", "dimensions")
 
-    throws = frozenset({Class("java/lang/Error"), Class("java/lang/NegativeArraySizeException")})
+    lt_throws = frozenset({error_t})
+    rt_throws = frozenset({Class("java/lang/NegativeArraySizeException")})
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MultiANewArray":
         index, dimensions = unpack_HB(stream.read(3))
         return cls(pool[index], dimensions)
 
-    def __init__(self, class_: ConstInfo, dimensions: int) -> None:
+    def __init__(self, classref: ConstInfo, dimensions: int) -> None:
         super().__init__()
-        self.class_ = class_
+        self.classref = classref
         self.dimensions = dimensions
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return "<MultiANewArray(offset=%i, class_=%s, dimensions=%i)>" % (self.offset, self.class_, self.dimensions)
-        return "<MultiANewArray(class_=%s, dimensions=%i)>" % (self.class_, self.dimensions)
+            return "<MultiANewArray(offset=%i, classref=%s, dimensions=%i)>" % (
+                self.offset, self.classref, self.dimensions,
+            )
+        return "<MultiANewArray(classref=%s, dimensions=%i)>" % (self.classref, self.dimensions)
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return "%i:multianewarray(%s,%i)" % (self.offset, self.class_, self.dimensions)
-        return "multianewarray(%s,%i)" % (self.class_, self.dimensions)
+            return "%i:multianewarray(%s,%i)" % (self.offset, self.classref, self.dimensions)
+        return "multianewarray(%s,%i)" % (self.classref, self.dimensions)
 
     def __eq__(self, other: object) -> bool:
-        # Lol, just fits.
-        return isinstance(other, MultiANewArray) and self.class_ == other.class_ and self.dimensions == other.dimensions
+        return (
+            isinstance(other, MultiANewArray) and
+            self.classref == other.classref and
+            self.dimensions == other.dimensions
+        )
 
     def copy(self) -> "MultiANewArray":
-        copy = multianewarray(self.class_, self.dimensions)  # type: ignore[call-arg]
+        copy = multianewarray(self.classref, self.dimensions)  # type: ignore[call-arg]
         copy.offset = self.offset
         return copy  # type: ignore[return-value]
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BHB(self.opcode, pool.add(self.class_), self.dimensions))
+        stream.write(pack_BHB(self.opcode, pool.add(self.classref), self.dimensions))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if not (0 <= self.dimensions <= 255):
@@ -417,6 +433,20 @@ class MultiANewArray(Instruction):
     #     codegen.emit(IRNewArray(step, variable, self.class_.unwrap().as_rtype(), sizes))
 
 
+# FIXME: A clean way of doing linked instructions.
+# class ANewArrayLinked(ANewArray):
+#     """
+#     A linked `anewarray` instruction.
+#     """
+#
+#     lt_throws = frozenset()
+#     linked = True
+
+
+# class MultiANewArrayLinked(MultiANewArray):
+#     ...
+
+
 class ArrayLength(Instruction):
     """
     An `arraylength` instruction.
@@ -426,7 +456,9 @@ class ArrayLength(Instruction):
 
     __slots__ = ()
 
-    throws = frozenset({Class("java/lang/NullPointerException")})
+    lt_throws = frozenset()
+    rt_throws = frozenset({Class("java/lang/NullPointerException")})
+    linked = True
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ArrayLength":
@@ -488,8 +520,10 @@ bastore = ArrayStore.make(0x54, "bastore", type=byte_t)
 castore = ArrayStore.make(0x55, "castore", type=char_t)
 sastore = ArrayStore.make(0x56, "sastore", type=short_t)
 
-newarray             = NewArray.make(0xbc, "newarray")
-anewarray           = ANewArray.make(0xbd, "anewarray")
-multianewarray = MultiANewArray.make(0xc5, "multianewarray")
+newarray                     = NewArray.make(0xbc, "newarray")
+anewarray                   = ANewArray.make(0xbd, "anewarray")
+multianewarray         = MultiANewArray.make(0xc5, "multianewarray")
+# anewarray_l           = ANewArrayLinked.make(0xbd, "anewarray_l")
+# multianewarray_l = MultiANewArrayLinked.make(0xc5, "multianewarray_l")
 
 arraylength = ArrayLength.make(0xbe, "arraylength")

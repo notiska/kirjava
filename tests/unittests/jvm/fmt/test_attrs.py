@@ -4,6 +4,7 @@ import unittest
 from io import BytesIO
 from os import SEEK_SET
 
+from kirjava.backend import *
 from kirjava.jvm.fmt import ConstPool
 from kirjava.jvm.fmt.annotation import *
 from kirjava.jvm.fmt.attribute import *
@@ -26,12 +27,14 @@ class TestAttributes(unittest.TestCase):
         Deprecated: (),
         RuntimeVisibleAnnotations: ([
             Annotation(
-                UTF8Info(b"LTestAnnotation1;"),
-                [Annotation.NamedElement(UTF8Info(b"testElement1"), ConstValue(ConstValue.KIND_BYTE, IntegerInfo(1)))],
+                UTF8Info(b"LTestAnnotation1;"), [Annotation.NamedElement(
+                    UTF8Info(b"testElement1"),ConstValue(ConstValue.KIND_BYTE, IntegerInfo(i32(1))),
+                )],
             ),
             Annotation(
-                UTF8Info(b"LTestAnnotation1;"),
-                [Annotation.NamedElement(UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_INT, IntegerInfo(2)))],
+                UTF8Info(b"LTestAnnotation1;"), [Annotation.NamedElement(
+                    UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_INT, IntegerInfo(i32(2))),
+                )],
             ),
         ],),
         RuntimeInvisibleAnnotations: ([
@@ -68,13 +71,17 @@ class TestAttributes(unittest.TestCase):
                 UTF8Info(b"LTestAnnotation2;"),
                 TypeParameterBoundTarget(TargetInfo.GENERIC_CLASS_TYPE_PARAMETER_BOUND, 0, 0),
                 TypePath(),
-                [Annotation.NamedElement(UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_LONG, LongInfo(1)))],
+                [Annotation.NamedElement(
+                    UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_LONG, LongInfo(i64(1))),
+                )],
             ),
             TypeAnnotation(
                 UTF8Info(b"LTestAnnotation2;"),
                 EmptyTarget(TargetInfo.METHOD_RETURN_TYPE_OR_NEW_OBJECT),
                 TypePath([TypePath.Segment(TypePath.Segment.TYPE_ARGUMENT, 0)]),
-                [Annotation.NamedElement(UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_LONG, LongInfo(1)))],
+                [Annotation.NamedElement(
+                    UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_LONG, LongInfo(i64(1))),
+                )],
             ),
             TypeAnnotation(
                 UTF8Info(b"LTestAnnotaton3;"), FormalParameterTarget(2), TypePath(),
@@ -86,7 +93,9 @@ class TestAttributes(unittest.TestCase):
             ),
             TypeAnnotation(
                 UTF8Info(b"LTestAnnotaton2;"), ThrowsTarget(0), TypePath(),
-                [Annotation.NamedElement(UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_LONG, LongInfo(1)))],
+                [Annotation.NamedElement(
+                    UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_LONG, LongInfo(i64(1))),
+                )],
             ),
         ],),
         RuntimeInvisibleTypeAnnotations: ([
@@ -99,7 +108,7 @@ class TestAttributes(unittest.TestCase):
                 ]),
                 [
                     Annotation.NamedElement(
-                        UTF8Info(b"testElement1"), ConstValue(ConstValue.KIND_CHAR, IntegerInfo(ord("t"))),
+                        UTF8Info(b"testElement1"), ConstValue(ConstValue.KIND_CHAR, IntegerInfo(i32(ord("t")))),
                     ),
                 ],
             ),
@@ -111,7 +120,7 @@ class TestAttributes(unittest.TestCase):
                 UTF8Info(b"LTestAnnotation3;"), OffsetTarget(TargetInfo.INSTANCEOF_TYPE, 12), TypePath(),
                 [
                     Annotation.NamedElement(
-                        UTF8Info(b"testElement1"), ConstValue(ConstValue.KIND_CHAR, IntegerInfo(ord("t"))),
+                        UTF8Info(b"testElement1"), ConstValue(ConstValue.KIND_CHAR, IntegerInfo(i32(ord("t")))),
                     ),
                 ],
             ),
@@ -137,7 +146,7 @@ class TestAttributes(unittest.TestCase):
                         ),
                     ),
                 ),
-                [IntegerInfo(5), IntegerInfo(6), IntegerInfo(7)],
+                [IntegerInfo(i32(5)), IntegerInfo(i32(6)), IntegerInfo(i32(7))],
             ),
         ],),
         NestHost: (ClassInfo(UTF8Info(b"Test")),),
@@ -204,7 +213,7 @@ class TestAttributes(unittest.TestCase):
         ModuleMainClass: (ClassInfo(UTF8Info(b"Test")),),
 
         # Field info attributes.
-        ConstantValue: (FloatInfo(5.0),),
+        ConstantValue: (FloatInfo(f32(5.0)),),
 
         # Method info / code attributes.
         Code: (
@@ -240,14 +249,14 @@ class TestAttributes(unittest.TestCase):
         ],),
         AnnotationDefault: (
             ArrayValue([
-                ConstValue(ConstValue.KIND_BYTE, IntegerInfo(1)),
-                ConstValue(ConstValue.KIND_CHAR, IntegerInfo(ord("t"))),
-                ConstValue(ConstValue.KIND_DOUBLE, DoubleInfo(2.0)),
-                ConstValue(ConstValue.KIND_FLOAT, FloatInfo(3.0)),
-                ConstValue(ConstValue.KIND_INT, IntegerInfo(4)),
-                ConstValue(ConstValue.KIND_LONG, LongInfo(5)),
-                ConstValue(ConstValue.KIND_SHORT, IntegerInfo(6)),
-                ConstValue(ConstValue.KIND_BOOLEAN, IntegerInfo(0)),
+                ConstValue(ConstValue.KIND_BYTE, IntegerInfo(i32(1))),
+                ConstValue(ConstValue.KIND_CHAR, IntegerInfo(i32(ord("t")))),
+                ConstValue(ConstValue.KIND_DOUBLE, DoubleInfo(f64(2.0))),
+                ConstValue(ConstValue.KIND_FLOAT, FloatInfo(f32(3.0))),
+                ConstValue(ConstValue.KIND_INT, IntegerInfo(i32(4))),
+                ConstValue(ConstValue.KIND_LONG, LongInfo(i64(5))),
+                ConstValue(ConstValue.KIND_SHORT, IntegerInfo(i32(6))),
+                ConstValue(ConstValue.KIND_BOOLEAN, IntegerInfo(i32(0))),
                 ConstValue(ConstValue.KIND_STRING, StringInfo(UTF8Info(b"test"))),
                 EnumConstValue(UTF8Info(b"LTestEnum;"), UTF8Info(b"TEST_ENUM_FIELD_1")),
                 ClassValue(UTF8Info(b"LTest;")),
@@ -256,10 +265,10 @@ class TestAttributes(unittest.TestCase):
                         UTF8Info(b"LTestAnnotation1;"),
                         [
                             Annotation.NamedElement(
-                                UTF8Info(b"testElement1"), ConstValue(ConstValue.KIND_BYTE, IntegerInfo(1)),
+                                UTF8Info(b"testElement1"), ConstValue(ConstValue.KIND_BYTE, IntegerInfo(i32(1))),
                             ),
                             Annotation.NamedElement(
-                                UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_INT, IntegerInfo(2)),
+                                UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_INT, IntegerInfo(i32(2))),
                             ),
                             Annotation.NamedElement(
                                 UTF8Info(b"testElement3"),
@@ -284,13 +293,17 @@ class TestAttributes(unittest.TestCase):
             ParameterAnnotations([
                 Annotation(
                     UTF8Info(b"LTestAnnotation1;"),
-                    [Annotation.NamedElement(UTF8Info(b"testElement1"), ConstValue(ConstValue.KIND_BYTE, IntegerInfo(1)))],
+                    [Annotation.NamedElement(
+                        UTF8Info(b"testElement1"), ConstValue(ConstValue.KIND_BYTE, IntegerInfo(i32(1))),
+                    )],
                 ),
             ]),
             ParameterAnnotations([
                 Annotation(
                     UTF8Info(b"LTestAnnotation1;"),
-                    [Annotation.NamedElement(UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_INT, IntegerInfo(2)))],
+                    [Annotation.NamedElement(
+                        UTF8Info(b"testElement2"), ConstValue(ConstValue.KIND_INT, IntegerInfo(i32(2))),
+                    )],
                 ),
             ]),
         ],),
