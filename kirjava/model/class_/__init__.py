@@ -2,17 +2,14 @@
 
 __all__ = (
     "field", "method",
-    "Class",
+    "Class", "Field", "Method",
 )
 
-import typing
+from typing import Iterable, Optional
 
-from ..types import Class as ClassType, Interface
-from ...pretty import pretty_repr
-
-if typing.TYPE_CHECKING:
-    from .field import Field
-    from .method import Method
+from .field import Field
+from .method import Method
+from ..types import Class as ClassType, Interface, Type
 
 
 class Class:
@@ -25,6 +22,10 @@ class Class:
         A pretty access flag string.
     name: str
         The internal name of the class (e.g. `java/lang/Object`).
+    super: Class
+        The direct superclass of this class.
+    interfaces: list[Class]
+        The interfaces that this class implements.
     is_public: bool
         If the class is public.
     is_final: bool
@@ -43,17 +44,26 @@ class Class:
         If the class is an enum.
     is_module: bool
         If the class is a module.
+    fields: list[Field]
+        The fields in this class.
+    methods: list[Method]
+        The methods in this class.
 
     Methods
     -------
-    as_ctype(self) -> ClassType
-        Gets the class type that this class represents.
+    get_field(self, name: str, type_: Type) -> Field | None
+        Gets a field in this class by its name and type.
+    get_method(self, name: str, arg_types: tuple[Type, ...], ret_type: Type) -> Method | None
+        Gets a method in this class by its name, argument types and return type
+    as_type(self) -> ClassType
+        Returns the type representation of this class.
     """
 
     __slots__ = (
         "name",
         "is_public", "is_final", "is_super", "is_interface", "is_abstract",
         "is_synthetic", "is_annotation", "is_enum", "is_module",
+        "super", "interfaces",
         "fields", "methods",
     )
 
@@ -75,8 +85,10 @@ class Class:
     def __init__(
             self,
             name: str,
-            fields:   list["Field"] | None = None,
-            methods: list["Method"] | None = None,
+            super_: Optional["Class"] = None,
+            interfaces: Iterable["Class"] | None = None,
+            fields:     Iterable["Field"] | None = None,
+            methods:   Iterable["Method"] | None = None,
             *,
             is_public:     bool = True,
             is_final:      bool = False,
@@ -100,28 +112,79 @@ class Class:
         self.is_enum = is_enum
         self.is_module = is_module
 
-        self.fields = []
-        self.methods = []
+        self.super = super_
+        self.interfaces: list[Class] = []
+        self.fields:     list[Field] = []
+        self.methods:   list[Method] = []
 
+        if interfaces is not None:
+            self.interfaces.extend(interfaces)
         if fields is not None:
             self.fields.extend(fields)
         if methods is not None:
             self.methods.extend(methods)
 
     def __repr__(self) -> str:
-        return "<Class(name=%r)>" % self.name
+        return (
+            f"<Class(name={self.name!r}, super={self.super!s}, interfaces=[{", ".join(map(str, self.interfaces))}], "
+            f"fields={self.fields!r}, methods={self.methods!r})>"
+        )
 
     def __str__(self) -> str:
-        return "%s class %s" % (self.access, pretty_repr(self.name))
+        return (
+            f"class({self.name!s},{self.super!s},[{",".join(map(str, self.interfaces))}],"
+            f"[{",".join(map(str, self.fields))}],[{",".join(map(str, self.methods))}])"
+        )
 
-    def as_ctype(self) -> ClassType:
+    def get_field(self, name: str, type_: Type) -> Field | None:
         """
-        Gets the class type that this class represents.
+        Gets a field in this class by its name and type.
+
+        Parameters
+        ----------
+        name: str
+            The name of the field.
+        type_: Type
+            The type of the field.
 
         Returns
         -------
-        ClassType
-            The representative class type.
+        Field | None
+            The field, or `None` if not found.
+        """
+
+        for field in self.fields:
+            if field.name == name and field.type == type_:
+                return field
+        return None
+
+    def get_method(self, name: str, arg_types: tuple[Type, ...], ret_type: Type) -> Method | None:
+        """
+        Gets a method in this class by its name, argument types and return type.
+
+        Parameters
+        ----------
+        name: str
+            The name of the method.
+        arg_types: tuple[Type, ...]
+            The argument types of the method.
+        ret_type: Type
+            The return type of the method.
+
+        Returns
+        -------
+        Method | None
+            The method, or `None` if not found.
+        """
+
+        for method in self.methods:
+            if method.name == name and method.arg_types == arg_types and method.ret_type == ret_type:
+                return method
+        return None
+
+    def as_type(self) -> ClassType:
+        """
+        Returns the type representation of this class.
         """
 
         if self.is_interface:

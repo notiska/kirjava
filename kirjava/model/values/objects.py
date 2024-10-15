@@ -33,7 +33,7 @@ class Array(Value):
         self.sizes = sizes
 
     def __repr__(self) -> str:
-        return "<Array(type=%s, sizes=%r)>" % (self.type, self.sizes)
+        return f"<Array(type={self.type!s}, sizes={self.sizes!r})>"
 
     def __str__(self) -> str:
         sizes = []
@@ -41,10 +41,10 @@ class Array(Value):
         for size in self.sizes:
             # Mypy issue again, the type is checked properly in the loop, though.
             type_ = type_.element  # type: ignore[attr-defined]
-            sizes.append("[%s]" % size)
+            sizes.append(f"[{size}]")
             if not isinstance(type_, ArrayType):
                 break
-        return "%s%s" % (type_, "".join(sizes))
+        return f"{self.type!s}{"".join(sizes)}"
 
 
 class Object(Value):
@@ -65,7 +65,7 @@ class Object(Value):
         self.type = type_
 
     def __repr__(self) -> str:
-        return "<Object(type=%s)>" % self.type
+        return f"<Object(type={self.type!s})>"
 
     def __str__(self) -> str:
         return self.type.name

@@ -12,7 +12,7 @@ if typing.TYPE_CHECKING:
     from ..types import Class, Type
 
 
-class Variable(Value):
+class Variable(Value):  # TODO: Names, is it a local, etc...
     """
     A variable.
 
@@ -39,10 +39,10 @@ class Variable(Value):
         self.id = id_
 
     def __repr__(self) -> str:
-        return "<Variable(type=%r, id=%i)" % (self.type, self.id)
+        return f"<Variable(type={self.type!s}, id={self.id})"
 
     def __str__(self) -> str:
-        return "var_%i" % self.id
+        return f"var_{self.id}"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Variable) and self.id == other.id
@@ -59,7 +59,7 @@ class This(Variable):
         super().__init__(type_, Variable.ID_THIS)
 
     def __repr__(self) -> str:
-        return "<This(type=%r)>" % self.type
+        return f"<This(type={self.type!s})>"
 
     def __str__(self) -> str:
         return "this"
@@ -76,7 +76,7 @@ class Super(Variable):
         super().__init__(type_, Variable.ID_SUPER)
 
     def __repr__(self) -> str:
-        return "<Super(type=%r)>" % self.type
+        return f"<Super(type={self.type!s})>"
 
     def __str__(self) -> str:
         return "super"

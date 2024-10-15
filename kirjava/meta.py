@@ -42,12 +42,13 @@ class Message:
         self.data = data
 
     def __repr__(self) -> str:
-        return "<Message(level=%s, name=%r, message=%r)>" % (
-            logging.getLevelName(self.level), self.name, self.message % self.args,
+        return (
+            f"<Message(level={logging.getLevelName(self.level)}, name={self.name!r}, "
+            f"message={self.message % self.args!r})>"
         )
 
     def __str__(self) -> str:
-        return "%s: %s" % (self.name, self.message % self.args)
+        return f"{self.name}: {self.message % self.args}"
 
 
 class Metadata:
@@ -121,7 +122,7 @@ class Metadata:
         self._logger = logging.getLogger(name)
 
     def __repr__(self) -> str:
-        return "<Metadata(name=%r, element=%s, messages=%r)>" % (self.name, self.element, self.messages)
+        return f"<Metadata(name={self.name!r}, element={self.element!s}, messages={self.messages!r})>"
 
     def walk(self, level: int = logging.WARNING) -> Iterator[tuple["Metadata", Message]]:
         """

@@ -93,7 +93,7 @@ class Field:
         self.is_enum = is_enum
 
     def __repr__(self) -> str:
-        return "<Field(name=%r, type=%r)>" % (pretty_repr(self.name), self.type)
+        return f"<Field(name={self.name!r}, type={self.type!s})>"
 
     def __str__(self) -> str:
-        return "%s %s %s" % (self.access, self.type, pretty_repr(self.name))
+        return f"field({self.name!s}:{self.type!s})"

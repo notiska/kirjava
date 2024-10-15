@@ -31,7 +31,7 @@ class Value:
     type: "Type"
 
     def __repr__(self) -> str:
-        return "<Value(type=%s)>" % self.type
+        return f"<Value(type={self.type!s})>"
 
     def cast(self, type_: "Type") -> "Value":
         """
@@ -53,4 +53,4 @@ class Value:
             If this value cannot be cast to the given type.
         """
 
-        raise ValueError("cannot cast %r to %s" % (self, type_))
+        raise ValueError(f"cannot cast {self!r} to {type_!s}")

@@ -22,9 +22,9 @@ class Method:
         A pretty access flag string.
     name: str
         The name of the method.
-    arguments: tuple[Type, ...]
+    arg_types: tuple[Type, ...]
         The argument types of the method.
-    return_: Type
+    ret_type: Type
         The return type of the method.
     is_public: bool
         If the method is public.
@@ -53,7 +53,7 @@ class Method:
     """
 
     __slots__ = (
-        "name", "arguments", "return_",
+        "name", "arg_types", "ret_type",
         "is_public", "is_private", "is_protected", "is_static", "is_final", "is_synchronized",
         "is_bridge", "is_varargs", "is_native", "is_abstract", "is_strictfp", "is_synthetic",
     )
@@ -78,7 +78,7 @@ class Method:
 
     def __init__(
             self,
-            name: str, arguments: tuple["Type", ...], return_: "Type",
+            name: str, arg_types: tuple["Type", ...], ret_type: "Type",
             *,
             is_public:       bool = False,
             is_private:      bool = False,
@@ -94,8 +94,8 @@ class Method:
             is_synthetic:    bool = False,
     ) -> None:
         self.name = name
-        self.arguments = arguments
-        self.return_ = return_
+        self.arg_types = arg_types
+        self.ret_type = ret_type
 
         self.is_public = is_public
         self.is_private = is_private
@@ -111,7 +111,10 @@ class Method:
         self.is_synthetic = is_synthetic
 
     def __repr__(self) -> str:
-        return "<Method(name=%r, arguments=%r, return_=%r)>" % (pretty_repr(self.name), self.arguments, self.return_)
+        return (
+            f"<Method(name={self.name!r}, arg_types=[{", ".join(map(str, self.arg_types))}], "
+            f"ret_type={self.ret_type!s})>"
+        )
 
     def __str__(self) -> str:
-        return "%s %s %s(%s)" % (self.access, self.return_, pretty_repr(self.name), ", ".join(map(str, self.arguments)))
+        return f"method({self.name!s}:({",".join(map(str, self.arg_types))}){self.ret_type})"

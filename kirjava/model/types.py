@@ -57,7 +57,7 @@ class Type:
     assignable(self, other: Type) -> bool
         Checks if a value of this type is assignable to a value of the provided type.
     as_vtype(self) -> Verification
-        Gets the verification type of this type.
+        Returns the verification type that represents this type.
     """
 
     __slots__ = ("__weakref__", "name", "wide", "abstract", "_hash")
@@ -72,7 +72,7 @@ class Type:
         self._hash = hash((name, wide, abstract))
 
     def __repr__(self) -> str:
-        return "<%s>" % type(self).__name__
+        raise NotImplementedError(f"repr() is not implemented for {type(self)!r}")
 
     def __str__(self) -> str:
         return self.name
@@ -106,12 +106,7 @@ class Type:
 
     def as_vtype(self) -> "Verification":
         """
-        Gets the verification type of this type.
-
-        Returns
-        -------
-        Verification
-            The corresponding verification type of this type.
+        Returns the verification type that represents this type.
 
         Raises
         ------
@@ -119,7 +114,7 @@ class Type:
             If a verification type does not exist for this type.
         """
 
-        raise ValueError("cannot make verification type from %r" % self)
+        raise ValueError(f"cannot make verification type from {self!r}")
 
 
 class Invalid(Type):
@@ -139,7 +134,7 @@ class Invalid(Type):
         self.descriptor = descriptor
 
     def __repr__(self) -> str:
-        return "<Invalid(descriptor=%r)>" % pretty_repr(self.descriptor)
+        return f"<Invalid(descriptor={self.descriptor})>"
 
     def assignable(self, other: Type) -> bool:
         return False
@@ -311,15 +306,14 @@ class ReturnAddress(Primitive, OneWord):
     def __init__(self, source: object | None) -> None:
         super().__init__("returnAddress")
         self.source = source
-
         self._hash = hash((self._hash, self.source))
 
     def __repr__(self) -> str:
-        return "<ReturnAddress(source=%r)>" % self.source
+        return f"<ReturnAddress(source={self.source!s})>"
 
     def __str__(self) -> str:
         if self.source is not None:
-            return "returnAddress<%s>" % self.source
+            return f"returnAddress<{self.source!s}>"
         return "returnAddress"
 
     def __eq__(self, other: object) -> bool:
@@ -362,15 +356,14 @@ class Uninitialized(Reference, OneWord):
     def __init__(self, source: object | None) -> None:
         super().__init__("uninitialized")
         self.source = source
-
         self._hash = hash((self._hash, self.source))
 
     def __repr__(self) -> str:
-        return "<Uninitialized(source=%r)>" % self.source
+        return f"<Uninitialized(source={self.source!s})>"
 
     def __str__(self) -> str:
         if self.source is not None:
-            return "uninitialized<%s>" % self.source
+            return f"uninitialized<{self.source!s}>"
         return "uninitialized"
 
     def __eq__(self, other: object) -> bool:
@@ -468,7 +461,7 @@ class Array(_JavaReference):
         """
 
         if dimension <= 0:
-            raise ValueError("invalid dimension for array type: %i" % dimension)
+            raise ValueError(f"invalid dimension {dimension} for array type")
 
         type_ = cls(element)
         for _ in range(dimension - 1):
@@ -510,11 +503,10 @@ class Array(_JavaReference):
     def __init__(self, element: Type) -> None:
         super().__init__(element.name + "[]", abstract=element.abstract)
         self.element = element
-
         self._hash = hash((self._hash, self.element))
 
     def __repr__(self) -> str:
-        return "<Array(element=%r)>" % self.element
+        return f"<Array(element={self.element!r})>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Array) and self.element == other.element
@@ -555,7 +547,7 @@ class Class(_JavaReference):
         return self
 
     def __repr__(self) -> str:
-        return "<Class(name=%r)>" % pretty_repr(self.name)
+        return f"<Class(name={self.name!r})>"
 
     def as_interface(self) -> "Interface":
         """
@@ -592,7 +584,7 @@ class Interface(Class):
         return self
 
     def __repr__(self) -> str:
-        return "<Interface(name=%r)>" % pretty_repr(self.name)
+        return f"<Interface(name={self.name!r})>"
 
     def as_interface(self) -> "Interface":
         return self

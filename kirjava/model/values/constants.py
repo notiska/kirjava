@@ -68,10 +68,10 @@ class Index(Constant):
         self.index = index
 
     def __repr__(self) -> str:
-        return "<Index(index=%i)>" % self.index
+        return f"<Index(index={self.index})>"
 
     def __str__(self) -> str:
-        return "cpindex(#%i)" % self.index
+        return f"cpindex(#{self.index})"
 
 
 class Integer(Constant):
@@ -92,10 +92,10 @@ class Integer(Constant):
         self.value = value
 
     def __repr__(self) -> str:
-        return "<Integer(value=%r)>" % self.value
+        return f"<Integer(value={self.value!r})>"
 
     def __str__(self) -> str:
-        return "%si" % self.value
+        return f"{self.value!s}i"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Integer) and self.value == other.value
@@ -224,11 +224,11 @@ class Float(Constant):
         self.value = value
 
     def __repr__(self) -> str:
-        return "<Float(value=%r)>" % self.value
+        return f"<Float(value={self.value!r})>"
 
     def __str__(self) -> str:
         # return "%f" % _unpack_f(_pack_i(self.value))
-        return "%sf" % self.value
+        return f"{self.value!s}f"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Float) and self.value == other.value
@@ -314,10 +314,10 @@ class Long(Constant):
         self.value = value
 
     def __repr__(self) -> str:
-        return "<Long(value=%r)>" % self.value
+        return f"<Long(value={self.value!r})>"
 
     def __str__(self) -> str:
-        return "%sL" % self.value
+        return f"{self.value!s}L"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Long) and self.value == other.value
@@ -437,11 +437,11 @@ class Double(Constant):
         self.value = value
 
     def __repr__(self) -> str:
-        return "<Double(value=%r)>" % self.value
+        return f"<Double(value={self.value!r})>"
 
     def __str__(self) -> str:
         # return "%f" % _unpack_d(_pack_q(self.value))
-        return "%sD" % self.value
+        return f"{self.value!s}D"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Double) and self.value == other.value
@@ -509,9 +509,7 @@ class Double(Constant):
     #     raise ValueError("cannot cast %r to %s" % (self, type_))
 
 
-# Class is "defined" already (as we import * from types), which I'm not going to rewrite just to make mypy happy. It
-# would require at least 2 lines of imports...
-class Class(Constant):  # type: ignore[no-redef]
+class Class(Constant):  # FIXME: Separate constant for array classes.
     """
     A class constant.
 
@@ -522,8 +520,8 @@ class Class(Constant):  # type: ignore[no-redef]
 
     Methods
     -------
-    as_rtype(self) -> Reference
-        Gets the reference type that this constant represents.
+    as_type(self) -> Reference
+        Returns the type that this constant represents.
     """
 
     __slots__ = ("name",)
@@ -534,27 +532,22 @@ class Class(Constant):  # type: ignore[no-redef]
         self.name = name
 
     def __repr__(self) -> str:
-        return "<Class(name=%r)>" % pretty_repr(self.name)
+        return f"<Class(name={self.name!r})>"
 
     def __str__(self) -> str:
-        return "CLASS(%s)" % pretty_repr(self.name)
+        return f"Class({self.name!s})"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Class) and self.name == other.name
 
-    def as_rtype(self) -> Reference:
+    def as_type(self) -> Reference:
         """
-        Gets the reference type that this constant represents.
-
-        Returns
-        -------
-        Reference
-            The representative reference type.
+        Returns the type that this constant represents.
         """
 
         # https://github.com/ItzSomebody/stopdecompilingmyjava/blob/master/decompiler-tool-bugs/entry-007/entry.md
         # return parse_reference(self.name)
-        raise NotImplementedError("as_rtype() is not implemented for %r" % type(self))
+        raise NotImplementedError(f"as_type() is not implemented for {type(self)!r}")
 
 
 class String(Constant):
@@ -577,16 +570,16 @@ class String(Constant):
         self.value = value
 
     def __repr__(self) -> str:
-        return "<String(value=%r)>" % pretty_repr(self.value)
+        return f"<String(value={self.value!r})>"
 
     def __str__(self) -> str:
-        return "\"%s\"" % pretty_repr(self.value).replace("\"", "\\\"")
+        return f"\"{self.value.replace("\"", "\\\"")}\""  # Python moment.
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, String) and self.value == other.value
 
 
-class MethodHandle(Constant):
+class MethodHandle(Constant):  # FIXME: Could be done much better.
     """
     A method handle constant.
 
@@ -613,12 +606,13 @@ class MethodHandle(Constant):
         self.descriptor = descriptor
 
     def __repr__(self) -> str:
-        return "<MethodHandle(kind=%i, class_=%s, name=%r, descriptor=%r)>" % (
-            self.kind, self.class_, self.name, self.descriptor,
+        return (
+            f"<MethodHandle(kind={self.kind}, class_={self.class_!s}, name={self.name!r}, "
+            f"descriptor={self.descriptor!r})>"
         )
 
 
-class MethodType(Constant):
+class MethodType(Constant):  # FIXME: Could also be done better.
     """
     A method type constant.
 
@@ -636,4 +630,4 @@ class MethodType(Constant):
         self.descriptor = descriptor
 
     def __repr__(self) -> str:
-        return "<MethodType(descriptor=%r)>" % pretty_repr(self.descriptor)
+        return f"<MethodType(descriptor={self.descriptor!r})>"
