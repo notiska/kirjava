@@ -24,7 +24,7 @@ class TestInstructions(unittest.TestCase):
 
         iaload: (), laload: (), faload: (), daload: (), aaload: (), baload: (), caload: (), saload: (),
         iastore: (), lastore: (), fastore: (), dastore: (), aastore: (), bastore: (), castore: (), sastore: (),
-        newarray: (NewArray.TAG_INT,),
+        newarray: (newarray.INT,),
         anewarray: (ClassInfo(UTF8Info(b"Test")),),
         multianewarray: (ClassInfo(UTF8Info(b"[[LTest;")), 2),
         arraylength: (),

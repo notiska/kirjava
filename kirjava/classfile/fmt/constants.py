@@ -1038,6 +1038,18 @@ class MethodHandleInfo(ConstInfo):
     NEW_INVOKE_SPECIAL = 8
     INVOKE_INTERFACE   = 9
 
+    _KINDS = {
+        GET_FIELD:          "GET_FIELD",
+        GET_STATIC:         "GET_STATIC",
+        PUT_FIELD:          "PUT_FIELD",
+        PUT_STATIC:         "PUT_STATIC",
+        INVOKE_VIRTUAL:     "INVOKE_VIRTUAL",
+        INVOKE_STATIC:      "INVOKE_STATIC",
+        INVOKE_SPECIAL:     "INVOKE_SPEICAL",
+        NEW_INVOKE_SPECIAL: "NEW_INVOKE_SPECIAL",
+        INVOKE_INTERFACE:   "INVOKE_INTERFACE",
+    }
+
     tag = 15
     wide = False
     since = JAVA_7
@@ -1064,14 +1076,16 @@ class MethodHandleInfo(ConstInfo):
         return copy
 
     def __repr__(self) -> str:
+        kind_str = MethodHandleInfo._KINDS.get(self.kind) or str(self.kind)
         if self.index is not None:
-            return f"<MethodHandleInfo(index={self.index}, kind={self.kind}, ref={self.ref!s})>"
-        return f"<MethodHandleInfo(kind={self.kind}, ref={self.ref!s})>"
+            return f"<MethodHandleInfo(index={self.index}, kind={kind_str}, ref={self.ref!s})>"
+        return f"<MethodHandleInfo(kind={kind_str}, ref={self.ref!s})>"
 
     def __str__(self) -> str:
+        kind_str = MethodHandleInfo._KINDS.get(self.kind) or str(self.kind)
         if self.index is not None:
-            return f"#{self.index}:MethodHandle({self.kind},{self.ref!s})"
-        return f"MethodHandle({self.kind},{self.ref!s})"
+            return f"#{self.index}:MethodHandle({kind_str},{self.ref!s})"
+        return f"MethodHandle({kind_str},{self.ref!s})"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MethodHandleInfo) and self.kind == other.kind and self.ref == other.ref

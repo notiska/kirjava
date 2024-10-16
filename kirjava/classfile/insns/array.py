@@ -25,7 +25,6 @@ if typing.TYPE_CHECKING:
     # from ..analyse.frame import Frame
     # from ..analyse.state import State
     from ..fmt import ConstPool
-    from ..verify import Verifier
 
 
 class ArrayLoad(Instruction):
@@ -164,21 +163,21 @@ class NewArray(Instruction):
 
     Attributes
     ----------
-    TAG_BOOLEAN: int
+    BOOLEAN: int
         Indicates that the array is of type `boolean`.
-    TAG_CHAR: int
+    CHAR: int
         Indicates that the array is of type `char`.
-    TAG_FLOAT: int
+    FLOAT: int
         Indicates that the array is of type `float`.
-    TAG_DOUBLE: int
+    DOUBLE: int
         Indicates that the array is of type `double`.
-    TAG_BYTE: int
+    BYTE: int
         Indicates that the array is of type `byte`.
-    TAG_SHORT: int
+    SHORT: int
         Indicates that the array is of type `short`.
-    TAG_INT: int
+    INT: int
         Indicates that the array is of type `int`.
-    TAG_LONG: int
+    LONG: int
         Indicates that the array is of type `long`.
     tag: int
         A byte tag indicating the type of the array to create.
@@ -190,14 +189,24 @@ class NewArray(Instruction):
     rt_throws = frozenset({Class("java/lang/NegativeArraySizeException")})
     linked = True
 
-    TAG_BOOLEAN = 4
-    TAG_CHAR    = 5
-    TAG_FLOAT   = 6
-    TAG_DOUBLE  = 7
-    TAG_BYTE    = 8
-    TAG_SHORT   = 9
-    TAG_INT     = 10
-    TAG_LONG    = 11
+    BOOLEAN = 4
+    CHAR    = 5
+    FLOAT   = 6
+    DOUBLE  = 7
+    BYTE    = 8
+    SHORT   = 9
+    INT     = 10
+    LONG    = 11
+
+    _TAGS = {
+        BOOLEAN: "BOOLEAN",
+        CHAR:    "CHAR",
+        FLOAT:   "FLOAT",
+        DOUBLE:  "BYTE",
+        SHORT:   "SHORT",
+        INT:     "INT",
+        LONG:    "LONG",
+    }
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "NewArray":
@@ -216,14 +225,16 @@ class NewArray(Instruction):
         return copy  # type: ignore[return-value]
 
     def __repr__(self) -> str:
+        tag_str = NewArray._TAGS.get(self.tag) or str(self.tag)
         if self.offset is not None:
-            return f"<NewArray(offset={self.offset}, tag={self.tag})>"
-        return f"<NewArray(tag={self.tag})>"
+            return f"<NewArray(offset={self.offset}, tag={tag_str})>"
+        return f"<NewArray(tag={tag_str})>"
 
     def __str__(self) -> str:
+        tag_str = NewArray._TAGS.get(self.tag) or str(self.tag)
         if self.offset is not None:
-            return f"{self.offset}:newarray({self.tag})"
-        return f"newarray({self.tag})"
+            return f"{self.offset}:newarray({tag_str})"
+        return f"newarray({tag_str})"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NewArray) and self.tag == other.tag

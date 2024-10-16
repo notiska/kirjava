@@ -50,12 +50,6 @@ class BinOp(Instruction):
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "BinOp":
         return cls()
 
-    def __repr__(self) -> str:
-        raise NotImplementedError(f"repr() is not implemented for {type(self)!r}")
-
-    def __eq__(self, other: object) -> bool:
-        raise NotImplementedError(f"== is not implemented for {type(self)!r}")
-
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
 

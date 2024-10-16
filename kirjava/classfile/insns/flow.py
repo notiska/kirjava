@@ -17,6 +17,7 @@ __all__ = (
 )
 
 import typing
+from enum import Enum
 from typing import IO, Mapping
 
 from . import Instruction
@@ -144,20 +145,7 @@ class Compare(Jump):
 
     Attributes
     ----------
-    EQ: int
-        Compares if one value is equal to the other.
-    NE: int
-        Compares if one value is not equal to the other.
-    LT: int
-        Compares if one value is less than the other.
-    GE: int
-        Compares if one value is greater than or equal to the other.
-    GT: int
-        Compares if one value is greater than the other.
-    LE: int
-        Compares if one value is less than or equal to the other.
-
-    comparison: int
+    comparison: Compare.Type
         The comparison type to perform.
     type: Type
         The type of stack value(s) to compare.
@@ -167,15 +155,7 @@ class Compare(Jump):
 
     conditional = True
 
-    # TODO: Pretty string reprs for these.
-    EQ = 0
-    NE = 1
-    LT = 2
-    GE = 3
-    GT = 4
-    LE = 5
-
-    comparison: int
+    comparison: "Compare.Type"
     type: Type
 
     delta: int
@@ -183,9 +163,10 @@ class Compare(Jump):
     def __repr__(self) -> str:
         if self.offset is not None:
             return (
-                f"<Compare(offset={self.offset}, comparison={self.comparison}, type={self.type!s}, delta={self.delta})>"
+                f"<Compare(offset={self.offset}, comparison={self.comparison!s}, type={self.type!s}, "
+                f"delta={self.delta})>"
             )
-        return f"<Compare(comparison={self.comparison}, type={self.type!s}, delta={self.delta})>"
+        return f"<Compare(comparison={self.comparison!s}, type={self.type!s}, delta={self.delta})>"
 
     # def evaluate(self, left: "Value", right: "Value") -> Jump.Metadata:
     #     """
@@ -268,6 +249,18 @@ class Compare(Jump):
     #
     #     return state.step(self, (left, right), None, metadata)
 
+    class Type(Enum):
+        """
+        The type of comparison.
+        """
+
+        EQ = "EQ"
+        NE = "NE"
+        LT = "LT"
+        GE = "GE"
+        GT = "GT"
+        LE = "LE"
+
 
 class CompareToZero(Compare):
     """
@@ -282,8 +275,8 @@ class CompareToZero(Compare):
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return f"<CompareToZero(offset={self.offset}, comparison={self.comparison}, delta={self.delta})>"
-        return f"<CompareToZero(comparison={self.comparison}, delta={self.delta})>"
+            return f"<CompareToZero(offset={self.offset}, comparison={self.comparison!s}, delta={self.delta})>"
+        return f"<CompareToZero(comparison={self.comparison!s}, delta={self.delta})>"
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     value = frame.pop(int_t, self)
@@ -302,7 +295,7 @@ class IfEq(CompareToZero):
     `ifnull` instruction.
     """
 
-    comparison = Compare.EQ
+    comparison = Compare.Type.EQ
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -318,7 +311,7 @@ class IfNe(CompareToZero):
     `ifnonnull` instruction.
     """
 
-    comparison = Compare.NE
+    comparison = Compare.Type.NE
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -339,8 +332,8 @@ class CompareToNull(Compare):
 
     def __repr__(self) -> str:
         if self.offset is not None:
-            return f"<CompareToNull(offset={self.offset}, comparison={self.comparison}, delta={self.delta})>"
-        return f"<CompareToNull(comparison={self.comparison}, delta={self.delta})>"
+            return f"<CompareToNull(offset={self.offset}, comparison={self.comparison!s}, delta={self.delta})>"
+        return f"<CompareToNull(comparison={self.comparison!s}, delta={self.delta})>"
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     value = frame.pop(reference_t, self)
@@ -527,25 +520,12 @@ class Switch(Instruction):
     lt_throws = frozenset()
     linked = True
 
-    @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Instruction":
-        raise NotImplementedError(f"_read() is not implemented for {cls}")
-
     def __init__(self, default: int, offsets: Mapping[int, int] | None = None) -> None:
         super().__init__()
         self.default = default
         self.offsets: dict[int, int] = {}
         if offsets is not None:
             self.offsets.update(offsets)
-
-    def __repr__(self) -> str:
-        raise NotImplementedError(f"repr() is not implemented for {type(self)!r}")
-
-    def __eq__(self, other: object) -> bool:
-        raise NotImplementedError(f"== is not implemented for {type(self)!r}")
-
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        raise NotImplementedError(f"write() is not implemented for {type(self)!r}")
 
     # class Metadata(Source.Metadata):
     #
@@ -832,23 +812,23 @@ class AThrow(Jump):
 
 ifeq          = IfEq.make(0x99, "ifeq")
 ifne          = IfNe.make(0x9a, "ifne")
-iflt = CompareToZero.make(0x9b, "iflt", comparison=Compare.LT)
-ifge = CompareToZero.make(0x9c, "ifge", comparison=Compare.GE)
-ifgt = CompareToZero.make(0x9d, "ifgt", comparison=Compare.GT)
-ifle = CompareToZero.make(0x9e, "ifle", comparison=Compare.LE)
+iflt = CompareToZero.make(0x9b, "iflt", comparison=Compare.Type.LT)
+ifge = CompareToZero.make(0x9c, "ifge", comparison=Compare.Type.GE)
+ifgt = CompareToZero.make(0x9d, "ifgt", comparison=Compare.Type.GT)
+ifle = CompareToZero.make(0x9e, "ifle", comparison=Compare.Type.LE)
 
-if_icmpeq = Compare.make(0x9f, "if_icmpeq", comparison=Compare.EQ, type=int_t)
-if_icmpne = Compare.make(0xa0, "if_icmpne", comparison=Compare.NE, type=int_t)
-if_icmplt = Compare.make(0xa1, "if_icmplt", comparison=Compare.LT, type=int_t)
-if_icmpge = Compare.make(0xa2, "if_icmpge", comparison=Compare.GE, type=int_t)
-if_icmpgt = Compare.make(0xa3, "if_icmpgt", comparison=Compare.GT, type=int_t)
-if_icmple = Compare.make(0xa4, "if_icmple", comparison=Compare.LE, type=int_t)
+if_icmpeq = Compare.make(0x9f, "if_icmpeq", comparison=Compare.Type.EQ, type=int_t)
+if_icmpne = Compare.make(0xa0, "if_icmpne", comparison=Compare.Type.NE, type=int_t)
+if_icmplt = Compare.make(0xa1, "if_icmplt", comparison=Compare.Type.LT, type=int_t)
+if_icmpge = Compare.make(0xa2, "if_icmpge", comparison=Compare.Type.GE, type=int_t)
+if_icmpgt = Compare.make(0xa3, "if_icmpgt", comparison=Compare.Type.GT, type=int_t)
+if_icmple = Compare.make(0xa4, "if_icmple", comparison=Compare.Type.LE, type=int_t)
 
-if_acmpeq = Compare.make(0xa5, "if_acmpeq", comparison=Compare.EQ, type=reference_t)
-if_acmpne = Compare.make(0xa6, "if_acmpne", comparison=Compare.NE, type=reference_t)
+if_acmpeq = Compare.make(0xa5, "if_acmpeq", comparison=Compare.Type.EQ, type=reference_t)
+if_acmpne = Compare.make(0xa6, "if_acmpne", comparison=Compare.Type.NE, type=reference_t)
 
-ifnull    = CompareToNull.make(0xc6, "ifnull", comparison=Compare.EQ)
-ifnonnull = CompareToNull.make(0xc7, "ifnonnull", comparison=Compare.NE)
+ifnull    = CompareToNull.make(0xc6, "ifnull", comparison=Compare.Type.EQ)
+ifnonnull = CompareToNull.make(0xc7, "ifnonnull", comparison=Compare.Type.NE)
 
 goto       = Jump.make(0xa7, "goto")
 jsr         = Jsr.make(0xa8, "jsr")

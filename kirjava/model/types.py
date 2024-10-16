@@ -27,7 +27,7 @@ __all__ = (
 
     "Type", "Invalid", "Verification",
     "Primitive", "Reference",
-    "OneWord", "TwoWord",
+    "Top", "OneWord", "TwoWord",
     "ReturnAddress",
     "Uninitialized",
     "Array", "Class", "Interface",
@@ -36,17 +36,15 @@ __all__ = (
 from functools import cached_property
 from weakref import WeakValueDictionary
 
-from ..pretty import pretty_repr
-
 
 class Type:
     """
-    Base JVM type class.
+    The base type class.
 
     Attributes
     ----------
     name: str
-        A pretty name for this type.
+        The name of this type.
     wide: bool
         Whether this type takes up two words.
     abstract: bool
@@ -56,20 +54,15 @@ class Type:
     -------
     assignable(self, other: Type) -> bool
         Checks if a value of this type is assignable to a value of the provided type.
-    as_vtype(self) -> Verification
+    verification(self) -> Verification
         Returns the verification type that represents this type.
     """
 
-    __slots__ = ("__weakref__", "name", "wide", "abstract", "_hash")
+    __slots__ = ()
 
-    # TODO: Should make these properties read-only rather than having them as attrs.
-
-    def __init__(self, name: str, *, wide: bool = False, abstract: bool = False) -> None:
-        self.name = name
-        self.wide = wide
-        self.abstract = abstract
-
-        self._hash = hash((name, wide, abstract))
+    name: str
+    wide: bool
+    abstract: bool
 
     def __repr__(self) -> str:
         raise NotImplementedError(f"repr() is not implemented for {type(self)!r}")
@@ -78,33 +71,27 @@ class Type:
         return self.name
 
     def __eq__(self, other: object) -> bool:
-        return self is other
+        raise NotImplementedError(f"== is not implemented for {type(self)!r}")
 
     def __hash__(self) -> int:
-        return self._hash
+        raise NotImplementedError(f"hash() is not implemented for {type(self)!r}")
 
     def assignable(self, other: "Type") -> bool:
         """
-        Checks if a value of this type is assignable to a value of the provided type.
+        Checks if another type is assignable to this type.
 
+        The assumption is that this type acts as the l-value.
         This is such that:
-         - `top_t.assignable(int_t) -> True`
-         - `int_t.assignable(top_t) -> False`
-
-        Parameters
-        ----------
-        other: Type
-            The other type to check against.
-
-        Returns
-        -------
-        bool
-            Whether this type is assignable to the other type.
+         - `top_t.assignable(int_t) -> False`
+         - `int_t.assignable(top_t) -> True`
+        Or, in pseudocode:
+         - `top x; int y; x = y;` is valid.
+         - `int x; top y; x = y;` is not valid.
         """
 
-        return self == other or (self.abstract and type(other) is not type(self) and isinstance(other, type(self)))
+        raise NotImplementedError(f"assignable() is not implemented for {type(self)!r}")
 
-    def as_vtype(self) -> "Verification":
+    def verification(self) -> "Verification":
         """
         Returns the verification type that represents this type.
 
@@ -127,29 +114,46 @@ class Invalid(Type):
         The invalid descriptor that this type represents.
     """
 
-    __slots__ = ("descriptor",)
+    __slots__ = ("_descriptor", "_hash")
+
+    name = "invalid"
+    wide = False
+    abstract = False
+
+    @property
+    def descriptor(self) -> str:
+        return self._descriptor
 
     def __init__(self, descriptor: str) -> None:
-        super().__init__("invalid")
-        self.descriptor = descriptor
+        self._descriptor = descriptor
+        self._hash = hash((Invalid, descriptor))
 
     def __repr__(self) -> str:
-        return f"<Invalid(descriptor={self.descriptor})>"
+        return f"<Invalid(descriptor={self._descriptor!r})>"
+
+    def __str__(self) -> str:
+        return f"invalid<{self._descriptor!r}>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Invalid) and self._descriptor == other._descriptor
+
+    def __hash__(self) -> int:
+        return self._hash
 
     def assignable(self, other: Type) -> bool:
-        return False
+        return False  # Invalid types shouldn't be assignable to anything, even themselves.
 
 
 class Verification(Type):
     """
     A verification type.
 
-    These are used in the bytecode verifier, and may/may not actually exist.
+    These are used in the bytecode verifier, and may or may not actually exist.
     """
 
     __slots__ = ()
 
-    def as_vtype(self) -> "Verification":
+    def verification(self) -> "Verification":
         return self
 
 
@@ -163,11 +167,19 @@ class Primitive(Verification):
         The boxed type that Java would use to store this primitive.
     """
 
-    __slots__ = ("boxed",)
+    __slots__ = ("_boxed",)
 
-    def __init__(self, name: str, boxed: Type | None = None, *, wide: bool = False, abstract: bool = False) -> None:
-        super().__init__(name, wide=wide)
-        self.boxed = boxed
+    @property
+    def boxed(self) -> Type | None:
+        return self._boxed
+
+    def __init__(self, boxed: Type | None = None) -> None:
+        self._boxed = boxed
+
+    def __repr__(self) -> str:
+        if self.boxed is not None:
+            return f"<Primitive(name={self.name!r}, boxed={self.boxed!s})>"
+        return f"<Primitive(name={self.name!r})>"
 
 
 class Reference(Verification):
@@ -176,6 +188,94 @@ class Reference(Verification):
     """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        return f"<Reference(name={self.name!r}>"
+
+
+class _Primitive(Primitive):
+    """
+    Primitive type for direct usage.
+    """
+
+    __slots__ = ("_hash",)
+
+    name = "primitive"
+    wide = False  # Not necessarily true, but not much we can do about it.
+    abstract = True
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._hash = id(self)
+
+    def __repr__(self) -> str:
+        # Another trick to avoid references to internal classes. This is simply to give the appearance of outside
+        # consistency.
+        return "<Primitive>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Primitive)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def assignable(self, other: Type) -> bool:
+        return isinstance(other, Primitive)
+
+
+class _Reference(Reference):
+    """
+    Reference type for direct usage.
+    """
+
+    __slots__ = ("_hash",)
+
+    name = "reference"
+    wide = False  # Not necessarily true, but not much we can do about it.
+    abstract = True
+
+    def __init__(self) -> None:
+        self._hash = id(self)
+
+    def __repr__(self) -> str:
+        return "<Reference>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Reference)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def assignable(self, other: Type) -> bool:
+        return isinstance(other, Reference)
+
+
+class _Void(Primitive):
+    """
+    A void type.
+
+    Although this cannot be used as a concrete type, it is still required to
+    represent method return types.
+    """
+
+    __slots__ = ("_hash",)
+
+    name = "void"
+    wide = False
+    abstract = False
+
+    def __init__(self) -> None:
+        super().__init__(Class("java/lang/Void"))  # Technically true, but only used for reflection.
+        self._hash = id(self)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Void)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def assignable(self, other: Type) -> bool:
+        return False  # This is a check that should never happen in the first place.
 
 
 # Verification type hierarchy:
@@ -200,19 +300,46 @@ class Reference(Verification):
 #                                                      |
 #                                                     null
 
-
-class _Top(Verification):
+class Top(Verification):
     """
     A top type.
 
-    Used by the bytecode verifier to indicate any unknown type as it is the parent of
-    all verification types.
+    Represents the parent of all verification types.
     """
 
     __slots__ = ()
 
+    abstract = True
 
-class OneWord(_Top):
+
+class _Top(Top):
+    """
+    Top type for direct usage.
+    """
+
+    __slots__ = ("_hash",)
+
+    name = "top"
+    wide = False
+    abstract = True
+
+    def __init__(self) -> None:
+        self._hash = id(self)
+
+    def __repr__(self) -> str:
+        return "<Top>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Top)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def assignable(self, other: Type) -> bool:
+        return isinstance(other, Top)
+
+
+class OneWord(Top):
     """
     A one-word type.
 
@@ -221,11 +348,16 @@ class OneWord(_Top):
 
     __slots__ = ()
 
-    def __init__(self, name: str = "oneWord", *, wide: bool = False, abstract: bool = False) -> None:
-        super().__init__(name, wide=False, abstract=abstract)
+    wide = False
+
+    def __repr__(self) -> str:
+        return f"<OneWord(name={self.name!r}>"
+
+    def assignable(self, other: Type) -> bool:
+        return isinstance(other, OneWord)
 
 
-class TwoWord(_Top):
+class TwoWord(Top):
     """
     A two-word type.
 
@@ -234,8 +366,43 @@ class TwoWord(_Top):
 
     __slots__ = ()
 
-    def __init__(self, name: str = "twoWord", *, wide: bool = True, abstract: bool = False) -> None:
-        super().__init__(name, wide=True, abstract=abstract)
+    wide = True
+
+    def __repr__(self) -> str:
+        return f"<TwoWord(name={self.name!r}>"
+
+    def assignable(self, other: Type) -> bool:
+        return isinstance(other, TwoWord)
+
+
+class _Reserved(OneWord):
+    """
+    The second half of a long or double.
+
+    Not a Primitive as we want to be able to merge it into a top type in certain
+    cases.
+    https://discord.com/channels/443258489146572810/887649798918909972/1118900676764897280
+    Credits to xxDark for this insight.
+    """
+
+    __slots__ = ("_hash",)
+
+    name = "reserved"
+    abstract = False
+
+    def __init__(self) -> None:
+        self._hash = id(self)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Reserved)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def assignable(self, other: Type) -> bool:
+        # There shouldn't be a comparison where this has to happen. The assignability check should rather be on the wide
+        # type itself, so if this happens, it should always be incorrect.
+        return False
 
 
 class _Integer(Primitive, OneWord):
@@ -246,14 +413,37 @@ class _Integer(Primitive, OneWord):
     JVM level (i.e. byte, char...).
     """
 
-    __slots__ = ()
+    __slots__ = ("_name", "_width", "_hash")
+
+    abstract = False
+
+    @property  # type: ignore[override]
+    def name(self) -> str:
+        return self._name
+
+    def __init__(self, name: str, width: int, boxed: Type | None) -> None:
+        super().__init__(boxed)
+        self._name = name
+        self._width = width
+        self._hash = id(self)
+
+    def __repr__(self) -> str:
+        return f"<Primitive(name={self.name!r})>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Integer) and self._width == other._width
+
+    def __hash__(self) -> int:
+        return self._hash
 
     def assignable(self, other: Type) -> bool:
-        # byte_t.assignable(int_t) -> True
-        # int_t.assignable(byte_t) -> False
-        return other is int_t  # self is int_t and isinstance(other, _Integer)
+        if not isinstance(other, _Integer):
+            return False
+        elif other._width < 0:
+            return False
+        return self._width >= other._width
 
-    def as_vtype(self) -> "_Integer":
+    def verification(self) -> "_Integer":
         return int_t
 
 
@@ -262,10 +452,25 @@ class _Long(Primitive, TwoWord):
     A long (64-bit integer) type.
     """
 
-    __slots__ = ()
+    __slots__ = ("_hash",)
+
+    name = "long"
+    abstract = False
 
     def __init__(self) -> None:
-        super().__init__("long", Class("java/lang/Long"))
+        super().__init__(Class("java/lang/Long"))
+        self._hash = id(self)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Long)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def assignable(self, other: Type) -> bool:
+        if isinstance(other, _Integer):
+            return other._width > 0
+        return other is self
 
 
 class _Float(Primitive, OneWord):
@@ -273,10 +478,25 @@ class _Float(Primitive, OneWord):
     A 32-bit float type.
     """
 
-    __slots__ = ()
+    __slots__ = ("_hash",)
+
+    name = "float"
+    abstract = False
 
     def __init__(self) -> None:
-        super().__init__("float", Class("java/lang/Float"))
+        super().__init__(Class("java/lang/Float"))
+        self._hash = id(self)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Float)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def assignable(self, other: Type) -> bool:
+        if isinstance(other, _Integer):
+            return other._width > 0
+        return other is self or isinstance(other, _Long)
 
 
 class _Double(Primitive, TwoWord):
@@ -284,10 +504,25 @@ class _Double(Primitive, TwoWord):
     A double (64-bit float) type.
     """
 
-    __slots__ = ()
+    __slots__ = ("_hash",)
+
+    name = "double"
+    abstract = False
 
     def __init__(self) -> None:
-        super().__init__("double", Class("java/lang/Double"))
+        super().__init__(Class("java/lang/Double"))
+        self._hash = id(self)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Double)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def assignable(self, other: Type) -> bool:
+        if isinstance(other, _Integer):
+            return other._width > 0
+        return self == other or isinstance(other, (_Float, _Long))
 
 
 class ReturnAddress(Primitive, OneWord):
@@ -301,29 +536,38 @@ class ReturnAddress(Primitive, OneWord):
         Used to indicate where to jump back to.
     """
 
-    __slots__ = ("source",)
+    __slots__ = ("_source", "_hash")
+
+    name = "returnAddress"
+    abstract = False
+
+    @property
+    def source(self) -> object | None:
+        return self.source
 
     def __init__(self, source: object | None) -> None:
-        super().__init__("returnAddress")
-        self.source = source
-        self._hash = hash((self._hash, self.source))
+        super().__init__(None)
+        self._source = source
+        self._hash = hash((ReturnAddress, source))
 
     def __repr__(self) -> str:
-        return f"<ReturnAddress(source={self.source!s})>"
+        if self._source is not None:
+            return f"<ReturnAddress(source={self._source!s})>"
+        return "<ReturnAddress>"
 
     def __str__(self) -> str:
-        if self.source is not None:
-            return f"returnAddress<{self.source!s}>"
+        if self._source is not None:
+            return f"returnAddress<{self._source!s}>"
         return "returnAddress"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, ReturnAddress) and self.source == other.source
+        return isinstance(other, ReturnAddress) and (self._source is None or self._source == other._source)
 
     def __hash__(self) -> int:
         return self._hash
 
     def assignable(self, other: Type) -> bool:
-        return isinstance(other, ReturnAddress) and (self.source is None or self.source == other.source)
+        return self == other
 
 
 class Uninitialized(Reference, OneWord):
@@ -332,12 +576,19 @@ class Uninitialized(Reference, OneWord):
 
     Attributes
     ----------
-    source: Source | None
+    source: object | None
         The source of this uninitialised type.
         Used to indicate the type of the initialised value.
     """
 
-    __slots__ = ("source",)
+    __slots__ = ("_source", "_hash")
+
+    name = "uninitialized"
+    abstract = False
+
+    @property
+    def source(self) -> object | None:
+        return self._source
 
     # _cached: WeakValueDictionary[Source, "Uninitialized"] = WeakValueDictionary()
     #
@@ -354,23 +605,25 @@ class Uninitialized(Reference, OneWord):
     #     return self
 
     def __init__(self, source: object | None) -> None:
-        super().__init__("uninitialized")
-        self.source = source
-        self._hash = hash((self._hash, self.source))
+        self._source = source
+        self._hash = hash((Uninitialized, source))
 
     def __repr__(self) -> str:
-        return f"<Uninitialized(source={self.source!s})>"
+        return f"<Uninitialized(source={self._source!s})>"
 
     def __str__(self) -> str:
-        if self.source is not None:
-            return f"uninitialized<{self.source!s}>"
+        if self._source is not None:
+            return f"uninitialized<{self._source!s}>"
         return "uninitialized"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Uninitialized) and (self.source is None or self.source == other.source)
+        return isinstance(other, Uninitialized) and (self._source is None or self._source == other._source)
 
     def __hash__(self) -> int:
         return self._hash
+
+    def assignable(self, other: Type) -> bool:
+        return self == other
 
 
 class _UninitializedThis(Uninitialized):  # Not fully true to the spec, note.
@@ -380,20 +633,17 @@ class _UninitializedThis(Uninitialized):  # Not fully true to the spec, note.
 
     __slots__ = ()
 
-    # def __new__(cls) -> "_UninitializedThis":
-    #     return super().__new__(cls, None)
+    name = "uninitializedThis"
 
     def __init__(self) -> None:
         super().__init__(None)
-        self.name = "uninitializedThis"
-
-        self._hash = hash(self.name)
+        self._hash = id(self)
 
     def __str__(self) -> str:
         return "uninitializedThis"
 
     def __eq__(self, other: object) -> bool:
-        return type(other) is _UninitializedThis
+        return isinstance(other, _UninitializedThis)
 
     def __hash__(self) -> int:
         return self._hash
@@ -408,9 +658,6 @@ class _JavaReference(Reference, OneWord):
 
     __slots__ = ()
 
-    def assignable(self, other: Type) -> bool:
-        return isinstance(other, _JavaReference)
-
 
 class Array(_JavaReference):
     """
@@ -418,41 +665,39 @@ class Array(_JavaReference):
 
     Attributes
     ----------
-    lowest: Type
-        The lowest element type of this array, if multidimensional.
-    dimensions: int
-        The dimensions of this array (i.e. `4` would mean `[[[[I` in an int array).
-    primitive: bool
-        Whether this represents a primitive array type.
     element: Type
         The element type of this array.
+    dimension: int
+        The dimensions of this array (i.e. `4` would mean `[[[[I` in an int array).
+    lowest: Type
+        The lowest element type of this array, if multidimensional.
+    primitive: bool
+        Whether this represents a primitive array type.
 
     Methods
     -------
-    from_dimension(element: Type, dimension: int) -> Array
-        Creates an array type from the provided element type and dimension.
+    nested(element: Type, dimension: int) -> Array
+        Creates a nested array type from the provided element type and dimension.
     """
 
-    __slots__ = ("__dict__", "element")
+    __slots__ = (
+        "__weakref__",
+        "_name", "_abstract", "_element", "_hash",
+    )
 
     _cached: WeakValueDictionary[Type, "Array"] = WeakValueDictionary()
 
     @classmethod
-    def from_dimension(cls, element: Type, dimension: int) -> "Array":
+    def nested(cls, element: Type, dimension: int) -> "Array":
         """
-        Creates an array type from the provided element type and dimension.
+        Creates a nested array type from the provided element type and dimension.
 
         Parameters
         ----------
         element: Type
-            The inner most element type of this array.
+            The innermost element type of this array.
         dimension: int
             The dimensionality of this array.
-
-        Returns
-        -------
-        Array
-            The created array type.
 
         Raises
         ------
@@ -462,34 +707,42 @@ class Array(_JavaReference):
 
         if dimension <= 0:
             raise ValueError(f"invalid dimension {dimension} for array type")
-
         type_ = cls(element)
         for _ in range(dimension - 1):
             type_ = cls(type_)
         return type_
 
+    @property  # type: ignore[override]
+    def name(self) -> str:
+        return self._name
+
+    @property  # type: ignore[override]
+    def abstract(self) -> bool:
+        return self._abstract
+
+    @property
+    def element(self) -> Type:
+        return self._element
+
+    @cached_property
+    def dimension(self) -> int:
+        dimension = 1
+        element = self._element
+        while isinstance(element, Array):
+            dimension += 1
+            element = element._element
+        return dimension
+
     @cached_property  # Possible because we know this is immutable.
     def lowest(self) -> Type:
-        element = self.element
-        while type(element) is Array:
-            element = element.element
-
+        element = self._element
+        while isinstance(element, Array):
+            element = element._element
         return element
 
     @cached_property
-    def dimensions(self) -> int:
-        dimension = 1
-
-        element = self.element
-        while type(element) is Array:
-            dimension += 1
-            element = element.element
-
-        return dimension
-
-    @cached_property
     def primitive(self) -> bool:
-        return isinstance(self.element, Primitive)  # and not self.element.abstract
+        return isinstance(self._element, Primitive)  # and not self.element.abstract
 
     def __new__(cls, element: Type) -> "Array":
         cached = cls._cached.get(element)
@@ -501,26 +754,28 @@ class Array(_JavaReference):
         return self
 
     def __init__(self, element: Type) -> None:
-        super().__init__(element.name + "[]", abstract=element.abstract)
-        self.element = element
-        self._hash = hash((self._hash, self.element))
+        self._name = element.name + "[]"
+        self._abstract = element.abstract
+        self._element = element
+
+        self._hash = hash((Array, element))
 
     def __repr__(self) -> str:
-        return f"<Array(element={self.element!r})>"
+        return f"<Array(element={self._element!r})>"
+
+    def __str__(self) -> str:
+        return self._name
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Array) and self.element == other.element
+        return isinstance(other, Array) and self._element == other._element
 
     def __hash__(self) -> int:
         return self._hash
 
-    # We won't get into specifics here as it causes issues in the assembler. It's notable that arrays can just be
-    # generified to java/lang/Object, making this technically valid. If a more precise comparison is needed the element
-    # field is accessible.
-    # def mergeable(self, other: Type) -> bool:
-    #     if isinstance(other, Array):
-    #         return self.element.mergeable(other.element)
-    #     return super().mergeable(other)
+    def assignable(self, other: Type) -> bool:
+        if isinstance(other, Array):
+            return not isinstance(self._element, Primitive) and self._element.assignable(other._element)
+        return isinstance(other, _Null)
 
 
 class Class(_JavaReference):
@@ -529,13 +784,19 @@ class Class(_JavaReference):
 
     Methods
     -------
-    as_interface(self) -> Interface
+    interface(self) -> Interface
         Creates an interface type from this class.
     """
 
-    __slots__ = ()
+    __slots__ = ("__weakref__", "_name", "_hash")
+
+    abstract = False
 
     _cached: WeakValueDictionary[str, "Class"] = WeakValueDictionary()
+
+    @property  # type: ignore[override]
+    def name(self) -> str:
+        return self._name
 
     def __new__(cls, name: str) -> "Class":
         cached = cls._cached.get(name)
@@ -546,20 +807,34 @@ class Class(_JavaReference):
         cls._cached[name] = self
         return self
 
-    def __repr__(self) -> str:
-        return f"<Class(name={self.name!r})>"
+    def __init__(self, name: str) -> None:
+        self._name = name
+        self._hash = hash((Class, name))
 
-    def as_interface(self) -> "Interface":
+    def __repr__(self) -> str:
+        return f"<Class(name={self._name!r})>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Class) and self._name == other._name
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def assignable(self, other: Type) -> bool:
+        if self is object_t:
+            return isinstance(other, _JavaReference)
+        elif isinstance(other, Class):
+            # Narrowing this down is not our responsibility here. The most basic check we'll do is if we're
+            # java/lang/Object. Further checks require hierarchy knowledge, which we don't have here.
+            return self._name == other._name or isinstance(other, _Null)
+        return False
+
+    def interface(self) -> "Interface":
         """
         Creates an interface type from this class.
-
-        Returns
-        -------
-        Interface
-            This class represented as an interface.
         """
 
-        return Interface(self.name)
+        return Interface(self._name)
 
 
 # Although this is distinct from a class according to the spec, it's not always possible to distinguish between a class
@@ -584,9 +859,9 @@ class Interface(Class):
         return self
 
     def __repr__(self) -> str:
-        return f"<Interface(name={self.name!r})>"
+        return f"<Interface(name={self._name!r})>"
 
-    def as_interface(self) -> "Interface":
+    def interface(self) -> "Interface":
         return self
 
 
@@ -597,11 +872,13 @@ class _Null(_JavaReference):
     A null type.
     """
 
-    __slots__ = ()
+    __slots__ = ("_hash",)
+
+    name = "null"
+    abstract = False
 
     def __init__(self) -> None:
-        super().__init__("null")
-        self._hash = hash(self.name)
+        self._hash = id(self)
 
     def __eq__(self, other: object) -> bool:
         return self is other
@@ -610,27 +887,24 @@ class _Null(_JavaReference):
         return self._hash
 
     def assignable(self, other: Type) -> bool:
-        # FIXME: object_t.assignable(null_t) should not be true, probably.
-        return self is other or isinstance(other, _JavaReference)
+        return isinstance(other, _Null)
 
 
-primitive_t = Primitive("primitive", abstract=True)
-reference_t = Reference("reference", abstract=True)
+primitive_t = _Primitive()
+reference_t = _Reference()
 
-top_t = _Top("top", abstract=True)
+top_t = _Top()
 
-void_t = Primitive("void")
-# The second half of a long or double. Not a Primitive as we want to be able to merge it into a top type in certain
-# cases (https://discord.com/channels/443258489146572810/887649798918909972/1118900676764897280). Credits to xxDark for
-# this insight.
-reserved_t = OneWord("__reserved")
+void_t = _Void()
+reserved_t = _Reserved()
 
-# Integer types
-boolean_t = _Integer("boolean", Class("java/lang/Boolean"))
-byte_t    = _Integer("byte",    Class("java/lang/Byte"))
-char_t    = _Integer("char",    Class("java/lang/Character"))
-short_t   = _Integer("short",   Class("java/lang/Short"))
-int_t     = _Integer("int",     Class("java/lang/Integer"))
+# Integer types.
+# Boolean width is -1 to ensure that it cannot be assigned to by any integer type.
+boolean_t = _Integer("boolean", -1, Class("java/lang/Boolean"))
+byte_t    = _Integer("byte",    1, Class("java/lang/Byte"))
+char_t    = _Integer("char",    2, Class("java/lang/Character"))
+short_t   = _Integer("short",   2, Class("java/lang/Short"))
+int_t     = _Integer("int",     4, Class("java/lang/Integer"))
 
 long_t  = _Long()
 
@@ -642,7 +916,7 @@ return_address_t = ReturnAddress(None)
 uninitialized_t = Uninitialized(None)
 uninitialized_this_t = _UninitializedThis()
 
-# Important class types
+# Important class types.
 object_t    = Class("java/lang/Object")
 class_t     = Class("java/lang/Class")
 string_t    = Class("java/lang/String")
@@ -653,7 +927,7 @@ exception_t = Class("java/lang/Exception")
 method_type_t   = Class("java/lang/invoke/MethodType")
 method_handle_t = Class("java/lang/invoke/MethodHandle")
 
-# Boxed primitive types
+# Boxed primitive types.
 boxed_boolean_t = boolean_t.boxed
 boxed_byte_t    = byte_t.boxed
 boxed_char_t    = char_t.boxed
@@ -667,7 +941,7 @@ null_t = _Null()
 
 array_t = Array(top_t)
 
-# Basic array types
+# Basic array types.
 boolean_array_t = Array(boolean_t)
 byte_array_t    = Array(byte_t)
 char_array_t    = Array(char_t)
