@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "JAVA_1_0", "JAVA_1_0_1", "JAVA_1_0_2",
     "JAVA_1_1", "JAVA_1_2", "JAVA_1_3",
@@ -25,17 +27,17 @@ class Version:  # FIXME: Class restructuring required.
 
     Attributes
     ----------
-    previous: bool
-        Whether the version is a preview version.
     name: str
         The name of the version.
     major: int
         The major version found in class files.
     minor: int
         The minor version found in class files.
+    preview: bool
+        Whether the version is a preview version.
     """
 
-    __slots__ = ("name", "major", "minor")
+    __slots__ = ("_name", "_major", "_minor", "_hash")
 
     NAMES: dict[tuple[int, int] | int, str] = {  # A map of major and/or minor versions to names.
         # The 1.0 and 1.0.1 versions may not be true as I have not found any 45.0 or 45.1 classes anywhere.
@@ -89,11 +91,6 @@ class Version:  # FIXME: Class restructuring required.
         version: str | float | tuple[int, int]
             The version specifier.
 
-        Returns
-        -------
-        Version
-            The version.
-
         Raises
         ------
         ValueError
@@ -122,6 +119,18 @@ class Version:  # FIXME: Class restructuring required.
         raise TypeError(f"don't know how to convert {type(version)!r} into a version")
 
     @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def major(self) -> int:
+        return self._major
+
+    @property
+    def minor(self) -> int:
+        return self._minor
+
+    @property
     def preview(self) -> bool:
         return self.major >= 56 and self.minor == 65535
 
@@ -130,56 +139,57 @@ class Version:  # FIXME: Class restructuring required.
         if name is None:
             name = Version.NAMES.get(major) or "unknown"
 
-        self.name = name  # To please mypy.
-        self.major = major
-        self.minor = minor
+        self._name = name  # To please mypy.
+        self._major = major
+        self._minor = minor
+        self._hash = hash((major, minor))
 
     def __repr__(self) -> str:
-        return f"<Version(name={self.name!r}, major={self.major}, minor={self.minor})>"
+        return f"<Version(name={self._name!r}, major={self._major}, minor={self._minor})>"
 
     def __str__(self) -> str:
-        return self.name
+        return self._name
+
+    def __lt__(self, other: object) -> bool:
+        if isinstance(other, Version):
+            return self._major < other._major or (self._major == other._major and self._minor < other._minor)
+        elif isinstance(other, int):
+            return self._major < other
+        elif isinstance(other, float):
+            return self < Version._normalise(other)
+        return False
+
+    def __le__(self, other: object) -> bool:
+        return self == other or self < other
 
     def __eq__(self, other: object) -> bool:
         if other is self:
             return True
         elif isinstance(other, Version):
-            return other.major == self.major and (self.major > 45 or other.minor == self.minor)
+            return self._major == other._major and (self._major > 45 or self._minor == other._minor)
         elif isinstance(other, int):
-            return other == self.major
+            return self._major == other
         elif isinstance(other, float):
             return self == Version._normalise(other)
-
         return False
 
-    def __hash__(self) -> int:
-        return hash((self.major, self.minor))
+    def __ne__(self, other: object) -> bool:
+        return self != other
 
     def __gt__(self, other: object) -> bool:
         if isinstance(other, Version):
-            return self.major > other.major or (self.major == other.major and self.minor > other.minor)
+            return self._major > other._major or (self._major == other._major and self._minor > other._minor)
         elif isinstance(other, int):
-            return self.major > other
+            return self._major > other
         elif isinstance(other, float):
             return self > self._normalise(other)
-
         return False
 
     def __ge__(self, other: object) -> bool:
         return self == other or self > other
 
-    def __lt__(self, other: object) -> bool:
-        if isinstance(other, Version):
-            return self.major < other.major or (self.major == other.major and self.minor < other.minor)
-        elif isinstance(other, int):
-            return self.major < other
-        elif isinstance(other, float):
-            return self < Version._normalise(other)
-
-        return False
-
-    def __le__(self, other: object) -> bool:
-        return self == other or self < other
+    def __hash__(self) -> int:
+        return self._hash
 
 
 JAVA_1_0   = Version(45, 0)

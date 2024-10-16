@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "parse_reference", "parse_field_descriptor", "parse_method_descriptor", "to_descriptor",
 )

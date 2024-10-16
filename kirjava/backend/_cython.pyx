@@ -17,6 +17,7 @@ A Cython backend implementation.
 
 import math
 import sys
+from typing import SupportsFloat, SupportsInt
 
 from libc cimport math as cmath
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t
@@ -38,7 +39,7 @@ cdef class u8:
 
     cdef uint8_t value
 
-    def __init__(self, value: object) -> None:
+    def __init__(self, value: SupportsInt) -> None:
         # if isinstance(value, int):
         #     self.value = <uint8_t>value
         self.value = <uint8_t>value
@@ -82,27 +83,27 @@ cdef class u8:
     def __hash__(self) -> int:
         return self.value
 
-    def __add__(self, other: object) -> u8:
+    def __add__(self, other: SupportsInt) -> u8:
         cdef uint8_t value = self.value + <uint8_t>other
         return u8(value)
 
-    def __sub__(self, other: object) -> u8:
+    def __sub__(self, other: SupportsInt) -> u8:
         cdef uint8_t value = self.value - <uint8_t>other
         return u8(value)
 
-    def __mul__(self, other: object) -> u8:
+    def __mul__(self, other: SupportsInt) -> u8:
         cdef uint8_t value = self.value * <uint8_t>other
         return u8(value)
 
-    def __mod__(self, other: object) -> u8:
+    def __mod__(self, other: SupportsInt) -> u8:
         cdef uint8_t value = self.value % <uint8_t>other
         return u8(value)
 
-    def __floordiv__(self, other: object) -> u8:
+    def __floordiv__(self, other: SupportsInt) -> u8:
         cdef uint8_t value = self.value // <uint8_t>other
         return u8(value)
 
-    def __truediv__(self, other: object) -> u8:
+    def __truediv__(self, other: SupportsInt) -> u8:
         cdef uint8_t value = self.value // <uint8_t>other
         return u8(value)
 
@@ -122,23 +123,23 @@ cdef class u8:
         cdef uint8_t value = ~self.value
         return u8(value)
 
-    def __lshift__(self, other: object) -> u8:
+    def __lshift__(self, other: SupportsInt) -> u8:
         cdef uint8_t value = self.value << <uint8_t>other
         return u8(value)
 
-    def __rshift__(self, other: object) -> u8:
+    def __rshift__(self, other: SupportsInt) -> u8:
         cdef uint8_t value = self.value >> <uint8_t>other
         return u8(value)
 
-    def __and__(self, other: object) -> u8:
+    def __and__(self, other: SupportsInt) -> u8:
         cdef uint8_t value = self.value & <uint8_t>other
         return u8(value)
 
-    def __xor__(self, other: object) -> u8:
+    def __xor__(self, other: SupportsInt) -> u8:
         cdef uint8_t value = self.value ^ <uint8_t>other
         return u8(value)
 
-    def __or__(self, other: object) -> u8:
+    def __or__(self, other: SupportsInt) -> u8:
         cdef uint8_t value = self.value | <uint8_t>other
         return u8(value)
 
@@ -147,7 +148,7 @@ cdef class u16:
 
     cdef uint16_t value
 
-    def __init__(self, value: object) -> None:
+    def __init__(self, value: SupportsInt) -> None:
         self.value = <uint16_t>value
 
     def __repr__(self) -> str:
@@ -186,27 +187,27 @@ cdef class u16:
     def __hash__(self) -> int:
         return self.value
 
-    def __add__(self, other: object) -> u16:
+    def __add__(self, other: SupportsInt) -> u16:
         cdef uint16_t value = self.value + <uint16_t>other
         return u16(value)
 
-    def __sub__(self, other: object) -> u16:
+    def __sub__(self, other: SupportsInt) -> u16:
         cdef uint16_t value = self.value - <uint16_t>other
         return u16(value)
 
-    def __mul__(self, other: object) -> u16:
+    def __mul__(self, other: SupportsInt) -> u16:
         cdef uint16_t value = self.value * <uint16_t>other
         return u16(value)
 
-    def __mod__(self, other: object) -> u16:
+    def __mod__(self, other: SupportsInt) -> u16:
         cdef uint16_t value = self.value % <uint16_t>other
         return u16(value)
 
-    def __floordiv__(self, other: object) -> u16:
+    def __floordiv__(self, other: SupportsInt) -> u16:
         cdef uint16_t value = self.value // <uint16_t>other
         return u16(value)
 
-    def __truediv__(self, other: object) -> u16:
+    def __truediv__(self, other: SupportsInt) -> u16:
         cdef uint16_t value = self.value // <uint16_t>other
         return u16(value)
 
@@ -221,23 +222,23 @@ cdef class u16:
         cdef uint16_t value = ~self.value
         return u16(value)
 
-    def __lshift__(self, other: object) -> u16:
+    def __lshift__(self, other: SupportsInt) -> u16:
         cdef uint16_t value = self.value << <uint16_t>other
         return u16(value)
 
-    def __rshift__(self, other: object) -> u16:
+    def __rshift__(self, other: SupportsInt) -> u16:
         cdef uint16_t value = self.value >> <uint16_t>other
         return u16(value)
 
-    def __and__(self, other: object) -> u16:
+    def __and__(self, other: SupportsInt) -> u16:
         cdef uint16_t value = self.value & <uint16_t>other
         return u16(value)
 
-    def __xor__(self, other: object) -> u16:
+    def __xor__(self, other: SupportsInt) -> u16:
         cdef uint16_t value = self.value ^ <uint16_t>other
         return u16(value)
 
-    def __or__(self, other: object) -> u16:
+    def __or__(self, other: SupportsInt) -> u16:
         cdef uint16_t value = self.value | <uint16_t>other
         return u16(value)
 
@@ -246,7 +247,7 @@ cdef class u32:
 
     cdef uint32_t value
 
-    def __init__(self, value: object) -> None:
+    def __init__(self, value: SupportsInt) -> None:
         self.value = <uint32_t>value
 
     def __repr__(self) -> str:
@@ -285,27 +286,27 @@ cdef class u32:
     def __hash__(self) -> int:
         return self.value
 
-    def __add__(self, other: object) -> u32:
+    def __add__(self, other: SupportsInt) -> u32:
         cdef uint32_t value = self.value + <uint32_t>other
         return u32(value)
 
-    def __sub__(self, other: object) -> u32:
+    def __sub__(self, other: SupportsInt) -> u32:
         cdef uint32_t value = self.value - <uint32_t>other
         return u32(value)
 
-    def __mul__(self, other: object) -> u32:
+    def __mul__(self, other: SupportsInt) -> u32:
         cdef uint32_t value = self.value * <uint32_t>other
         return u32(value)
 
-    def __mod__(self, other: object) -> u32:
+    def __mod__(self, other: SupportsInt) -> u32:
         cdef uint32_t value = self.value % <uint32_t>other
         return u32(value)
 
-    def __floordiv__(self, other: object) -> u32:
+    def __floordiv__(self, other: SupportsInt) -> u32:
         cdef uint32_t value = self.value // <uint32_t>other
         return u32(value)
 
-    def __truediv__(self, other: object) -> u32:
+    def __truediv__(self, other: SupportsInt) -> u32:
         cdef uint32_t value = self.value // <uint32_t>other
         return u32(value)
 
@@ -320,23 +321,23 @@ cdef class u32:
         cdef uint32_t value = ~self.value
         return u32(value)
 
-    def __lshift__(self, other: object) -> u32:
+    def __lshift__(self, other: SupportsInt) -> u32:
         cdef uint32_t value = self.value << <uint32_t>other
         return u32(value)
 
-    def __rshift__(self, other: object) -> u32:
+    def __rshift__(self, other: SupportsInt) -> u32:
         cdef uint32_t value = self.value >> <uint32_t>other
         return u32(value)
 
-    def __and__(self, other: object) -> u32:
+    def __and__(self, other: SupportsInt) -> u32:
         cdef uint32_t value = self.value & <uint32_t>other
         return u32(value)
 
-    def __xor__(self, other: object) -> u32:
+    def __xor__(self, other: SupportsInt) -> u32:
         cdef uint32_t value = self.value ^ <uint32_t>other
         return u32(value)
 
-    def __or__(self, other: object) -> u32:
+    def __or__(self, other: SupportsInt) -> u32:
         cdef uint32_t value = self.value | <uint32_t>other
         return u32(value)
 
@@ -345,7 +346,7 @@ cdef class u64:
 
     cdef uint64_t value
 
-    def __init__(self, value: object) -> None:
+    def __init__(self, value: SupportsInt) -> None:
         self.value = <uint64_t>value
 
     def __repr__(self) -> str:
@@ -384,27 +385,27 @@ cdef class u64:
     def __hash__(self) -> int:
         return self.value
 
-    def __add__(self, other: object) -> u64:
+    def __add__(self, other: SupportsInt) -> u64:
         cdef uint64_t value = self.value + <uint64_t>other
         return u64(value)
 
-    def __sub__(self, other: object) -> u64:
+    def __sub__(self, other: SupportsInt) -> u64:
         cdef uint64_t value = self.value - <uint64_t>other
         return u64(value)
 
-    def __mul__(self, other: object) -> u64:
+    def __mul__(self, other: SupportsInt) -> u64:
         cdef uint64_t value = self.value * <uint64_t>other
         return u64(value)
 
-    def __mod__(self, other: object) -> u64:
+    def __mod__(self, other: SupportsInt) -> u64:
         cdef uint64_t value = self.value % <uint64_t>other
         return u64(value)
 
-    def __floordiv__(self, other: object) -> u64:
+    def __floordiv__(self, other: SupportsInt) -> u64:
         cdef uint64_t value = self.value // <uint64_t>other
         return u64(value)
 
-    def __truediv__(self, other: object) -> u64:
+    def __truediv__(self, other: SupportsInt) -> u64:
         cdef uint64_t value = self.value // <uint64_t>other
         return u64(value)
 
@@ -419,23 +420,23 @@ cdef class u64:
         cdef uint64_t value = ~self.value
         return u64(value)
 
-    def __lshift__(self, other: object) -> u64:
+    def __lshift__(self, other: SupportsInt) -> u64:
         cdef uint64_t value = self.value << <uint64_t>other
         return u64(value)
 
-    def __rshift__(self, other: object) -> u64:
+    def __rshift__(self, other: SupportsInt) -> u64:
         cdef uint64_t value = self.value >> <uint64_t>other
         return u64(value)
 
-    def __and__(self, other: object) -> u64:
+    def __and__(self, other: SupportsInt) -> u64:
         cdef uint64_t value = self.value & <uint64_t>other
         return u64(value)
 
-    def __xor__(self, other: object) -> u64:
+    def __xor__(self, other: SupportsInt) -> u64:
         cdef uint64_t value = self.value ^ <uint64_t>other
         return u64(value)
 
-    def __or__(self, other: object) -> u64:
+    def __or__(self, other: SupportsInt) -> u64:
         cdef uint64_t value = self.value | <uint64_t>other
         return u64(value)
 
@@ -444,7 +445,7 @@ cdef class i8:
 
     cdef int8_t value
 
-    def __init__(self, value: object) -> None:
+    def __init__(self, value: SupportsInt) -> None:
         self.value = <int8_t>value
 
     def __repr__(self) -> str:
@@ -483,27 +484,27 @@ cdef class i8:
     def __hash__(self) -> int:
         return self.value
 
-    def __add__(self, other: object) -> i8:
+    def __add__(self, other: SupportsInt) -> i8:
         cdef int8_t value = self.value + <int8_t>other
         return i8(value)
 
-    def __sub__(self, other: object) -> i8:
+    def __sub__(self, other: SupportsInt) -> i8:
         cdef int8_t value = self.value - <int8_t>other
         return i8(value)
 
-    def __mul__(self, other: object) -> i8:
+    def __mul__(self, other: SupportsInt) -> i8:
         cdef int8_t value = self.value * <int8_t>other
         return i8(value)
 
-    def __mod__(self, other: object) -> i8:
+    def __mod__(self, other: SupportsInt) -> i8:
         cdef int8_t value = self.value % <int8_t>other
         return i8(value)
 
-    def __floordiv__(self, other: object) -> i8:
+    def __floordiv__(self, other: SupportsInt) -> i8:
         cdef int8_t value = self.value // <int8_t>other
         return i8(value)
 
-    def __truediv__(self, other: object) -> i8:
+    def __truediv__(self, other: SupportsInt) -> i8:
         cdef int8_t value = self.value // <int8_t>other
         return i8(value)
 
@@ -521,23 +522,23 @@ cdef class i8:
         cdef int8_t value = ~self.value
         return i8(value)
 
-    def __lshift__(self, other: object) -> i8:
+    def __lshift__(self, other: SupportsInt) -> i8:
         cdef int8_t value = self.value << <int8_t>other
         return i8(value)
 
-    def __rshift__(self, other: object) -> i8:
+    def __rshift__(self, other: SupportsInt) -> i8:
         cdef int8_t value = self.value >> <int8_t>other
         return i8(value)
 
-    def __and__(self, other: object) -> i8:
+    def __and__(self, other: SupportsInt) -> i8:
         cdef int8_t value = self.value & <int8_t>other
         return i8(value)
 
-    def __xor__(self, other: object) -> i8:
+    def __xor__(self, other: SupportsInt) -> i8:
         cdef int8_t value = self.value ^ <int8_t>other
         return i8(value)
 
-    def __or__(self, other: object) -> i8:
+    def __or__(self, other: SupportsInt) -> i8:
         cdef int8_t value = self.value | <int8_t>other
         return i8(value)
 
@@ -546,7 +547,7 @@ cdef class i16:
 
     cdef int16_t value
 
-    def __init__(self, value: object) -> None:
+    def __init__(self, value: SupportsInt) -> None:
         self.value = <int16_t>value
 
     def __repr__(self) -> str:
@@ -585,27 +586,27 @@ cdef class i16:
     def __hash__(self) -> int:
         return self.value
 
-    def __add__(self, other: object) -> i16:
+    def __add__(self, other: SupportsInt) -> i16:
         cdef int16_t value = self.value + <int16_t>other
         return i16(value)
 
-    def __sub__(self, other: object) -> i16:
+    def __sub__(self, other: SupportsInt) -> i16:
         cdef int16_t value = self.value - <int16_t>other
         return i16(value)
 
-    def __mul__(self, other: object) -> i16:
+    def __mul__(self, other: SupportsInt) -> i16:
         cdef int16_t value = self.value * <int16_t>other
         return i16(value)
 
-    def __mod__(self, other: object) -> i16:
+    def __mod__(self, other: SupportsInt) -> i16:
         cdef int16_t value = self.value % <int16_t>other
         return i16(value)
 
-    def __floordiv__(self, other: object) -> i16:
+    def __floordiv__(self, other: SupportsInt) -> i16:
         cdef int16_t value = self.value // other
         return i16(value)
 
-    def __truediv__(self, other: object) -> i16:
+    def __truediv__(self, other: SupportsInt) -> i16:
         cdef int16_t value = self.value // other
         return i16(value)
 
@@ -623,23 +624,23 @@ cdef class i16:
         cdef int16_t value = ~self.value
         return i16(value)
 
-    def __lshift__(self, other: object) -> i16:
+    def __lshift__(self, other: SupportsInt) -> i16:
         cdef int16_t value = self.value << <int16_t>other
         return i16(value)
 
-    def __rshift__(self, other: object) -> i16:
+    def __rshift__(self, other: SupportsInt) -> i16:
         cdef int16_t value = self.value >> <int16_t>other
         return i16(value)
 
-    def __and__(self, other: object) -> i16:
+    def __and__(self, other: SupportsInt) -> i16:
         cdef int16_t value = self.value & <int16_t>other
         return i16(value)
 
-    def __xor__(self, other: object) -> i16:
+    def __xor__(self, other: SupportsInt) -> i16:
         cdef int16_t value = self.value ^ <int16_t>other
         return i16(value)
 
-    def __or__(self, other: object) -> i16:
+    def __or__(self, other: SupportsInt) -> i16:
         cdef int16_t value = self.value | <int16_t>other
         return i16(value)
 
@@ -648,7 +649,7 @@ cdef class i32:
 
     cdef int32_t value
 
-    def __init__(self, value: object) -> None:
+    def __init__(self, value: SupportsInt) -> None:
         self.value = <int32_t>value
 
     def __repr__(self) -> str:
@@ -687,27 +688,27 @@ cdef class i32:
     def __hash__(self) -> int:
         return self.value
 
-    def __add__(self, other: object) -> i32:
+    def __add__(self, other: SupportsInt) -> i32:
         cdef int32_t value = self.value + <int32_t>other
         return i32(value)
 
-    def __sub__(self, other: object) -> i32:
+    def __sub__(self, other: SupportsInt) -> i32:
         cdef int32_t value = self.value - <int32_t>other
         return i32(value)
 
-    def __mul__(self, other: object) -> i32:
+    def __mul__(self, other: SupportsInt) -> i32:
         cdef int32_t value = self.value * <int32_t>other
         return i32(value)
 
-    def __mod__(self, other: object) -> i32:
+    def __mod__(self, other: SupportsInt) -> i32:
         cdef int32_t value = self.value % <int32_t>other
         return i32(value)
 
-    def __floordiv__(self, other: object) -> i32:
+    def __floordiv__(self, other: SupportsInt) -> i32:
         cdef int32_t value = self.value // <int32_t>other
         return i32(value)
 
-    def __truediv__(self, other: object) -> i32:
+    def __truediv__(self, other: SupportsInt) -> i32:
         cdef int32_t value = self.value // <int32_t>other
         return i32(value)
 
@@ -725,23 +726,23 @@ cdef class i32:
         cdef int32_t value = ~self.value
         return i32(value)
 
-    def __lshift__(self, other: object) -> i32:
+    def __lshift__(self, other: SupportsInt) -> i32:
         cdef int32_t value = self.value << <int32_t>other
         return i32(value)
 
-    def __rshift__(self, other: object) -> i32:
+    def __rshift__(self, other: SupportsInt) -> i32:
         cdef int32_t value = self.value >> <int32_t>other
         return i32(value)
 
-    def __and__(self, other: object) -> i32:
+    def __and__(self, other: SupportsInt) -> i32:
         cdef int32_t value = self.value & <int32_t>other
         return i32(value)
 
-    def __xor__(self, other: object) -> i32:
+    def __xor__(self, other: SupportsInt) -> i32:
         cdef int32_t value = self.value ^ <int32_t>other
         return i32(value)
 
-    def __or__(self, other: object) -> i32:
+    def __or__(self, other: SupportsInt) -> i32:
         cdef int32_t value = self.value | <int32_t>other
         return i32(value)
 
@@ -750,7 +751,7 @@ cdef class i64:
 
     cdef int64_t value
 
-    def __init__(self, value: object) -> None:
+    def __init__(self, value: SupportsInt) -> None:
         self.value = <int64_t>value
 
     def __repr__(self) -> str:
@@ -789,27 +790,27 @@ cdef class i64:
     def __hash__(self) -> int:
         return self.value
 
-    def __add__(self, other: object) -> i64:
+    def __add__(self, other: SupportsInt) -> i64:
         cdef int64_t value = self.value + <int64_t>other
         return i64(value)
 
-    def __sub__(self, other: object) -> i64:
+    def __sub__(self, other: SupportsInt) -> i64:
         cdef int64_t value = self.value - <int64_t>other
         return i64(value)
 
-    def __mul__(self, other: object) -> i64:
+    def __mul__(self, other: SupportsInt) -> i64:
         cdef int64_t value = self.value * <int64_t>other
         return i64(value)
 
-    def __mod__(self, other: object) -> i64:
+    def __mod__(self, other: SupportsInt) -> i64:
         cdef int64_t value = self.value % <int64_t>other
         return i64(value)
 
-    def __floordiv__(self, other: object) -> i64:
+    def __floordiv__(self, other: SupportsInt) -> i64:
         cdef int64_t value = self.value // <int64_t>other
         return i64(value)
 
-    def __truediv__(self, other: object) -> i64:
+    def __truediv__(self, other: SupportsInt) -> i64:
         cdef int64_t value = self.value // <int64_t>other
         return i64(value)
 
@@ -827,23 +828,23 @@ cdef class i64:
         cdef int64_t value = ~self.value
         return i64(value)
 
-    def __lshift__(self, other: object) -> i64:
+    def __lshift__(self, other: SupportsInt) -> i64:
         cdef int64_t value = self.value << <int64_t>other
         return i64(value)
 
-    def __rshift__(self, other: object) -> i64:
+    def __rshift__(self, other: SupportsInt) -> i64:
         cdef int64_t value = self.value >> <int64_t>other
         return i64(value)
 
-    def __and__(self, other: object) -> i64:
+    def __and__(self, other: SupportsInt) -> i64:
         cdef int64_t value = self.value & <int64_t>other
         return i64(value)
 
-    def __xor__(self, other: object) -> i64:
+    def __xor__(self, other: SupportsInt) -> i64:
         cdef int64_t value = self.value ^ <int64_t>other
         return i64(value)
 
-    def __or__(self, other: object) -> i64:
+    def __or__(self, other: SupportsInt) -> i64:
         cdef int64_t value = self.value | <int64_t>other
         return i64(value)
 
@@ -852,7 +853,7 @@ cdef class f32:
 
     cdef float value
 
-    def __init__(self, value: object) -> None:
+    def __init__(self, value: SupportsFloat) -> None:
         self.value = <float>value
 
     def __repr__(self) -> str:
@@ -891,30 +892,30 @@ cdef class f32:
     def __hash__(self) -> int:
         return hash(self.value)
 
-    def __add__(self, other: object) -> f32:
+    def __add__(self, other: SupportsFloat) -> f32:
         # This line will convert any 32-bit float to a double first, and then back to a 32-bit float. This may be
         # slower, but is ultimately is fine to do, as doubles fully encapsulate the range of possible floats. The
         # arithmetic is still being done on 32-bit floats in this case.
         cdef float value = self.value + <float>other
         return f32(value)
 
-    def __sub__(self, other: object) -> f32:
+    def __sub__(self, other: SupportsFloat) -> f32:
         cdef float value = self.value - <float>other
         return f32(value)
 
-    def __mul__(self, other: object) -> f32:
+    def __mul__(self, other: SupportsFloat) -> f32:
         cdef float value = self.value * <float>other
         return f32(value)
 
-    def __mod__(self, other: object) -> f32:
+    def __mod__(self, other: SupportsFloat) -> f32:
         cdef float value = self.value % <float>other
         return f32(value)
 
-    def __floordiv__(self, other: object) -> f32:
+    def __floordiv__(self, other: SupportsFloat) -> f32:
         cdef float value = self.value // <float>other
         return f32(value)
 
-    def __truediv__(self, other: object) -> f32:
+    def __truediv__(self, other: SupportsFloat) -> f32:
         cdef float value = self.value / <float>other
         return f32(value)
 
@@ -952,7 +953,7 @@ cdef class f64:
 
     cdef double value
 
-    def __init__(self, value: float) -> None:
+    def __init__(self, value: SupportsFloat) -> None:
         self.value = <double>value
 
     def __repr__(self) -> str:
@@ -991,27 +992,27 @@ cdef class f64:
     def __hash__(self) -> int:
         return hash(self.value)
 
-    def __add__(self, other: object) -> f64:
+    def __add__(self, other: SupportsFloat) -> f64:
         cdef float value = self.value + <float>other
         return f64(value)
 
-    def __sub__(self, other: object) -> f64:
+    def __sub__(self, other: SupportsFloat) -> f64:
         cdef double value = self.value - <double>other
         return f64(value)
 
-    def __mul__(self, other: object) -> f64:
+    def __mul__(self, other: SupportsFloat) -> f64:
         cdef double value = self.value * <double>other
         return f64(value)
 
-    def __mod__(self, other: object) -> f64:
+    def __mod__(self, other: SupportsFloat) -> f64:
         cdef double value = self.value % <double>other
         return f64(value)
 
-    def __floordiv__(self, other: object) -> f64:
+    def __floordiv__(self, other: SupportsFloat) -> f64:
         cdef double value = self.value // <double>other
         return f64(value)
 
-    def __truediv__(self, other: object) -> f64:
+    def __truediv__(self, other: SupportsFloat) -> f64:
         cdef double value = self.value / <double>other
         return f64(value)
 

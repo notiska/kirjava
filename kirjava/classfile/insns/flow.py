@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "goto", "jsr", "ret", "ret_w", "goto_w", "jsr_w",
     "ifeq", "ifne", "iflt", "ifge", "ifgt", "ifle",

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "MethodInfo",
     "Code", "StackMapTable",
@@ -14,7 +16,7 @@ JVM class file method info struct and attributes.
 
 import typing
 from os import SEEK_CUR, SEEK_SET
-from typing import IO, Iterable
+from typing import IO, Iterable, Union
 
 from .annotation import ElementValue, ParameterAnnotations
 from .attribute import AttributeInfo
@@ -617,8 +619,11 @@ class StackMapTable(AttributeInfo):
     def __setitem__(self, index: int, value: StackMapFrame) -> None:
         self.frames[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.frames[index]
+    def __delitem__(self, key: int | StackMapFrame) -> None:
+        if isinstance(key, int):
+            del self.frames[key]
+        else:
+            self.frames.remove(key)
 
     def __len__(self) -> int:
         return len(self.frames)
@@ -674,8 +679,11 @@ class Exceptions(AttributeInfo):
     def __setitem__(self, index: int, value: ConstInfo) -> None:
         self.exceptions[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.exceptions[index]
+    def __delitem__(self, key: int | ConstInfo) -> None:
+        if isinstance(key, int):
+            del self.exceptions[key]
+        else:
+            self.exceptions.remove(key)
 
     def __len__(self) -> int:
         return len(self.exceptions)
@@ -740,8 +748,11 @@ class LineNumberTable(AttributeInfo):
     def __setitem__(self, index: int, value: "LineNumberTable.LineNumber") -> None:
         self.lines[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.lines[index]
+    def __delitem__(self, key: Union[int, "LineNumberTable.LineNumber"]) -> None:
+        if isinstance(key, int):
+            del self.lines[key]
+        else:
+            self.lines.remove(key)
 
     def __len__(self) -> int:
         return len(self.lines)
@@ -836,8 +847,11 @@ class LocalVariableTable(AttributeInfo):
     def __setitem__(self, index: int, value: "LocalVariableTable.LocalVariable") -> None:
         self.locals[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.locals[index]
+    def __delitem__(self, key: Union[int, "LocalVariableTable.LocalVariable"]) -> None:
+        if isinstance(key, int):
+            del self.locals[key]
+        else:
+            self.locals.remove(key)
 
     def __len__(self) -> int:
         return len(self.locals)
@@ -950,8 +964,11 @@ class LocalVariableTypeTable(AttributeInfo):
     def __setitem__(self, index: int, value: "LocalVariableTypeTable.LocalVariable") -> None:
         self.locals[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.locals[index]
+    def __delitem__(self, key: Union[int, "LocalVariableTypeTable.LocalVariable"]) -> None:
+        if isinstance(key, int):
+            del self.locals[key]
+        else:
+            self.locals.remove(key)
 
     def __len__(self) -> int:
         return len(self.locals)
@@ -1102,8 +1119,11 @@ class MethodParameters(AttributeInfo):
     def __setitem__(self, index: int, value: "MethodParameters.Parameter") -> None:
         self.params[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.params[index]
+    def __delitem__(self, key: Union[int, "MethodParameters.Parameter"]) -> None:
+        if isinstance(key, int):
+            del self.params[key]
+        else:
+            self.params.remove(key)
 
     def __len__(self) -> int:
         return len(self.params)
@@ -1243,8 +1263,11 @@ class RuntimeVisibleParameterAnnotations(AttributeInfo):
     def __setitem__(self, index: int, value: ParameterAnnotations) -> None:
         self.annotations[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.annotations[index]
+    def __delitem__(self, key: int | ParameterAnnotations) -> None:
+        if isinstance(key, int):
+            del self.annotations[key]
+        else:
+            self.annotations.remove(key)
 
     def __len__(self) -> int:
         return len(self.annotations)
@@ -1306,8 +1329,11 @@ class RuntimeInvisibleParameterAnnotations(AttributeInfo):
     def __setitem__(self, index: int, value: ParameterAnnotations) -> None:
         self.annotations[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.annotations[index]
+    def __delitem__(self, key: int | ParameterAnnotations) -> None:
+        if isinstance(key, int):
+            del self.annotations[key]
+        else:
+            self.annotations.remove(key)
 
     def __len__(self) -> int:
         return len(self.annotations)

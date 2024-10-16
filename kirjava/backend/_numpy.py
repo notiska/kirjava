@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "u8", "u16", "u32", "u64",
     "i8", "i16", "i32", "i64",

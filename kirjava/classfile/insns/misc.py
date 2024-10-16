@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "nop", "wide",
     "monitorenter", "monitorexit",

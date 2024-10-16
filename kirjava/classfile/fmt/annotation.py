@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "ElementValue", "Annotation", "ParameterAnnotations",
     "TargetInfo", "TypePath", "TypeAnnotation",

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "iadd", "ladd", "fadd", "dadd",
     "isub", "lsub", "fsub", "dsub",

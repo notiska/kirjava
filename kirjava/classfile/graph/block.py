@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "Block",
 )
@@ -101,8 +103,11 @@ class Block:
             value = value()
         self.insns[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.insns[index]
+    def __delitem__(self, key: int | Instruction | type[Instruction]) -> None:
+        if isinstance(key, int):
+            del self.insns[key]
+        else:
+            self.remove(key)
 
     def __len__(self) -> int:
         return len(self.insns)

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "field", "method",
     "Class", "Field", "Method",
@@ -22,7 +24,7 @@ class Class:
         A pretty access flag string.
     name: str
         The internal name of the class (e.g. `java/lang/Object`).
-    super: Class
+    super: Class | None
         The direct superclass of this class.
     interfaces: list[Class]
         The interfaces that this class implements.

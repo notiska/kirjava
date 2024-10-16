@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "iload", "lload", "fload", "dload", "aload",
     "iload_w", "lload_w", "fload_w", "dload_w", "aload_w",

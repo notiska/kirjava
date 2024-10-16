@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "Constant",
-    "Null", "Index",
+    "Null",
     "Integer", "Float", "Long", "Double",
     "Class", "String",
     "MethodHandle", "MethodType",

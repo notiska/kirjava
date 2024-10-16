@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "Method",
 )
 
 import typing
-
-from ...pretty import pretty_repr
 
 if typing.TYPE_CHECKING:
     from ..types import Type

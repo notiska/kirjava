@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "ClassFile",
     "BootstrapMethods", "NestHost", "NestMembers", "PermittedSubclasses",
@@ -8,7 +10,7 @@ __all__ = (
 )
 
 from os import SEEK_CUR
-from typing import IO, Iterable
+from typing import IO, Iterable, Union
 
 from .attribute import AttributeInfo
 from .constants import *
@@ -435,8 +437,11 @@ class BootstrapMethods(AttributeInfo):
     def __setitem__(self, index: int, value: "BootstrapMethods.BootstrapMethod") -> None:
         self.methods[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.methods[index]
+    def __delitem__(self, key: Union[int, "BootstrapMethods.BootstrapMethod"]) -> None:
+        if isinstance(key, int):
+            del self.methods[key]
+        else:
+            self.methods.remove(key)
 
     def __len__(self) -> int:
         return len(self.methods)
@@ -574,8 +579,11 @@ class NestMembers(AttributeInfo):
     def __setitem__(self, index: int, value: ConstInfo) -> None:
         self.classes[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.classes[index]
+    def __delitem__(self, key: int | ConstInfo) -> None:
+        if isinstance(key, int):
+            del self.classes[key]
+        else:
+            self.classes.remove(key)
 
     def __len__(self) -> int:
         return len(self.classes)
@@ -637,8 +645,11 @@ class PermittedSubclasses(AttributeInfo):
     def __setitem__(self, index: int, value: ConstInfo) -> None:
         self.classes[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.classes[index]
+    def __delitem__(self, key: int | ConstInfo) -> None:
+        if isinstance(key, int):
+            del self.classes[key]
+        else:
+            self.classes.remove(key)
 
     def __len__(self) -> int:
         return len(self.classes)
@@ -705,8 +716,11 @@ class InnerClasses(AttributeInfo):
     def __setitem__(self, index: int, value: "InnerClasses.InnerClass") -> None:
         self.classes[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.classes[index]
+    def __delitem__(self, key: Union[int, "InnerClasses.InnerClass"]) -> None:
+        if isinstance(key, int):
+            del self.classes[key]
+        else:
+            self.classes.remove(key)
 
     def __len__(self) -> int:
         return len(self.classes)
@@ -1047,8 +1061,11 @@ class Record(AttributeInfo):
     def __setitem__(self, index: int, value: "Record.ComponentInfo") -> None:
         self.components[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.components[index]
+    def __delitem__(self, key: Union[int, "Record.ComponentInfo"]) -> None:
+        if isinstance(key, int):
+            del self.components[key]
+        else:
+            self.components.remove(key)
 
     def __len__(self) -> int:
         return len(self.components)
@@ -1662,8 +1679,11 @@ class ModulePackages(AttributeInfo):
     def __setitem__(self, index: int, value: ConstInfo) -> None:
         self.packages[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.packages[index]
+    def __delitem__(self, key: int | ConstInfo) -> None:
+        if isinstance(key, int):
+            del self.packages[key]
+        else:
+            self.packages.remove(key)
 
     def __len__(self) -> int:
         return len(self.packages)

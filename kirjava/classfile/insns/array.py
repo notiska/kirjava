@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "iaload", "laload", "faload", "daload", "aaload", "baload", "caload", "saload",
     "iastore", "lastore", "fastore", "dastore", "aastore", "bastore", "castore", "sastore",

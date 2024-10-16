@@ -26,8 +26,7 @@ USING_NUMPY  = False
 try:
     # import pyximport
     # pyximport.install()
-    # FIXME: Add typing stubs.
-    from ._cython import *  # type: ignore[import-untyped]
+    from ._cython import *
     USING_CYTHON = True
 except Exception as error:
     logger.debug("Cython backend not available: %s", error)
@@ -35,7 +34,8 @@ except Exception as error:
 
 if not USING_CYTHON:
     try:
-        from ._numpy import *
+        # This type ignore is probably one of the worst, but I'm not sure how to make this compatible.
+        from ._numpy import *  # type: ignore[assignment]
         USING_NUMPY = True
     except Exception as error:
         logger.debug("numpy backend not available: %s", error)

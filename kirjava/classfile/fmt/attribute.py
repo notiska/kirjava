@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "AttributeInfo", "RawInfo",
     "Documentation", "Synthetic", "Signature", "Deprecated",
@@ -491,8 +493,11 @@ class RuntimeVisibleAnnotations(AttributeInfo):
     def __setitem__(self, index: int, value: Annotation) -> None:
         self.annotations[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.annotations[index]
+    def __delitem__(self, key: int | Annotation) -> None:
+        if isinstance(key, int):
+            del self.annotations[key]
+        else:
+            self.annotations.remove(key)
 
     def __len__(self) -> int:
         return len(self.annotations)
@@ -552,8 +557,11 @@ class RuntimeInvisibleAnnotations(AttributeInfo):
     def __setitem__(self, index: int, value: Annotation) -> None:
         self.annotations[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.annotations[index]
+    def __delitem__(self, key: int | Annotation) -> None:
+        if isinstance(key, int):
+            del self.annotations[key]
+        else:
+            self.annotations.remove(key)
 
     def __len__(self) -> int:
         return len(self.annotations)
@@ -619,8 +627,11 @@ class RuntimeVisibleTypeAnnotations(AttributeInfo):
     def __setitem__(self, index: int, value: TypeAnnotation) -> None:
         self.annotations[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.annotations[index]
+    def __delitem__(self, key: int | Annotation) -> None:
+        if isinstance(key, int):
+            del self.annotations[key]
+        else:
+            self.annotations.remove(key)
 
     def __len__(self) -> int:
         return len(self.annotations)
@@ -686,8 +697,11 @@ class RuntimeInvisibleTypeAnnotations(AttributeInfo):
     def __setitem__(self, index: int, value: TypeAnnotation) -> None:
         self.annotations[index] = value
 
-    def __delitem__(self, index: int) -> None:
-        del self.annotations[index]
+    def __delitem__(self, key: int | Annotation) -> None:
+        if isinstance(key, int):
+            del self.annotations[key]
+        else:
+            self.annotations.remove(key)
 
     def __len__(self) -> int:
         return len(self.annotations)
