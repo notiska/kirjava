@@ -59,8 +59,6 @@ class ConstInfo:
         Dereferences any indices in this constant.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes the constant info to a binary stream.
-    verify(self, verifier: Verifier) -> None
-        Verifies that the constant is valid.
     unwrap(self) -> Constant
         Unwraps this constant info into a model constant.
     """
@@ -216,18 +214,6 @@ class ConstInfo:
 
         raise NotImplementedError(f"write() is not implemented for {type(self)!r}")
 
-    def verify(self, verifier: "Verifier") -> None:
-        """
-        Verifies that the constant is valid.
-
-        Parameters
-        ----------
-        verifier: Verifier
-            The verifier to use and report to.
-        """
-
-        raise NotImplementedError(f"verify() is not implemented for {type(self)!r}")
-
     def unwrap(self) -> Constant:
         """
         Unwraps this constant info.
@@ -289,9 +275,6 @@ class ConstIndex(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         ...
 
-    def verify(self, verifier: "Verifier") -> None:
-        ...
-
 
 class UTF8Info(ConstInfo):
     """
@@ -350,12 +333,6 @@ class UTF8Info(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(UTF8Info.tag, len(self.value)))
         stream.write(self.value)
-
-    def verify(self, verifier: "Verifier") -> None:
-        if len(self.value) > 65535:
-            verifier.fatal(self, "utf8 constant is too long")
-        if verifier.check_utf8_null_bytes and b"\x00" in self.value:
-            verifier.fatal(self, "null bytes in utf8 constant")
 
     def decode(self) -> str:
         """
@@ -417,9 +394,6 @@ class IntegerInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((IntegerInfo.tag,)))
         stream.write(pack_i32(self.value))
-
-    def verify(self, verifier: "Verifier") -> None:
-        ...
 
     def unwrap(self) -> Integer:
         return Integer(self.value)
@@ -484,9 +458,6 @@ class FloatInfo(ConstInfo):
         stream.write(bytes((FloatInfo.tag,)))
         stream.write(pack_f32(self.value))
 
-    def verify(self, verifier: "Verifier") -> None:
-        ...
-
     def unwrap(self) -> Float:
         return Float(self.value)
 
@@ -542,9 +513,6 @@ class LongInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((LongInfo.tag,)))
         stream.write(pack_i64(self.value))
-
-    def verify(self, verifier: "Verifier") -> None:
-        ...
 
     def unwrap(self) -> Long:
         return Long(self.value)
@@ -607,9 +575,6 @@ class DoubleInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((DoubleInfo.tag,)))
         stream.write(pack_f64(self.value))
-
-    def verify(self, verifier: "Verifier") -> None:
-        ...
 
     def unwrap(self) -> Double:
         return Double(self.value)
@@ -674,10 +639,6 @@ class ClassInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(ClassInfo.tag, pool.add(self.name)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.name, UTF8Info):
-            verifier.fatal(self, "name is not a UTF8 constant")
-
     def unwrap(self) -> Class:
         if not isinstance(self.name, UTF8Info):
             raise ValueError(f"{self!r} name is not a UTF8 constant")
@@ -741,10 +702,6 @@ class StringInfo(ConstInfo):
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(StringInfo.tag, pool.add(self.value)))
-
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.value, UTF8Info):
-            verifier.fatal(self, "value is not a UTF8 constant")
 
     def unwrap(self) -> String:
         if not isinstance(self.value, UTF8Info):
@@ -820,13 +777,6 @@ class FieldrefInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(FieldrefInfo.tag, pool.add(self.class_), pool.add(self.name_and_type)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types:
-            if not isinstance(self.class_, ClassInfo):
-                verifier.fatal(self, "class is not a class constant")
-            if not isinstance(self.name_and_type, NameAndTypeInfo):
-                verifier.fatal(self, "name and type is not a name and type constant")
-
 
 class MethodrefInfo(ConstInfo):
     """
@@ -895,13 +845,6 @@ class MethodrefInfo(ConstInfo):
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(MethodrefInfo.tag, pool.add(self.class_), pool.add(self.name_and_type)))
-
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types:
-            if not isinstance(self.class_, ClassInfo):
-                verifier.fatal(self, "class is not a class constant")
-            if not isinstance(self.name_and_type, NameAndTypeInfo):
-                verifier.fatal(self, "name and type is not a name and type constant")
 
 
 class InterfaceMethodrefInfo(ConstInfo):
@@ -975,13 +918,6 @@ class InterfaceMethodrefInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(InterfaceMethodrefInfo.tag, pool.add(self.class_), pool.add(self.name_and_type)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types:
-            if not isinstance(self.class_, ClassInfo):
-                verifier.fatal(self, "class is not a class constant")
-            if not isinstance(self.name_and_type, NameAndTypeInfo):
-                verifier.fatal(self, "name and type is not a name and type constant")
-
 
 class NameAndTypeInfo(ConstInfo):
     """
@@ -1045,13 +981,6 @@ class NameAndTypeInfo(ConstInfo):
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(NameAndTypeInfo.tag, pool.add(self.name), pool.add(self.descriptor)))
-
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types:
-            if not isinstance(self.name, UTF8Info):
-                verifier.fatal(self, "name is not a UTF8 constant")
-            if not isinstance(self.descriptor, UTF8Info):
-                verifier.fatal(self, "descriptor is not a UTF8 constant")
 
 
 class MethodHandleInfo(ConstInfo):
@@ -1154,54 +1083,6 @@ class MethodHandleInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBH(MethodHandleInfo.tag, self.kind, pool.add(self.ref)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        # This method is a handful lol, read carefully if you dare.
-
-        if self.kind in (
-            MethodHandleInfo.GET_FIELD, MethodHandleInfo.GET_STATIC,
-            MethodHandleInfo.PUT_FIELD, MethodHandleInfo.PUT_STATIC,
-        ):
-            if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
-                verifier.fatal(self, "reference is not a field reference")
-
-        elif self.kind in (
-            MethodHandleInfo.INVOKE_VIRTUAL, MethodHandleInfo.INVOKE_STATIC, MethodHandleInfo.INVOKE_SPECIAL,
-        ):
-            if isinstance(self.ref, MethodrefInfo) or isinstance(self.ref, InterfaceMethodrefInfo):
-                if (
-                    isinstance(self.ref.name_and_type, NameAndTypeInfo) and
-                    isinstance(self.ref.name_and_type.name, UTF8Info) and
-                    self.ref.name_and_type.name.value in (b"<init>", b"<clinit>")
-                ):
-                    verifier.fatal(self, "invalid method reference name")
-                # FIXME: Below, need to check version.
-                # if (
-                #     verifier.check_const_types and
-                #     verifier.cf.major < 52 and  # Java SE 8.
-                #     not isinstance(self.reference, MethodrefInfo)
-                # ):
-                #     verifier.fatal(self, "reference is not a method reference")
-            elif verifier.check_const_types:
-                verifier.fatal(self, "reference is not a method reference or an interface method reference")
-
-        elif self.kind == MethodHandleInfo.NEW_INVOKE_SPECIAL:
-            if isinstance(self.ref, MethodrefInfo):
-                if (
-                    isinstance(self.ref.name_and_type, NameAndTypeInfo) and
-                    isinstance(self.ref.name_and_type.name, UTF8Info) and
-                    self.ref.name_and_type.name.value != b"<init>"
-                ):
-                    verifier.fatal(self, "invalid method reference name")
-            elif verifier.check_const_types:
-                verifier.fatal(self, "reference is not a method reference")
-
-        elif self.kind == MethodHandleInfo.INVOKE_INTERFACE:
-            if verifier.check_const_types and not isinstance(self.ref, InterfaceMethodrefInfo):
-                verifier.fatal(self, "reference is not an interface method reference")
-
-        else:
-            verifier.fatal(self, "kind is not a valid method handle kind")
-
     # TODO
     # def unwrap(self) -> MethodHandle:
     #     if self.reference_kind in range(self.REF_GET_FIELD, self.REF_PUT_STATIC + 1):
@@ -1301,10 +1182,6 @@ class MethodTypeInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(MethodTypeInfo.tag, pool.add(self.descriptor)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.descriptor, UTF8Info):
-            verifier.fatal(self, "descriptor is not a UTF8 constant")
-
     def unwrap(self) -> MethodType:
         if not isinstance(self.descriptor, UTF8Info):
             raise ValueError(f"{self!r} descriptor index is not a UTF8 constant")
@@ -1380,17 +1257,6 @@ class DynamicInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(DynamicInfo.tag, self.attr_index, pool.add(self.name_and_type)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.attr_index <= 65535):
-            verifier.fatal(self, "invalid bootstrap index")
-        if verifier.check_const_types and not isinstance(self.name_and_type, NameAndTypeInfo):
-            verifier.fatal(self, "name and type is not a name and type constant")
-
-        # TODO: Good solution for this, will cause circular import otherwise.
-        # for attribute in verifier.classfile.attributes:
-        #     if not isinstance(attribute, BootstrapMethodsAttribute):
-        #         continue
-
 
 class InvokeDynamicInfo(ConstInfo):
     """
@@ -1461,14 +1327,6 @@ class InvokeDynamicInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(InvokeDynamicInfo.tag, self.attr_index, pool.add(self.name_and_type)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.attr_index <= 65535):
-            verifier.fatal(self, "invalid bootstrap index")
-        if verifier.check_const_types and not isinstance(self.name_and_type, NameAndTypeInfo):
-            verifier.fatal(self, "name and type is not a name and type constant")
-
-        # TODO: See above.
-
 
 class ModuleInfo(ConstInfo):
     """
@@ -1526,10 +1384,6 @@ class ModuleInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(ModuleInfo.tag, pool.add(self.name)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.name, UTF8Info):
-            verifier.fatal(self, "name is not a UTF8 constant")
-
 
 class PackageInfo(ConstInfo):
     """
@@ -1586,7 +1440,3 @@ class PackageInfo(ConstInfo):
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(PackageInfo.tag, pool.add(self.name)))
-
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.name, UTF8Info):
-            verifier.fatal(self, "name is not a UTF8 constant")

@@ -90,6 +90,9 @@ class Block:
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Block) and self.label == other.label and self.insns == other.insns
 
+    def __hash__(self) -> int:
+        return id(self)
+
     def __getitem__(self, index: int) -> Instruction:
         return self.insns[index]
 

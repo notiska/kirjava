@@ -28,9 +28,7 @@ from ...meta import Metadata
 from ...model.class_.method import Method
 
 if typing.TYPE_CHECKING:
-    from .classfile import ClassFile
     from .pool import ConstPool
-    from ..verify import Verifier
 
 
 class MethodInfo:
@@ -117,8 +115,6 @@ class MethodInfo:
 
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
         Writes this method to a binary stream.
-    verify(self, verifier: Verifier, cf: ClassFile) -> None
-        Verifies that this method is valid.
     unwrap(self) -> Method
         Unwraps this method info.
     """
@@ -337,77 +333,6 @@ class MethodInfo:
         for attribute in self.attributes:
             attribute.write(stream, version, pool)
 
-    def verify(self, verifier: "Verifier", cf: "ClassFile") -> None:
-        """
-        Verifies that this method is valid.
-
-        Parameters
-        ----------
-        verifier: Verifier
-            The verifier to use and report to.
-        cf: ClassFile
-            The class file that this method belongs to.
-        """
-
-        if not (0 <= self.access <= 65535):
-            verifier.fatal(self, "invalid access flags")
-        if len(self.attributes) > 65535:
-            verifier.fatal(self, "too many attributes")
-
-        if verifier.check_const_types:
-            if not isinstance(self.name, UTF8Info):
-                verifier.fatal(self, "name is not a UTF8 constant")
-            if not isinstance(self.descriptor, UTF8Info):
-                verifier.fatal(self, "descriptor is not a UTF8 constant")
-
-        name = b""
-        if isinstance(self.name, UTF8Info):
-            name = self.name.value
-
-        if verifier.check_access_flags:
-            if sum((self.is_public, self.is_private, self.is_protected)) > 1:
-                verifier.fatal(self, "conflicting visibility access flags")
-
-            # TODO: Verify <init> is exempt from these rules, as stated in JVMS (unless I misread).
-            if name != b"<init>" and cf.is_interface:
-                if self.is_protected:
-                    verifier.fatal(self, "interface method is protected")
-                if self.is_final:
-                    verifier.fatal(self, "interface method is final")
-                if self.is_synchronized:
-                    verifier.fatal(self, "interface method is synchronized")
-                if self.is_native:
-                    verifier.fatal(self, "interface method is native")
-
-                if cf.version < JAVA_8:
-                    if not self.is_public:
-                        verifier.fatal(self, "interface method is not public")
-                    if not self.is_abstract:
-                        verifier.fatal(self, "interface method is not abstract")
-                elif not self.is_public and not self.is_private:
-                    verifier.fatal(self, "interface method must either be public or private")
-
-            # FIXME: Same check again, I'm not sure all these are correct. Plus may also need to check signature.
-            if not name in (b"<init>", b"<clinit>") and self.is_abstract:
-                if self.is_private:
-                    verifier.fatal(self, "abstract method is private")
-                if self.is_static:
-                    verifier.fatal(self, "abstract method is static")
-                if self.is_final:
-                    verifier.fatal(self, "abstract method is final")
-                if self.is_synchronized:
-                    verifier.fatal(self, "abstract method is synchronized")
-                if self.is_native:
-                    verifier.fatal(self, "abstract method is native")
-                if JAVA_1_2 <= cf.version <= JAVA_16 and self.is_strict:
-                    verifier.fatal(self, "abstract method is strictfp")
-
-            if cf.version >= JAVA_7 and name == b"<clinit>" and not self.is_static:
-                verifier.fatal(self, "class initialiser is not static")
-
-        for attribute in self.attributes:
-            attribute.verify(verifier, cf, AttributeInfo.LOC_METHOD)
-
     def unwrap(self) -> Method:
         """
         Unwraps this method info.
@@ -601,34 +526,6 @@ class Code(AttributeInfo):
         for attribute in self.attributes:
             attribute.write(stream, version, pool)
 
-    def verify(self, verifier: "Verifier", cf: "ClassFile", location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        # FIXME: Adjust based on class file version.
-        if not (0 <= self.max_stack <= 65535):
-            verifier.fatal(self, "invalid max stack size")
-        if not (0 <= self.max_locals <= 65535):
-            verifier.fatal(self, "invalid max locals size")
-        # if len(self.code) > 65535:
-        #     verifier.fatal(self, "code too large")
-
-        if len(self.handlers) > 65535:
-            verifier.fatal(self, "too many exception handlers")
-        for handler in self.handlers:
-            # if not (0 <= handler.start_pc < len(self.code)):
-            #     verifier.fatal(self, "invalid handler start pc", handler=handler)
-            # if not (0 <= handler.end_pc < len(self.code)):
-            #     verifier.fatal(self, "invalid handler end pc", handler=handler)
-            # if not (0 <= handler.handler_pc < len(self.code)):
-            #     verifier.fatal(self, "invalid handler pc", handler=handler)
-            if verifier.check_const_types and handler.class_ is not None and not isinstance(handler.class_, ClassInfo):
-                verifier.fatal(self, "handler type is not a class constant", handler=handler)
-
-        if len(self.attributes) > 65535:
-            verifier.fatal(self, "too many attributes")
-        for attribute in self.attributes:
-            attribute.verify(verifier, cf, AttributeInfo.LOC_CODE)
-
     class ExceptHandler:
         """
         An exception handler entry.
@@ -731,14 +628,6 @@ class StackMapTable(AttributeInfo):
         for frame in self.frames:
             frame.write(stream, pool)
 
-    def verify(self, verifier: "Verifier", cf: "ClassFile", location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        if len(self.frames) > 65535:
-            verifier.fatal(self, "too many stack map frames")
-        for frame in self.frames:
-            frame.verify(verifier)
-
 
 class Exceptions(AttributeInfo):
     """
@@ -800,17 +689,6 @@ class Exceptions(AttributeInfo):
         for exception in self.exceptions:
             stream.write(pack_H(pool.add(exception)))
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: "ClassFile", location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        if len(self.exceptions) > 65535:
-            verifier.fatal(self, "too many exceptions")
-        if verifier.check_const_types:
-            for exception in self.exceptions:
-                if not isinstance(exception, ClassInfo):
-                    # TODO: Fatal? Does JVM crash?
-                    verifier.error(self, "exception is not a class constant", exception=exception)
 
 
 class LineNumberTable(AttributeInfo):
@@ -875,17 +753,6 @@ class LineNumberTable(AttributeInfo):
         for line in self.lines:
             stream.write(pack_HH(line.start_pc, line.line))
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: "ClassFile", location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        if len(self.lines) > 65535:
-            verifier.fatal(self, "too many line numbers")
-        for line in self.lines:
-            if not (0 <= line.start_pc < 65535):
-                verifier.fatal(self, "invalid start pc", line=line)
-            if not (0 <= line.line < 65535):
-                verifier.fatal(self, "invalid line number", line=line)
 
     class LineNumber:
         """
@@ -984,24 +851,6 @@ class LocalVariableTable(AttributeInfo):
                 local.start_pc, local.length, pool.add(local.name), pool.add(local.descriptor), local.index,
             ))
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: "ClassFile", location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        if len(self.locals) > 65535:
-            verifier.fatal(self, "too many local variables")
-        for local in self.locals:
-            if not (0 <= local.start_pc < 65535):
-                verifier.fatal(self, "invalid local start pc", local=local)
-            if not (0 <= local.length < 65535):
-                verifier.fatal(self, "invalid local length", local=local)
-            if not (0 <= local.index < 65535):
-                verifier.fatal(self, "invalid local index", local=local)
-            if verifier.check_const_types:
-                if not isinstance(local.name, UTF8Info):
-                    verifier.error(self, "local name is not a UTF8 constant", local=local)
-                if not isinstance(local.descriptor, UTF8Info):
-                    verifier.error(self, "local descriptor is not a UTF8 constant", local=local)
 
     class LocalVariable:
         """
@@ -1116,24 +965,6 @@ class LocalVariableTypeTable(AttributeInfo):
                 local.start_pc, local.length, pool.add(local.name), pool.add(local.signature), local.index,
             ))
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: "ClassFile", location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        if len(self.locals) > 65535:
-            verifier.fatal(self, "too many local variables")
-        for local in self.locals:
-            if not (0 <= local.start_pc < 65535):
-                verifier.fatal(self, "invalid local start pc", local=local)
-            if not (0 <= local.length < 65535):
-                verifier.fatal(self, "invalid local length", local=local)
-            if not (0 <= local.index < 65535):
-                verifier.fatal(self, "invalid local index", local=local)
-            if verifier.check_const_types:
-                if not isinstance(local.name, UTF8Info):
-                    verifier.error(self, "local name is not a UTF8 constant", local=local)
-                if not isinstance(local.signature, UTF8Info):
-                    verifier.error(self, "local signature is not a UTF8 constant", local=local)
 
     class LocalVariable:
         """
@@ -1283,17 +1114,6 @@ class MethodParameters(AttributeInfo):
         for param in self.params:
             stream.write(pack_HH(pool.add(param.name) if param.name is not None else 0, param.flags))
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: "ClassFile", location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        if len(self.params) > 255:
-            verifier.fatal(self, "too many parameters")
-        for param in self.params:
-            if verifier.check_const_types and param.name is not None and not isinstance(param.name, UTF8Info):
-                verifier.error(self, "parameter name is not a UTF8 constant", param=param)
-            if not (0 <= param.flags < 65535):
-                verifier.fatal(self, "invalid parameter flags", param=param)
 
     class Parameter:
         """

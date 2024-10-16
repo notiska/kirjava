@@ -74,6 +74,8 @@ class Metadata:
     -------
     walk(self, level: int = logging.WARNING) -> Iterator[Message]
         Walks through all messages in this metadata and its children.
+    has(self, name: str) -> bool
+        Checks if this metadata contains a certain message.
     debug(self, name: str, message: str, *args: object) -> Message
         Adds a debug message to this metadata.
     info(self, name: str, message: str, *args: object) -> Message
@@ -124,6 +126,8 @@ class Metadata:
     def __repr__(self) -> str:
         return f"<Metadata(name={self.name!r}, element={self.element!s}, messages={self.messages!r})>"
 
+    # TODO: More comprehensive API.
+
     def walk(self, level: int = logging.WARNING) -> Iterator[tuple["Metadata", Message]]:
         """
         Walks through all messages in this metadata and its children.
@@ -139,6 +143,23 @@ class Metadata:
                 yield self, message
         for child in self.children:
             yield from child.walk(level)
+
+    def has(self, name: str) -> bool:
+        """
+        Checks if this metadata contains a certain message.
+
+        Parameters
+        ----------
+        name: str
+            The name of the message to check for.
+        """
+
+        for message in self.messages:
+            if message.name == name:
+                return True
+        return False
+
+    # ------------------------------ Logging API ------------------------------ #
 
     def debug(self, name: str, text: str, *args: object) -> Message:
         """

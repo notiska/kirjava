@@ -13,7 +13,6 @@ from .._struct import *
 
 if typing.TYPE_CHECKING:
     from .classfile import ClassFile
-    from ..verify import Verifier
 
 
 class ConstPool:
@@ -36,8 +35,6 @@ class ConstPool:
 
     write(self, stream: IO[bytes]) -> None
         Writes this constant pool to the binary stream.
-    verify(self, verifier: Verifier, cf: ClassFile) -> None
-        Verifies that this constant pool is valid.
     add(self, info: ConstInfo, low: bool = False) -> int
         Adds a constant to this constant pool.
     extend(self, infos: Iterable[ConstInfo] | ConstPool) -> None
@@ -171,30 +168,6 @@ class ConstPool:
         stream.seek(start, SEEK_SET)
         stream.write(pack_H(self._index))
         stream.seek(end, SEEK_SET)
-
-    def verify(self, verifier: "Verifier", cf: "ClassFile") -> None:
-        """
-        Verifies that this constant pool is valid.
-
-        Parameters
-        ----------
-        verifier: Verifier
-            The verifier to use and report to.
-        cf: ClassFile
-            The class file that this pool belongs to.
-        """
-
-        if self._index > 65535:
-            verifier.fatal(self, "too many constants")
-
-        if verifier.check_const_vers:
-            for entry in self._contiguous:
-                if cf.version < entry.since:
-                    verifier.fatal(entry, "constant not valid in current class file version")
-
-        # TODO: Also check that this is actually contiguous.
-        for entry in self._contiguous:
-            entry.verify(verifier)
 
     def add(self, info: ConstInfo, low: bool = False) -> int:
         """

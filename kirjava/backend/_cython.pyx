@@ -44,7 +44,7 @@ cdef class u8:
         self.value = <uint8_t>value
 
     def __repr__(self) -> str:
-        return "<u8(%i)>" % self.value
+        return f"<u8({self.value})>"
 
     def __str__(self) -> str:
         return str(self.value)
@@ -151,7 +151,7 @@ cdef class u16:
         self.value = <uint16_t>value
 
     def __repr__(self) -> str:
-        return "<u16(%i)>" % self.value
+        return f"<u16({self.value})>"
 
     def __str__(self) -> str:
         return str(self.value)
@@ -250,7 +250,7 @@ cdef class u32:
         self.value = <uint32_t>value
 
     def __repr__(self) -> str:
-        return "<u32(%i)>" % self.value
+        return f"<u32({self.value})>"
 
     def __str__(self) -> str:
         return str(self.value)
@@ -349,7 +349,7 @@ cdef class u64:
         self.value = <uint64_t>value
 
     def __repr__(self) -> str:
-        return "<u64(%i)>" % self.value
+        return f"<u64({self.value})>"
 
     def __str__(self) -> str:
         return str(self.value)
@@ -448,7 +448,7 @@ cdef class i8:
         self.value = <int8_t>value
 
     def __repr__(self) -> str:
-        return "<i8(%i)>" % self.value
+        return f"<i8({self.value})>"
 
     def __str__(self) -> str:
         return str(self.value)
@@ -550,7 +550,7 @@ cdef class i16:
         self.value = <int16_t>value
 
     def __repr__(self) -> str:
-        return "<i16(%i)>" % self.value
+        return f"<i16({self.value})>"
 
     def __str__(self) -> str:
         return str(self.value)
@@ -652,7 +652,7 @@ cdef class i32:
         self.value = <int32_t>value
 
     def __repr__(self) -> str:
-        return "<i32(%i)>" % self.value
+        return f"<i32({self.value})>"
 
     def __str__(self) -> str:
         return str(self.value)
@@ -754,7 +754,7 @@ cdef class i64:
         self.value = <int64_t>value
 
     def __repr__(self) -> str:
-        return "<i64(%i)>" % self.value
+        return f"<i64({self.value})>"
 
     def __str__(self) -> str:
         return str(self.value)
@@ -856,7 +856,7 @@ cdef class f32:
         self.value = <float>value
 
     def __repr__(self) -> str:
-        return "<f32(%s)>" % self.value
+        return f"<f32({self.value})>"
 
     def __str__(self) -> str:
         return str(self.value)
@@ -956,7 +956,7 @@ cdef class f64:
         self.value = <double>value
 
     def __repr__(self) -> str:
-        return "<f64(%s)>" % self.value
+        return f"<f64({self.value})>"
 
     def __str__(self) -> str:
         return str(self.value)
@@ -1321,4 +1321,4 @@ elif sys.byteorder == "little":
     unpack_f64 = _le_unpack_f64
     pack_f64   = _le_pack_f64
 else:
-    raise ValueError("unknown byteorder %r" % sys.byteorder)
+    raise ValueError(f"unknown byteorder {sys.byteorder!r}")

@@ -49,7 +49,7 @@ class TestConstants(unittest.TestCase):
                 init = self._DEFAULTS.get(subclass)
                 if init is None:
                     self.skipTest(f"Missing default init values for {subclass!r}.")
-                info = subclass(*init)  # type: ignore[arg-type]
+                info = subclass(*init)
                 self.assertIsInstance(info.tag, int)
                 self.assertIsInstance(info.wide, bool)
                 self.assertIsInstance(info.since, Version)
@@ -87,7 +87,7 @@ class TestConstants(unittest.TestCase):
                 init = self._DEFAULTS.get(subclass)
                 if init is None:
                     self.skipTest(f"Missing default init values for {subclass!r}.")
-                info_init = subclass(*init)  # type: ignore[arg-type]
+                info_init = subclass(*init)
 
                 data = BytesIO()
                 info_init.write(data, self.pool)

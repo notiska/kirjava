@@ -25,7 +25,6 @@ from .._struct import *
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
-    from ..verify import Verifier
 
 
 class VerificationTypeInfo:
@@ -124,18 +123,6 @@ class VerificationTypeInfo:
 
         stream.write(bytes((self.tag,)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        """
-        Verifies that this verification type is valid.
-
-        Parameters
-        ----------
-        verifier: Verifier
-            The verifier to use and report to.
-        """
-
-        ...
-
 
 class StackMapFrame:
     """
@@ -160,8 +147,6 @@ class StackMapFrame:
         Reads a stack map frame from the binary stream.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes this stack map frame to the binary stream.
-    verify(self, verifier: Verifier) -> None
-        Verifies that this stack map frame is valid.
     """
 
     __slots__ = ()
@@ -246,19 +231,6 @@ class StackMapFrame:
         """
 
         raise NotImplementedError(f"write() is not implemented for {type(self)!r}")
-
-    def verify(self, verifier: "Verifier") -> None:
-        """
-        Verifies that this stack map frame is valid.
-
-        Parameters
-        ----------
-        verifier: Verifier
-            The verifier to use and report to.
-        """
-
-        if not self.tag in self.tags:
-            verifier.fatal(self, "invalid stack map frame tag")
 
 
 # ---------------------------------------- Verification Types ---------------------------------------- #
@@ -430,10 +402,6 @@ class ObjectVarInfo(VerificationTypeInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.tag, pool.add(self.class_)))
 
-    def verify(self, verifier: "Verifier") -> None:
-        if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
-            verifier.fatal(self, "type is not a class constant")
-
 
 class UninitializedVarInfo(VerificationTypeInfo):
     """
@@ -469,10 +437,6 @@ class UninitializedVarInfo(VerificationTypeInfo):
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.tag, self.offset))
-
-    def verify(self, verifier: "Verifier") -> None:
-        if not (0 <= self.offset <= 65535):
-            verifier.fatal(self, "invalid bytecode offset")
 
 
 # ---------------------------------------- Stack Map Frames ---------------------------------------- #
@@ -563,10 +527,6 @@ class SameLocalsOneStackItemFrame(StackMapFrame):
         stream.write(bytes((self.tag,)))
         self.stack.write(stream, pool)
 
-    def verify(self, verifier: "Verifier") -> None:
-        super().verify(verifier)
-        self.stack.verify(verifier)
-
 
 class SameLocalsOneStackItemFrameExtended(StackMapFrame):
     """
@@ -616,12 +576,6 @@ class SameLocalsOneStackItemFrameExtended(StackMapFrame):
         stream.write(pack_BH(247, self.delta))
         self.stack.write(stream, pool)
 
-    def verify(self, verifier: "Verifier") -> None:
-        super().verify(verifier)
-        if not (0 <= self.delta <= 65535):
-            verifier.fatal(self, "invalid bytecode offset")
-        self.stack.verify(verifier)
-
 
 class ChopFrame(StackMapFrame):
     """
@@ -667,11 +621,6 @@ class ChopFrame(StackMapFrame):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.tag, self.delta))
 
-    def verify(self, verifier: "Verifier") -> None:
-        super().verify(verifier)
-        if not (0 <= self.delta <= 65535):
-            verifier.fatal(self, "invalid bytecode offset")
-
 
 class SameFrameExtended(StackMapFrame):
     """
@@ -711,11 +660,6 @@ class SameFrameExtended(StackMapFrame):
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(251, self.delta))
-
-    def verify(self, verifier: "Verifier") -> None:
-        super().verify(verifier)
-        if not (0 <= self.delta <= 65535):
-            verifier.fatal(self, "invalid bytecode offset")
 
 
 class AppendFrame(StackMapFrame):
@@ -771,15 +715,6 @@ class AppendFrame(StackMapFrame):
         stream.write(pack_BH(self.tag, self.delta))
         for local in self.locals:
             local.write(stream, pool)
-
-    def verify(self, verifier: "Verifier") -> None:
-        super().verify(verifier)
-        if self.tag - 251 != len(self.locals):
-            verifier.fatal(self, "invalid tag for locals count")
-        if not (0 <= self.delta <= 65535):
-            verifier.fatal(self, "invalid bytecode offset")
-        for local in self.locals:
-            local.verify(verifier)
 
 
 class FullFrame(StackMapFrame):
@@ -850,16 +785,3 @@ class FullFrame(StackMapFrame):
         stream.write(pack_H(len(self.stack)))
         for stack in self.stack:
             stack.write(stream, pool)
-
-    def verify(self, verifier: "Verifier") -> None:
-        super().verify(verifier)
-        if not (0 <= self.delta <= 65535):
-            verifier.fatal(self, "invalid bytecode offset")
-        if len(self.locals) > 65535:
-            verifier.fatal(self, "too many locals")
-        if len(self.stack) > 65535:
-            verifier.fatal(self, "too many stack entries")
-        for local in self.locals:
-            local.verify(verifier)
-        for stack in self.stack:
-            stack.verify(verifier)

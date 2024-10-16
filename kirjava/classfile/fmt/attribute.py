@@ -23,9 +23,7 @@ from ..version import *
 from ...meta import Metadata
 
 if typing.TYPE_CHECKING:
-    from .classfile import ClassFile
     from .pool import ConstPool
-    from ..verify import Verifier
 
 
 class AttributeInfo:
@@ -65,8 +63,6 @@ class AttributeInfo:
 
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
         Writes this attribute to a binary stream.
-    verify(self, verifier: Verifier, location: int | None = None) -> None
-        Verifies that this attribute is valid.
     """
 
     __slots__ = ("name", "extra")
@@ -248,27 +244,6 @@ class AttributeInfo:
         stream.write(pack_I(end - start - 4))
         stream.seek(end, SEEK_SET)
 
-    def verify(self, verifier: "Verifier", cf: "ClassFile", location: int) -> None:
-        """
-        Verifies that this attribute is valid.
-
-        Parameters
-        ----------
-        verifier: Verifier
-            The verifier to use and report to.
-        cf: ClassFile
-            The class file that this attribute belongs to.
-        location: int
-            The location of the attribute.
-        """
-
-        # If these conditions do occur, it's important to note that a lot of them may not actually be fatal errors,
-        # simply because the JVM is very lenient regarding weird attributes.
-        if verifier.check_attr_vers and cf.version < self.since:
-            verifier.error(self, "attribute not valid in current class file version")
-        if verifier.check_attr_locs and not location in self.locations:
-            verifier.error(self, "attribute is in wrong location")
-
 
 class RawInfo(AttributeInfo):
     """
@@ -312,10 +287,6 @@ class RawInfo(AttributeInfo):
         stream.write(pack_HI(pool.add(self.name), len(self.data) + len(self.extra)))
         stream.write(self.data)
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: "ClassFile", location: int) -> None:
-        if verifier.check_attr_data:
-            verifier.error(self, "raw attribute")
 
 
 class Documentation(AttributeInfo):
@@ -436,11 +407,6 @@ class Signature(AttributeInfo):
             pool.add(self.name or UTF8Info(self.tag)), 2 + len(self.extra), pool.add(self.signature),
         ))
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: "ClassFile", location: int) -> None:
-        super().verify(verifier, cf, location)
-        if verifier.check_const_types and not isinstance(self.signature, UTF8Info):
-            verifier.error(self, "signature is not a UTF8 constant")
 
 
 class Deprecated(AttributeInfo):

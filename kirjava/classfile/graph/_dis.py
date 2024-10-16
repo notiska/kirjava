@@ -129,14 +129,16 @@ def disassemble(graph: "Graph", method: MethodInfo, cf: "ClassFile") -> Metadata
     #                 Create blocks and jump edges                 #
     # ------------------------------------------------------------ #
 
-    starts: dict[int, "Block"] = {}
-    ends:   dict["Block", int] = {}
+    blocks: dict[int, tuple["Block", int]] = {}
+
+    block = graph.entry
     prev = graph.entry
+    last = 0
 
     # We'll only add the entry block if we know that there are no back edges to offset 0. If there are, this means that
     # the entry block would not dominate all other blocks, and therefore would not be the entry block.
     if not 0 in targets:
-        starts[0] = graph.entry
+        blocks[0] = (graph.entry, 0)
     else:
         stops.discard(0)
 
@@ -148,25 +150,27 @@ def disassemble(graph: "Graph", method: MethodInfo, cf: "ClassFile") -> Metadata
     for split in sorted(splits):
         if not split in insns:
             raise NotImplementedError(f"split at data/oom offset {split}")
+        blocks[last] = (block, split)
+        prev = block
         block = graph.block()
-        starts[split] = block
-        ends[prev] = split
+        last = split
         if not split in stops:
             edge = Fallthrough(prev, block)
             edges_out[prev].add(edge)
             edges_in[block].add(edge)
-        prev = block
 
-    ends[prev] = offset
+    if splits:  # The end offset of the last block is the offset we finished disassembling at.
+        blocks[split] = (block, offset)
+
     prev = graph.entry
 
     for offset, instruction in insns.items():
-        block = starts.get(offset) or prev
+        block, _ = blocks.get(offset) or (prev, 0)
         prev = block
 
         if isinstance(instruction, JumpInsn):
             if instruction.delta is not None:
-                edge = JumpEdge(block, starts[offset + instruction.delta], instruction)
+                edge = JumpEdge(block, blocks[offset + instruction.delta][0], instruction)
             elif isinstance(instruction, Return):
                 edge = JumpEdge(block, graph.return_, instruction)
             elif isinstance(instruction, RetInsn):
@@ -178,11 +182,11 @@ def disassemble(graph: "Graph", method: MethodInfo, cf: "ClassFile") -> Metadata
             edges_in[edge.target].add(edge)
 
         elif isinstance(instruction, SwitchInsn):
-            edge = SwitchEdge(block, starts[offset + instruction.default], instruction, None)
+            edge = SwitchEdge(block, blocks[offset + instruction.default][0], instruction, None)
             edges_out[edge.source].add(edge)
             edges_in[edge.target].add(edge)
             for value, branch in instruction.offsets.items():
-                edge = SwitchEdge(block, starts[offset + branch], instruction, value)
+                edge = SwitchEdge(block, blocks[offset + branch][0], instruction, value)
                 edges_out[edge.source].add(edge)
                 edges_in[edge.target].add(edge)
 
@@ -194,20 +198,18 @@ def disassemble(graph: "Graph", method: MethodInfo, cf: "ClassFile") -> Metadata
     # ------------------------------------------------------------ #
 
     for index, handler in enumerate(code.handlers):
-        block = starts[handler.start_pc]
-        target = starts[handler.handler_pc]
+        block, end = blocks[handler.start_pc]
+        target, _ = blocks[handler.handler_pc]
 
-        end = ends[block]
         while True:  # Wishing for a do-while loop right now.
             edge = Catch(block, target, handler.class_, index)
             edges_out[block].add(edge)
             edges_in[target].add(edge)
             if end == handler.end_pc:
                 break
-            block = starts[end]
-            end = ends[block]
+            block, end = blocks[end]
 
-    # for block in starts.values():
+    # for block, _ in blocks.values():
     #     print("%s:" % block)
     #     for instruction in block.insns:
     #         print("  %s" % instruction)

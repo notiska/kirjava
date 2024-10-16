@@ -21,9 +21,7 @@ from ...meta import Metadata
 from ...model.class_.field import Field
 
 if typing.TYPE_CHECKING:
-    from .classfile import ClassFile
     from .pool import ConstPool
-    from ..verify import Verifier
 
 
 class FieldInfo:
@@ -95,8 +93,6 @@ class FieldInfo:
 
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
         Writes this field to the binary stream.
-    verify(self, verifier: Verifier, cf: ClassFile) -> None
-        Verifies that this field is valid.
     unwrap(self) -> Field
         Unwraps this field info.
     """
@@ -266,45 +262,13 @@ class FieldInfo:
             The binary stream to write to.
         version: Version
             The class file version.
-        pool: ConstantPool
+        pool: ConstPool
             The class file constant pool.
         """
 
         stream.write(pack_HHHH(self.access, pool.add(self.name), pool.add(self.descriptor), len(self.attributes)))
         for attribute in self.attributes:
             attribute.write(stream, version, pool)
-
-    def verify(self, verifier: "Verifier", cf: "ClassFile") -> None:
-        """
-        Verifies that this field is valid.
-
-        Parameters
-        ----------
-        verifier: Verifier
-            The verifier to use and report to.
-        cf: ClassFile
-            The class file that owns this field.
-        """
-
-        if not (0 <= self.access <= 65535):
-            verifier.fatal(self, "invalid access flags")
-        if len(self.attributes) > 65535:
-            verifier.fatal(self, "too many attributes")
-
-        if verifier.check_const_types:
-            if not isinstance(self.name, UTF8Info):
-                verifier.fatal(self, "name is not a UTF8 constant")
-            if not isinstance(self.descriptor, UTF8Info):
-                verifier.fatal(self, "descriptor is not a UTF8 constant")
-
-        if verifier.check_access_flags:
-            if sum((self.is_public, self.is_private, self.is_protected)) > 1:
-                verifier.fatal(self, "conflicting visibility access flags")
-            if self.is_final and self.is_volatile:
-                verifier.fatal(self, "conflicting final/volatile access flags")
-
-        for attribute in self.attributes:
-            attribute.verify(verifier, cf, AttributeInfo.LOC_FIELD)
 
     def unwrap(self) -> Field:
         """
@@ -379,27 +343,3 @@ class ConstantValue(AttributeInfo):
             pool.add(self.name or UTF8Info(self.tag)), 2 + len(self.extra), pool.add(self.value),
         ))
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: "ClassFile", location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        for field in cf.fields:  # TODO: Perhaps pass down the parent through the verify method?
-            for attribute in field.attributes:
-                if attribute is not self:
-                    continue
-                if verifier.check_access_flags and (not field.is_static or not field.is_final):
-                    verifier.error(self, "invalid field access flags", field=field)
-                if not verifier.check_const_types or not isinstance(field.descriptor, UTF8Info):
-                    break
-                if field.descriptor.value in b"ISCBZ" and not isinstance(self.value, IntegerInfo):
-                    verifier.fatal(self, "value is not an integer constant", field=field)
-                elif field.descriptor.value == b"F" and not isinstance(self.value, FloatInfo):
-                    verifier.fatal(self, "value is not a float constant", field=field)
-                elif field.descriptor.value == b"J" and not isinstance(self.value, LongInfo):
-                    verifier.fatal(self, "value is not a long constant", field=field)
-                elif field.descriptor.value == b"D" and not isinstance(self.value, DoubleInfo):
-                    verifier.fatal(self, "value is not a double constant", field=field)
-                elif field.descriptor.value == b"Ljava/lang/String;" and not isinstance(self.value, StringInfo):
-                    verifier.fatal(self, "value is not a string constant", field=field)
-                # TODO: What happens if none of these are met?
-                break

@@ -7,7 +7,6 @@ __all__ = (
     "SourceDebugExtension", "Module", "ModulePackages", "ModuleMainClass",
 )
 
-import typing
 from os import SEEK_CUR
 from typing import IO, Iterable
 
@@ -20,9 +19,6 @@ from .._struct import *
 from ..version import *
 from ...meta import Metadata
 from ...model.class_ import Class
-
-if typing.TYPE_CHECKING:
-    from ..verify import Verifier
 
 
 class ClassFile:
@@ -103,8 +99,6 @@ class ClassFile:
 
     write(self, stream: IO[bytes]) -> None
         Writes this class file to a binary stream.
-    verify(self, verifier: Verifier) -> None
-        Verifies that the class file is valid.
     unwrap(self) -> Class
         Unwraps this class file.
     """
@@ -335,17 +329,16 @@ class ClassFile:
         stream.write(b"\xca\xfe\xba\xbe")
         stream.write(pack_HH(self.version.minor, self.version.major))
 
+        this_index = self.pool.add(self.this)
+        super_index = self.pool.add(self.super) if self.super is not None else 0
+        interface_indices = [self.pool.add(interface) for interface in self.interfaces]
+
         # TODO: Pre-populate the constant pool, or rather check if all constants are in the pool.
         self.pool.write(stream)
 
-        stream.write(pack_HHHH(
-            self.access,
-            self.pool.add(self.this),
-            self.pool.add(self.super) if self.super is not None else 0,
-            len(self.interfaces),
-        ))
-        for interface in self.interfaces:
-            stream.write(pack_H(self.pool.add(interface)))
+        stream.write(pack_HHHH(self.access, this_index, super_index, len(self.interfaces)))
+        for interface_index in interface_indices:
+            stream.write(pack_H(interface_index))
 
         stream.write(pack_H(len(self.fields)))
         for field in self.fields:
@@ -356,85 +349,6 @@ class ClassFile:
         stream.write(pack_H(len(self.attributes)))
         for attribute in self.attributes:
             attribute.write(stream, self.version, self.pool)
-
-    def verify(self, verifier: "Verifier") -> None:
-        """
-        Verifies that the class file is valid.
-
-        Parameters
-        ----------
-        verifier: Verifier
-            The verifier to use and report to.
-        """
-
-        if not (0 <= self.version.minor <= 65535):
-            verifier.fatal(self, "invalid minor version")
-        if not (0 <= self.version.major <= 65535):
-            verifier.fatal(self, "invalid major version")
-        if not (0 <= self.access <= 65535):
-            verifier.fatal(self, "invalid access flags")
-
-        if len(self.interfaces) > 65535:
-            verifier.fatal(self, "too many interfaces")
-        if len(self.fields) > 65535:
-            verifier.fatal(self, "too many fields")
-        if len(self.methods) > 65535:
-            verifier.fatal(self, "too many methods")
-        if len(self.attributes) > 65535:
-            verifier.fatal(self, "too many attributes")
-
-        if verifier.check_const_types:
-            if not isinstance(self.this, ClassInfo):
-                verifier.fatal(self, "this class is not a class constant")
-            if self.super is not None and not isinstance(self.super, ClassInfo):
-                verifier.fatal(self, "super class is not a class constant")
-            for interface in self.interfaces:
-                if not isinstance(interface, ClassInfo):
-                    verifier.fatal(self, "super interface is not a class constant", interface=interface)
-
-        if self.version >= JAVA_9 and self.is_module:
-            if verifier.check_access_flags and self.access & ~ClassFile.ACC_MODULE:
-                verifier.fatal(self, "module class has invalid access flags")
-            if (
-                isinstance(self.this, ClassInfo) and
-                isinstance(self.this.name, UTF8Info) and
-                self.this.name.value != b"module-info"
-            ):
-                verifier.fatal(self, "module class has invalid name")
-            if self.super is not None:
-                verifier.fatal(self, "module class has super class")
-
-            if self.interfaces:
-                verifier.fatal(self, "module class has super interfaces")
-            if self.fields:
-                verifier.fatal(self, "module class has fields")
-            if self.methods:
-                verifier.fatal(self, "module class has methods")
-
-        elif verifier.check_access_flags:
-            if self.is_interface:
-                if not self.is_abstract:
-                    verifier.fatal(self, "interface class is not abstract")
-                if self.is_final:
-                    verifier.fatal(self, "interface class is final")
-                if self.is_super:
-                    verifier.fatal(self, "interface class is super")
-                if self.is_enum:
-                    verifier.fatal(self, "interface class is enum")
-            elif self.is_annotation:
-                verifier.fatal(self, "annotation class is not an interface")
-
-            if self.is_abstract and self.is_final:
-                verifier.fatal(self, "conflicting final/abstract access flags")
-
-        self.pool.verify(verifier, self)
-
-        for field in self.fields:
-            field.verify(verifier, self)
-        for method in self.methods:
-            method.verify(verifier, self)
-        for attribute in self.attributes:
-            attribute.verify(verifier, self, AttributeInfo.LOC_CLASS)
 
     def unwrap(self) -> Class:
         """
@@ -534,23 +448,6 @@ class BootstrapMethods(AttributeInfo):
             for argument in method.args:
                 stream.write(pack_H(pool.add(argument)))
 
-    def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        if len(self.methods) > 65535:
-            verifier.fatal(self, "too many bootstrap methods")
-
-        for method in self.methods:
-            if verifier.check_const_types and not isinstance(method.ref, MethodHandleInfo):
-                verifier.fatal(self, "bootstrap method reference is not a method handle constant", method=method)
-            if len(method.args) > 65535:
-                verifier.fatal(self, "too many bootstrap method arguments", method=method)
-            for argument in method.args:
-                if not argument.loadable:
-                    verifier.fatal(
-                        self, "bootstrap method argument is not a loadable constant", method=method, argument=argument,
-                    )
-
     class BootstrapMethod:
         """
         A bootstrap_method struct.
@@ -626,11 +523,6 @@ class NestHost(AttributeInfo):
         stream.write(pack_HIH(pool.add(self.name or UTF8Info(self.tag)), 2 + len(self.extra), pool.add(self.host)))
         stream.write(self.extra)
 
-    def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
-        super().verify(verifier, cf, location)
-        if verifier.check_const_types and not isinstance(self.host, ClassInfo):
-            verifier.fatal(self, "nest host is not a class constant")
-
 
 class NestMembers(AttributeInfo):
     """
@@ -696,15 +588,6 @@ class NestMembers(AttributeInfo):
             stream.write(pack_H(pool.add(class_)))
         stream.write(self.extra)
 
-    def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
-        super().verify(verifier, cf, location)
-        if len(self.classes) > 65535:
-            verifier.fatal(self, "too many nest members")
-        if verifier.check_const_types:
-            for member in self.classes:
-                if not isinstance(member, ClassInfo):
-                    verifier.fatal(self, "nest member is not a class constant", member=member)
-
 
 class PermittedSubclasses(AttributeInfo):
     """
@@ -767,15 +650,6 @@ class PermittedSubclasses(AttributeInfo):
         for class_ in self.classes:
             stream.write(pack_H(pool.add(class_)))
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
-        super().verify(verifier, cf, location)
-        if len(self.classes) > 65535:
-            verifier.fatal(self, "too many permitted subclasses")
-        if verifier.check_const_types:
-            for subclass in self.classes:
-                if not isinstance(subclass, ClassInfo):
-                    verifier.fatal(self, "permitted subclass is not a class constant", subclass=subclass)
 
 
 class InnerClasses(AttributeInfo):
@@ -849,24 +723,6 @@ class InnerClasses(AttributeInfo):
                 inner.access,
             ))
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        if len(self.classes) > 65535:
-            verifier.fatal(self, "too many inner classes")
-        for inner in self.classes:
-            if verifier.check_const_types:
-                if not isinstance(inner.inner_class, ClassInfo):
-                    verifier.error(self, "inner class is not a class constant", inner=inner)
-                if inner.outer_class is not None and not isinstance(inner.outer_class, ClassInfo):
-                    verifier.error(self, "outer class is not a class constant", inner=inner)
-                if inner.name is not None and not isinstance(inner.name, UTF8Info):
-                    verifier.error(self, "inner class name is not a UTF8 constant", inner=inner)
-
-            if not (0 <= inner.access <= 65535):
-                verifier.fatal(self, "invalid inner access flags", inner=inner)
-            # TODO: Check access flags.
 
     class InnerClass:
         """
@@ -1133,15 +989,6 @@ class EnclosingMethod(AttributeInfo):
         stream.write(pack_HH(pool.add(self.class_), pool.add(self.method) if self.method is not None else 0))
         stream.write(self.extra)
 
-    def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
-        super().verify(verifier, cf, location)
-        if verifier.check_const_types:
-            # TODO: Test if these result in a JVM crash or not (AKA is it fatal?).
-            if not isinstance(self.class_, ClassInfo):
-                verifier.fatal(self, "enclosing class is not a class constant")
-            if self.method is not None and not isinstance(self.method, NameAndTypeInfo):
-                verifier.fatal(self, "enclosing method is not a name and type constant")
-
 
 class Record(AttributeInfo):
     """
@@ -1212,22 +1059,6 @@ class Record(AttributeInfo):
             stream.write(pack_HHH(pool.add(component.name), pool.add(component.descriptor), len(component.attributes)))
             for attribute in component.attributes:
                 attribute.write(stream, version, pool)
-
-    def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        if len(self.components) > 65535:
-            verifier.fatal(self, "too many record components")
-        for component in self.components:
-            if verifier.check_const_types:
-                if not isinstance(component.name, UTF8Info):
-                    verifier.fatal(self, "record component name is not a UTF8 constant", component=component)
-                if not isinstance(component.descriptor, UTF8Info):
-                    verifier.fatal(self, "record component descriptor is not a UTF8 constant", component=component)
-            if len(component.attributes) > 65535:
-                verifier.fatal(self, "too many attributes", component=component)
-            for attribute in component.attributes:
-                attribute.verify(verifier, cf, AttributeInfo.LOC_RECORD_COMPONENT)
 
     class ComponentInfo:
         """
@@ -1310,11 +1141,6 @@ class SourceFile(AttributeInfo):
     def write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None:
         stream.write(pack_HIH(pool.add(self.name or UTF8Info(self.tag)), 2 + len(self.extra), pool.add(self.file)))
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
-        super().verify(verifier, cf, location)
-        if verifier.check_const_types and not isinstance(self.file, UTF8Info):
-            verifier.error(self, "source file is not a UTF8 constant")
 
 
 class SourceDebugExtension(AttributeInfo):
@@ -1586,84 +1412,6 @@ class Module(AttributeInfo):
             for impl in provide.impls:
                 stream.write(pack_H(pool.add(impl)))
 
-    def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
-        super().verify(verifier, cf, location)
-
-        if len(self.requires) > 65535:
-            verifier.fatal(self, "too many requires")
-        if len(self.exports) > 65535:
-            verifier.fatal(self, "too many exports")
-        if len(self.opens) > 65535:
-            verifier.fatal(self, "too many opens")
-        if len(self.uses) > 65535:
-            verifier.fatal(self, "too many uses")
-        if len(self.provides) > 65535:
-            verifier.fatal(self, "too many provides")
-
-        if not (0 <= self.flags <= 65535):
-            verifier.fatal(self, "invalid flags")
-
-        if verifier.check_const_types:
-            if not isinstance(self.module, ModuleInfo):
-                verifier.fatal(self, "module is not a module constant")
-            if self.version is not None and not isinstance(self.version, UTF8Info):
-                verifier.fatal(self, "module version is not a UTF8 constant")
-
-        for requirement in self.requires:
-            if verifier.check_const_types:
-                if not isinstance(requirement.module, ModuleInfo):
-                    verifier.fatal(self, "required module is not a module constant", requirement=requirement)
-                if requirement.version is not None and not isinstance(requirement.version, UTF8Info):
-                    verifier.fatal(self, "required module version is not a UTF8 constant", requirement=requirement)
-            if not (0 <= requirement.flags <= 65535):
-                verifier.fatal(self, "invalid requirement flags", requirement=requirement)
-
-        for export in self.exports:
-            if verifier.check_const_types:
-                if not isinstance(export.package, PackageInfo):
-                    verifier.fatal(self, "exported package is not a package constant", export=export)
-                for module in export.exports_to:
-                    if not isinstance(module, ModuleInfo):
-                        verifier.fatal(
-                            self, "module being exported to is not a module constant", export=export, module=module,
-                        )
-            if not (0 <= export.flags <= 65535):
-                verifier.fatal(self, "invalid export flags", export=export)
-            if len(export.exports_to) > 65535:
-                verifier.fatal(self, "too many modules being exported to", export=export)
-
-        for open_ in self.opens:
-            if verifier.check_const_types:
-                if not isinstance(open_.package, PackageInfo):
-                    verifier.fatal(self, "opened package is not a package constant", open=open_)
-                for module in open_.opens_to:
-                    if not isinstance(module, ModuleInfo):
-                        verifier.fatal(
-                            self, "module being opened to is not a module constant", open=open_, module=module,
-                        )
-            if not (0 <= open_.flags <= 65535):
-                verifier.fatal(self, "invalid open flags", open=open_)
-            if len(open_.opens_to) > 65535:
-                verifier.fatal(self, "too many modules being opened to", open=open_)
-
-        if verifier.check_const_types:
-            for use in self.uses:
-                if not isinstance(use, ClassInfo):
-                    verifier.fatal(self, "used service interface is not a class constant", use=use)
-
-        for provide in self.provides:
-            if verifier.check_const_types:
-                if not isinstance(provide.interface, ClassInfo):
-                    verifier.fatal(self, "provided interface is not a class constant", provide=provide)
-                for implementation in provide.impls:
-                    if not isinstance(implementation, ClassInfo):
-                        verifier.fatal(
-                            self, "provided implementation is not a class constant",
-                            provide=provide, implementation=implementation,
-                        )
-            if len(provide.impls) > 65535:
-                verifier.fatal(self, "too many provided implementations", provide=provide)
-
     class Require:
         """
         A module requires entry.
@@ -1928,15 +1676,6 @@ class ModulePackages(AttributeInfo):
             stream.write(pack_H(pool.add(package)))
         stream.write(self.extra)
 
-    def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
-        super().verify(verifier, cf, location)
-        if len(self.packages) > 65535:
-            verifier.fatal(self, "too many module packages")
-        if verifier.check_const_types:
-            for package in self.packages:
-                if not isinstance(package, PackageInfo):
-                    verifier.error(self, "module package is not a package constant", package=package)
-
 
 class ModuleMainClass(AttributeInfo):
     """
@@ -1977,8 +1716,3 @@ class ModuleMainClass(AttributeInfo):
     def write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None:
         stream.write(pack_HIH(pool.add(self.name or UTF8Info(self.tag)), 2 + len(self.extra), pool.add(self.class_)))
         stream.write(self.extra)
-
-    def verify(self, verifier: "Verifier", cf: ClassFile, location: int) -> None:
-        super().verify(verifier, cf, location)
-        if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
-            verifier.error(self, "module main class is not a class constant")
