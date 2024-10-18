@@ -6,15 +6,11 @@ __all__ = (
     "ConstPool",
 )
 
-import typing
 from os import SEEK_SET
 from typing import IO, Iterable, Union
 
 from .constants import ConstIndex, ConstInfo
 from .._struct import *
-
-if typing.TYPE_CHECKING:
-    from .classfile import ClassFile
 
 
 class ConstPool:

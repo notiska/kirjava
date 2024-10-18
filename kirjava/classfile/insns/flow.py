@@ -157,7 +157,7 @@ class Compare(Jump):
 
     conditional = True
 
-    comparison: "Compare.Type"
+    comparison: "Compare.Type"  # type: ignore[name-defined]
     type: Type
 
     delta: int

@@ -4,6 +4,8 @@ __all__ = (
     "fmt", "graph", "insns", "version",
     "INSTRUCTIONS",
 
+    "dump", "dumps", "load", "loads",
+
     "ClassFile", "FieldInfo",
     "MethodInfo", "Code",
     "AttributeInfo", "RawInfo",
@@ -25,7 +27,8 @@ __all__ = (
 Everything related to JVM class files.
 """
 
-from . import fmt, graph, insns, verify, version
+from . import fmt, graph, insns, version
+from ._api import *
 from .fmt import *
 from .graph import Block, Edge, Graph
 from .insns import INSTRUCTIONS, Instruction

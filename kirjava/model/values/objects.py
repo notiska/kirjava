@@ -46,7 +46,8 @@ class Array(Value):
             sizes.append(f"[{size}]")
             if not isinstance(type_, ArrayType):
                 break
-        return f"{self.type!s}{"".join(sizes)}"
+        sizes_str = "".join(sizes)
+        return f"{self.type!s}{sizes_str}"
 
 
 class Object(Value):

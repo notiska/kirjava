@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+__all__ = (
+    "dump", "dumps", "load", "loads",
+)
+
+"""
+Nicer Python API functions.
+"""
+
+import os
+from io import BytesIO
+from os import PathLike
+from typing import IO
+
+from .fmt import ClassFile
+
+
+def dump(cf: ClassFile, file_or_stream: str | PathLike[str] | IO[bytes]) -> None:
+    """
+    Dumps a class file to a file or binary stream.
+    """
+
+    if isinstance(file_or_stream, PathLike):
+        file_or_stream = os.fspath(file_or_stream)
+    if isinstance(file_or_stream, str):
+        with open(file_or_stream, "rb") as stream:
+            cf.write(stream)
+    else:
+        cf.write(file_or_stream)
+
+
+def dumps(cf: ClassFile) -> bytes:
+    """
+    Dumps a class file to binary data.
+    """
+
+    stream = BytesIO()
+    cf.write(stream)
+    return stream.getvalue()
+
+
+def load(file_or_stream: str | PathLike[str] | IO[bytes]) -> ClassFile:
+    """
+    Loads a class file from a file or binary stream.
+    """
+
+    if isinstance(file_or_stream, PathLike):
+        file_or_stream = os.fspath(file_or_stream)
+    if isinstance(file_or_stream, str):
+        with open(file_or_stream, "rb") as stream:
+            cf, meta = ClassFile.read(stream)
+    else:
+        cf, meta = ClassFile.read(file_or_stream)
+
+    ...  # TODO: Check metadata for any errors.
+
+    return cf
+
+
+def loads(data: bytes) -> ClassFile:
+    """
+    Loads a class file from binary data.
+    """
+
+    stream = BytesIO(data)
+    cf, meta = ClassFile.read(stream)
+
+    ...  # TODO: Check metadata for any errors.
+
+    return cf

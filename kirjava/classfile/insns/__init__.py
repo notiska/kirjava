@@ -64,7 +64,6 @@ __all__ = (
 )
 
 import typing
-from functools import cache
 from io import BytesIO
 from os import SEEK_SET
 from typing import IO  # , Self  # FIXME: Ditch support for 3.10 at some point.
@@ -72,7 +71,6 @@ from typing_extensions import Buffer
 
 if typing.TYPE_CHECKING:
     from ..fmt import ConstPool
-    from ..verify import Verifier
     from ..version import Version
     from ...model.types import Class
 
@@ -131,6 +129,8 @@ class Instruction:
     mutated = False
     linked  = False
 
+    _cache: dict[int, type["Instruction"] | None] = {}
+
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Instruction":
         """
@@ -140,7 +140,6 @@ class Instruction:
         raise NotImplementedError(f"_read() is not implemented for {cls!r}")
 
     @classmethod
-    @cache
     def lookup(cls, opcode: int, mutated: bool = False) -> type["Instruction"] | None:
         """
         Looks up an instruction given an opcode.
@@ -193,12 +192,13 @@ class Instruction:
             The class file constant pool.
         """
 
-        # TODO: Faster singleton reads.
-
         offset = stream.tell()
         opcode, = stream.read(1)
 
-        subclass: type[Instruction] | None = cls.lookup(opcode)
+        subclass: type[Instruction] | None = cls._cache.get(opcode)
+        if subclass is None:
+            subclass = cls.lookup(opcode)
+            cls._cache[opcode] = subclass
         if subclass is None:
             # self = Unknown(opcode)
             raise ValueError(f"unknown opcode 0x{opcode:02x} at offset {offset}")
@@ -275,18 +275,6 @@ class Instruction:
         # if self.linked
         #     return self
         raise NotImplementedError(f"link() is not implemented for {type(self)!r}")
-
-    def verify(self, verifier: "Verifier") -> None:
-        """
-        Verifies that this instruction is valid.
-
-        Parameters
-        ----------
-        verifier: Verifier
-            The verifier to use and report to.
-        """
-
-        ...
 
     # def trace(self, frame: "Frame", state: "State") -> Optional["State.Step"]:
     #     """

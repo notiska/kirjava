@@ -16,7 +16,6 @@ JVM class file annotation structs found in annotation attributes.
 """
 
 import typing
-from functools import cache
 from typing import IO, Iterable, Union
 
 from .._struct import *
@@ -51,6 +50,8 @@ class ElementValue:
 
     tags: bytes
 
+    _cache: dict[int, type["ElementValue"] | None] = {}
+
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> "ElementValue":
         """
@@ -60,7 +61,6 @@ class ElementValue:
         raise NotImplementedError(f"_read() is not implemented for {cls!r}")
 
     @classmethod
-    @cache
     def lookup(cls, kind: int) -> type["ElementValue"] | None:
         """
         Looks up an element value type by kind.
@@ -95,7 +95,10 @@ class ElementValue:
         """
 
         kind, = stream.read(1)
-        subclass: type[ElementValue] | None = cls.lookup(kind)
+        subclass: type[ElementValue] | None = cls._cache.get(kind)
+        if subclass is None:
+            subclass = cls.lookup(kind)
+            cls._cache[kind] = subclass
         if subclass is None:  # Not much more we can do at this point.
             raise ValueError(f"invalid kind {kind} for element value")
         return subclass._read(stream, pool, kind)
@@ -186,7 +189,8 @@ class Annotation:
         return f"<Annotation(type={self.type!s}, elements={self.elements!r})>"
 
     def __str__(self) -> str:
-        return f"annotation({self.type!s},[{",".join(map(str, self.elements))}])"
+        elements_str = ",".join(map(str, self.elements))
+        return f"annotation({self.type!s},[{elements_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Annotation) and self.type == other.type and self.elements == other.elements
@@ -297,7 +301,8 @@ class ParameterAnnotations:
         return f"<ParameterAnnotations(annotations={self.annotations!r})>"
 
     def __str__(self) -> str:
-        return f"parameter_annotations([{",".join(map(str, self.annotations))}])"
+        annotations_str = ",".join(map(str, self.annotations))
+        return f"parameter_annotations([{annotations_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ParameterAnnotations) and self.annotations == other.annotations
@@ -444,7 +449,34 @@ class TargetInfo:
     CONSTRUCTOR_REFERENCE_TYPE_ARGUMENT = 0x4a
     METHOD_REFERENCE_TYPE_ARGUMENT      = 0x4b
 
+    _KINDS = {
+        GENERIC_CLASS_TYPE_PARAMETER:        "GENERIC_CLASS_TYPE_PARAMETER",
+        GENERIC_METHOD_TYPE_PARAMETER:       "GENERIC_METHOD_TYPE_PARAMETER",
+        SUPER_CLASS_OR_INTERFACE_TYPE:       "SUPER_CLASS_OR_INTERFACE_TYPE",
+        GENERIC_CLASS_TYPE_PARAMETER_BOUND:  "GENERIC_CLASS_TYPE_PARAMETER_BOUND",
+        GENERIC_METHOD_TYPE_PARAMETER_BOUND: "GENERIC_METHOD_TYPE_PARAMETER_BOUND",
+        FIELD_OR_RECORD_COMPONENT_TYPE:      "FIELD_OR_RECORD_COMPONENT_TYPE",
+        METHOD_RETURN_TYPE_OR_NEW_OBJECT:    "METHOD_RETURN_TYPE_OR_NEW_OBJECT",
+        METHOD_RECEIVER_TYPE:                "METHOD_RECEIVER_TYPE",
+        FORMAL_PARAMETER_TYPE:               "FORMAL_PARAMETER_TYPE",
+        THROWS_CLAUSE_TYPE:                  "THROWS_CLAUSE_TYPE",
+        LOCAL_VARIABLE_TYPE:                 "LOCAL_VARIABLE_TYPE",
+        RESOURCE_VARIABLE_TYPE:              "RESOURCE_VARIABLE_TYPE",
+        CATCH_PARAMETER_TYPE:                "CATCH_PARAMETER_TYPE",
+        INSTANCEOF_TYPE:                     "INSTANCEOF_TYPE",
+        NEW_TYPE:                            "NEW_TYPE",
+        CONSTRUCTOR_REFERENCE_TYPE:          "CONSTRUCTOR_REFERENCE_TYPE",
+        METHOD_REFERENCE_TYPE:               "METHOD_REFERENCE_TYPE",
+        CAST_TYPE:                           "CAST_TYPE",
+        GENERIC_CONSTRUCTOR_TYPE_ARGUMENT:   "GENERIC_CONSTRUCTOR_TYPE_ARGUMENT",
+        GENERIC_METHOD_TYPE_ARGUMENT:        "GENERIC_METHOD_TYPE_ARGUMENT",
+        CONSTRUCTOR_REFERENCE_TYPE_ARGUMENT: "CONSTRUCTOR_REFERENCE_TYPE_ARGUMENT",
+        METHOD_REFERENCE_TYPE_ARGUMENT:      "METHOD_REFERENCE_TYPE_ARGUMENT",
+    }
+
     tags: frozenset[int]
+
+    _cache: dict[int, type["TargetInfo"] | None] = {}
 
     @classmethod
     def _read(cls, stream: IO[bytes], kind: int) -> "TargetInfo":
@@ -455,7 +487,6 @@ class TargetInfo:
         raise NotImplementedError(f"_read() is not implemented for {cls!r}")
 
     @classmethod
-    @cache
     def lookup(cls, kind: int) -> type["TargetInfo"] | None:
         """
         Looks up a target info type by kind.
@@ -493,7 +524,10 @@ class TargetInfo:
         """
 
         kind, = stream.read(1)
-        subclass: type[TargetInfo] | None = cls.lookup(kind)
+        subclass: type[TargetInfo] | None = cls._cache.get(kind)
+        if subclass is None:
+            subclass = cls.lookup(kind)
+            cls._cache[kind] = subclass
         if subclass is None:
             raise ValueError(f"invalid kind 0x{kind:02x} for target info")
         return subclass._read(stream, kind)
@@ -572,7 +606,8 @@ class TypePath:
         return f"<TypePath(path={self.path!r})>"
 
     def __str__(self) -> str:
-        return f"type_path([{",".join(map(str, self.path))}])"
+        path_str = ",".join(map(str, self.path))
+        return f"type_path([{path_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, TypePath) and self.path == other.path
@@ -636,15 +671,24 @@ class TypePath:
         WILDCARD_BOUND = 2
         TYPE_ARGUMENT  = 3
 
+        _KINDS = {
+            ARRAY_NESTED:   "ARRAY_NESTED",
+            TYPE_NESTED:    "TYPE_NESTED",
+            WILDCARD_BOUND: "WILDCARD_BOUND",
+            TYPE_ARGUMENT:  "TYPE_ARGUMENT",
+        }
+
         def __init__(self, kind: int, index: int = 0) -> None:
             self.kind = kind
             self.index = index
 
         def __repr__(self) -> str:
-            return f"<TypePath.Segment(kind={self.kind}, index={self.index})>"
+            kind_str = TypePath.Segment._KINDS.get(self.kind) or str(self.kind)
+            return f"<TypePath.Segment(kind={kind_str}, index={self.index})>"
 
         def __str__(self) -> str:
-            return f"{self.kind}:{self.index}"
+            kind_str = TypePath.Segment._KINDS.get(self.kind) or str(self.kind)
+            return f"{kind_str}:{self.index}"
 
         def __eq__(self, other: object) -> bool:
             return isinstance(other, TypePath.Segment) and self.kind == other.kind and self.index == other.index
@@ -696,7 +740,8 @@ class TypeAnnotation(Annotation):
         )
 
     def __str__(self) -> str:
-        return f"type_annotation({self.type!s},{self.info!s},{self.path!s},[{",".join(map(str, self.elements))}])"
+        elements_str = ",".join(map(str, self.elements))
+        return f"type_annotation({self.type!s},{self.info!s},{self.path!s},[{elements_str}])"
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -721,23 +766,23 @@ class ConstValue(ElementValue):
 
     Attributes
     ----------
-    KIND_BYTE: Int
+    BYTE: Int
         Kind denoting that the constant is a byte (internally int).
-    KIND_CHAR: int
+    CHAR: int
         Kind denoting that the constant is a char (internally int).
-    KIND_DOUBLE: int
+    DOUBLE: int
         Kind denoting that the constant is a double.
-    KIND_FLOAT: int
+    FLOAT: int
         Kind denoting that the constant is a float.
-    KIND_INT: int
+    INT: int
         Kind denoting that the constant is an int.
-    KIND_LONG: int
+    LONG: int
         Kind denoting that the constant value is a long.
-    KIND_SHORT: int
+    SHORT: int
         Kind denoting that the constant value is a short (internally int).
-    KIND_BOOLEAN: int
+    BOOLEAN: int
         Kind denoting that the constant value is a boolean (internally int).
-    KIND_STRING: int
+    STRING: int
         Kind denoting that the constant value is a string.
 
     value: ConstInfo
@@ -748,15 +793,27 @@ class ConstValue(ElementValue):
 
     tags = b"BCDFIJSZs"
 
-    KIND_BYTE    = tags[0]  # ord("B")
-    KIND_CHAR    = tags[1]  # ord("C")
-    KIND_DOUBLE  = tags[2]  # ord("D")
-    KIND_FLOAT   = tags[3]  # ord("F")
-    KIND_INT     = tags[4]  # ord("I")
-    KIND_LONG    = tags[5]  # ord("J")
-    KIND_SHORT   = tags[6]  # ord("S")
-    KIND_BOOLEAN = tags[7]  # ord("Z")
-    KIND_STRING  = tags[8]  # ord("s")
+    BYTE    = tags[0]  # ord("B")
+    CHAR    = tags[1]  # ord("C")
+    DOUBLE  = tags[2]  # ord("D")
+    FLOAT   = tags[3]  # ord("F")
+    INT     = tags[4]  # ord("I")
+    LONG    = tags[5]  # ord("J")
+    SHORT   = tags[6]  # ord("S")
+    BOOLEAN = tags[7]  # ord("Z")
+    STRING  = tags[8]  # ord("s")
+
+    _KINDS = {
+        BYTE:    "BYTE",
+        CHAR:    "CHAR",
+        DOUBLE:  "DOUBLE",
+        FLOAT:   "FLOAT",
+        INT:     "INT",
+        LONG:    "LONG",
+        SHORT:   "SHORT",
+        BOOLEAN: "BOOLEAN",
+        STRING:  "STRING",
+    }
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> "ConstValue":
@@ -764,13 +821,14 @@ class ConstValue(ElementValue):
         return cls(kind, pool[index])
 
     def __init__(self, kind: int, value: "ConstInfo") -> None:
-        if not kind in ConstValue.tags:
-            raise ValueError(f"invalid kind {kind} for {type(self)!r}")
+        # if not kind in ConstValue.tags:
+        #     raise ValueError(f"invalid kind {kind} for {type(self)!r}")
         super().__init__(kind)
         self.value = value
 
     def __repr__(self) -> str:
-        return f"<ConstValue(kind={self.kind}, value={self.value!s})>"
+        kind_str = ConstValue._KINDS.get(self.kind) or str(self.kind)
+        return f"<ConstValue(kind={kind_str}, value={self.value!s})>"
 
     def __str__(self) -> str:
         return str(self.value)
@@ -809,10 +867,10 @@ class EnumConstValue(ElementValue):
         self.name = name
 
     def __repr__(self) -> str:
-        return f"<EnumConstValue(type={self.type!s}, name={self.type!s})>"
+        return f"<EnumConstValue(type={self.type!s}, name={self.name!s})>"
 
     def __str__(self) -> str:
-        return f"{self.type!s}.{self.type!s}"
+        return f"{self.type!s}.{self.name!s}"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, EnumConstValue) and self.type == other.type and self.name == other.name
@@ -924,7 +982,8 @@ class ArrayValue(ElementValue):
         return f"<ArrayValue(values={self.values!r})>"
 
     def __str__(self) -> str:
-        return f"[{",".join(map(str, self.values))}]"
+        values_str = ",".join(map(str, self.values))
+        return f"[{values_str}]"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ArrayValue) and self.values == other.values
@@ -975,16 +1034,18 @@ class TypeParameterTarget(TargetInfo):
         return cls(kind, index)
 
     def __init__(self, kind: int, index: int) -> None:
-        if not kind in TypeParameterTarget.tags:
-            raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
+        # if not kind in TypeParameterTarget.tags:
+        #     raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
         super().__init__(kind)
         self.index = index
 
     def __repr__(self) -> str:
-        return f"<TypeParameterTarget(kind=0x{self.kind:02x}, index={self.index})>"
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
+        return f"<TypeParameterTarget(kind={kind_str}, index={self.index})>"
 
     def __str__(self) -> str:
-        return f"type_parameter_target(0x{self.kind:02x},{self.index})"
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
+        return f"type_parameter_target({kind_str},{self.index})"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, TypeParameterTarget) and self.kind == other.kind and self.index == other.index
@@ -1058,21 +1119,22 @@ class TypeParameterBoundTarget(TargetInfo):
         return cls(kind, param_index, bound_index)
 
     def __init__(self, kind: int, param_index: int, bound_index: int) -> None:
-        if not kind in TypeParameterBoundTarget.tags:
-            raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
-
+        # if not kind in TypeParameterBoundTarget.tags:
+        #     raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
         super().__init__(kind)
         self.param_index = param_index
         self.bound_index = bound_index
 
     def __repr__(self) -> str:
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
         return (
-            f"<TypeParameterBoundTarget(kind=0x{self.kind:02x}, param_index={self.param_index}, "
+            f"<TypeParameterBoundTarget(kind={kind_str}, param_index={self.param_index}, "
             f"bound_index={self.bound_index})>"
         )
 
     def __str__(self) -> str:
-        return f"type_parameter_bound_target(0x{self.kind:02x},{self.param_index},{self.bound_index})"
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
+        return f"type_parameter_bound_target({kind_str},{self.param_index},{self.bound_index})"
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -1106,15 +1168,17 @@ class EmptyTarget(TargetInfo):
         return cls(kind)
 
     def __init__(self, kind: int) -> None:
-        if not kind in EmptyTarget.tags:
-            raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
+        # if not kind in EmptyTarget.tags:
+        #     raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
         super().__init__(kind)
 
     def __repr__(self) -> str:
-        return f"<EmptyTarget(kind=0x{self.kind:02x})>"
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
+        return f"<EmptyTarget(kind={kind_str})>"
 
     def __str__(self) -> str:
-        return f"empty_target(0x{self.kind:02x})"
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
+        return f"empty_target({kind_str})"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, EmptyTarget) and self.kind == other.kind
@@ -1226,19 +1290,21 @@ class LocalVarTarget(TargetInfo):
         return cls(kind, ranges)
 
     def __init__(self, kind: int, ranges: Iterable["LocalVarTarget.LocalVar"] | None = None) -> None:
-        if not kind in LocalVarTarget.tags:
-            raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
-
+        # if not kind in LocalVarTarget.tags:
+        #     raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
         super().__init__(kind)
         self.ranges: list[LocalVarTarget.LocalVar] = []
         if ranges is not None:
             self.ranges.extend(ranges)
 
     def __repr__(self) -> str:
-        return f"<LocalVarTarget(kind=0x{self.kind:02x}, ranges={self.ranges!r})>"
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
+        return f"<LocalVarTarget(kind={kind_str}, ranges={self.ranges!r})>"
 
     def __str__(self) -> str:
-        return f"localvar_target(0x{self.kind:02x},[{",".join(map(str, self.ranges))}])"
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
+        ranges_str = ",".join(map(str, self.ranges))
+        return f"localvar_target({kind_str},[{ranges_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVarTarget) and self.kind == other.kind and self.ranges == other.ranges
@@ -1288,7 +1354,7 @@ class LocalVarTarget(TargetInfo):
             return f"<LocalVarTarget.LocalVar(start_pc={self.start_pc}, length={self.length}, index={self.index})>"
 
         def __str__(self) -> str:
-            return f"localvar({self.start_pc},{self.length},{self.index})"
+            return f"localvar({self.start_pc}+{self.length},{self.index})"
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -1368,16 +1434,18 @@ class OffsetTarget(TargetInfo):
         return cls(kind, offset)
 
     def __init__(self, kind: int, offset: int) -> None:
-        if not kind in OffsetTarget.tags:
-            raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
+        # if not kind in OffsetTarget.tags:
+        #     raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
         super().__init__(kind)
         self.offset = offset
 
     def __repr__(self) -> str:
-        return f"<OffsetTarget(kind=0x{self.kind:02x}, offset={self.offset})>"
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
+        return f"<OffsetTarget(kind={kind_str}, offset={self.offset})>"
 
     def __str__(self) -> str:
-        return f"offset_target(0x{self.kind:02x},{self.offset})"
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
+        return f"offset_target({kind_str},{self.offset})"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, OffsetTarget) and self.kind == other.kind and self.offset == other.offset
@@ -1420,17 +1488,19 @@ class TypeArgumentTarget(TargetInfo):
         return cls(kind, offset, index)
 
     def __init__(self, kind: int, offset: int, index: int) -> None:
-        if not kind in TypeArgumentTarget.tags:
-            raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
+        # if not kind in TypeArgumentTarget.tags:
+        #     raise ValueError(f"invalid kind 0x{kind:02x} for {type(self)!r}")
         super().__init__(kind)
         self.offset = offset
         self.index = index
 
     def __repr__(self) -> str:
-        return f"<TypeArgumentTarget(kind=0x{self.kind:02x}, offset={self.offset}, index={self.index})>"
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
+        return f"<TypeArgumentTarget(kind={kind_str}, offset={self.offset}, index={self.index})>"
 
     def __str__(self) -> str:
-        return f"type_argument_target(0x{self.kind:02x},{self.offset},{self.index})"
+        kind_str = TargetInfo._KINDS.get(self.kind) or f"0x{self.kind:02x}"
+        return f"type_argument_target({kind_str},{self.offset},{self.index})"
 
     def __eq__(self, other: object) -> bool:
         return (

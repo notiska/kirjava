@@ -111,10 +111,9 @@ class Method:
         self.is_synthetic = is_synthetic
 
     def __repr__(self) -> str:
-        return (
-            f"<Method(name={self.name!r}, arg_types=[{", ".join(map(str, self.arg_types))}], "
-            f"ret_type={self.ret_type!s})>"
-        )
+        arg_types_str = ", ".join(map(str, self.arg_types))
+        return f"<Method(name={self.name!r}, arg_types=[{arg_types_str}], ret_type={self.ret_type!s})>"
 
     def __str__(self) -> str:
-        return f"method({self.name!s}:({",".join(map(str, self.arg_types))}){self.ret_type})"
+        arg_types_str = ",".join(map(str, self.arg_types))
+        return f"method({self.name!s}:({arg_types_str}){self.ret_type})"

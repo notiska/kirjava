@@ -127,16 +127,17 @@ class Class:
             self.methods.extend(methods)
 
     def __repr__(self) -> str:
+        interfaces_str = ", ".join(map(str, self.interfaces))
         return (
-            f"<Class(name={self.name!r}, super={self.super!s}, interfaces=[{", ".join(map(str, self.interfaces))}], "
-            f"fields={self.fields!r}, methods={self.methods!r})>"
+            f"<Class(name={self.name!r}, super={self.super!s}, interfaces=[{interfaces_str}], fields={self.fields!r}, "
+            f"methods={self.methods!r})>"
         )
 
     def __str__(self) -> str:
-        return (
-            f"class({self.name!s},{self.super!s},[{",".join(map(str, self.interfaces))}],"
-            f"[{",".join(map(str, self.fields))}],[{",".join(map(str, self.methods))}])"
-        )
+        interfaces_str = ",".join(map(str, self.interfaces))
+        fields_str = ",".join(map(str, self.fields))
+        methods_str = ",".join(map(str, self.methods))
+        return f"class({self.name!s},{self.super!s},[{interfaces_str}],[{fields_str}],[{methods_str}])"
 
     def get_field(self, name: str, type_: Type) -> Field | None:
         """

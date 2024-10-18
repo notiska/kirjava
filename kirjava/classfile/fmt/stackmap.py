@@ -19,7 +19,6 @@ JVM class file stack map frame and verification type structs.
 """
 
 import typing
-from functools import cache
 from typing import IO, Iterable
 
 from .constants import ClassInfo, ConstInfo
@@ -53,6 +52,8 @@ class VerificationTypeInfo:
 
     tag: int
 
+    _cache: dict[int, type["VerificationTypeInfo"] | None] = {}
+
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "VerificationTypeInfo":
         """
@@ -62,7 +63,6 @@ class VerificationTypeInfo:
         return cls()
 
     @classmethod
-    @cache
     def lookup(cls, tag: int) -> type["VerificationTypeInfo"] | None:
         """
         Looks up a verification type by tag.
@@ -97,7 +97,10 @@ class VerificationTypeInfo:
         """
 
         tag, = stream.read(1)
-        subclass: type[VerificationTypeInfo] | None = cls.lookup(tag)
+        subclass: type[VerificationTypeInfo] | None = cls._cache.get(tag)
+        if subclass is None:
+            subclass = cls.lookup(tag)
+            cls._cache[tag] = subclass
         if subclass is None:
             raise ValueError(f"invalid tag {tag} for verification type")
         return subclass._read(stream, pool)
@@ -156,6 +159,8 @@ class StackMapFrame:
     tags: range
     tag: int
 
+    _cache: dict[int, type["StackMapFrame"] | None] = {}
+
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> "StackMapFrame":
         """
@@ -165,7 +170,6 @@ class StackMapFrame:
         raise NotImplementedError(f"_read() is not implemented for {cls!r}")
 
     @classmethod
-    @cache
     def lookup(cls, tag: int) -> type["StackMapFrame"] | None:
         """
         Looks up a stack map frame by tag.
@@ -200,7 +204,10 @@ class StackMapFrame:
         """
 
         tag, = stream.read(1)
-        subclass: type[StackMapFrame] | None = cls.lookup(tag)
+        subclass: type[StackMapFrame] | None = cls._cache.get(tag)
+        if subclass is None:
+            subclass = cls.lookup(tag)
+            cls._cache[tag] = subclass
         assert subclass is not None, f"unknown stack map frame tag {tag}"  # Should be impossible if my impl is fine.
         return subclass._read(stream, pool, tag)
 
@@ -468,6 +475,10 @@ class SameFrame(StackMapFrame):
     def delta(self) -> int:
         return self.tag
 
+    @delta.setter
+    def delta(self, value: int) -> None:
+        self.tag = value
+
     def __init__(self, tag: int) -> None:
         self.tag = tag
 
@@ -511,6 +522,10 @@ class SameLocalsOneStackItemFrame(StackMapFrame):
     @property
     def delta(self) -> int:
         return self.tag - 64
+
+    @delta.setter
+    def delta(self, value: int) -> None:
+        self.tag = value + 64
 
     def __init__(self, tag: int, stack: VerificationTypeInfo) -> None:
         self.tag = tag
@@ -607,6 +622,10 @@ class ChopFrame(StackMapFrame):
     def chopped(self) -> int:
         return 251 - self.tag
 
+    @chopped.setter
+    def chopped(self, value: int) -> None:
+        self.tag = 251 - value
+
     def __init__(self, tag: int, delta: int) -> None:
         self.tag = tag
         self.delta = delta
@@ -700,10 +719,12 @@ class AppendFrame(StackMapFrame):
             self.locals.extend(locals_)
 
     def __repr__(self) -> str:
-        return f"<AppendFrame(tag={self.tag}, delta={self.delta}, locals=[{", ".join(map(str, self.locals))}])>"
+        locals_str = ", ".join(map(str, self.locals))
+        return f"<AppendFrame(tag={self.tag}, delta={self.delta}, locals=[{locals_str}])>"
 
     def __str__(self) -> str:
-        return f"append_frame[{self.tag},{self.delta},[{",".join(map(str, self.locals))}]"
+        locals_str = ",".join(map(str, self.locals))
+        return f"append_frame[{self.tag},{self.delta},[{locals_str}]"
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -764,13 +785,14 @@ class FullFrame(StackMapFrame):
             self.stack.extend(stack)
 
     def __repr__(self) -> str:
-        return (
-            f"<FullFrame(delta={self.delta}, locals=[{", ".join(map(str, self.locals))}], "
-            f"stack=[{", ".join(map(str, self.stack))}])>"
-        )
+        locals_str = ", ".join(map(str, self.locals))
+        stack_str = ", ".join(map(str, self.stack))
+        return f"<FullFrame(delta={self.delta}, locals=[{locals_str}], stack=[{stack_str}])>"
 
     def __str__(self) -> str:
-        return f"full_frame({self.delta},[{",".join(map(str, self.locals))}],[{",".join(map(str, self.stack))}])"
+        locals_str = ",".join(map(str, self.locals))
+        stack_str = ",".join(map(str, self.stack))
+        return f"full_frame({self.delta},[{locals_str}],[{stack_str}])"
 
     def __eq__(self, other: object) -> bool:
         return (

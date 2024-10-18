@@ -15,7 +15,6 @@ __all__ = (
 
 import typing
 from copy import deepcopy
-from functools import cache
 from typing import IO
 
 from .._struct import *
@@ -25,7 +24,6 @@ from ...model.values.constants import *
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
-    from ..verify import Verifier
 
 
 # FIXME: It would be nice to have some external indication as to preferred type? Due to reasons attributes may have to
@@ -72,6 +70,8 @@ class ConstInfo:
     since: Version
     loadable: bool
 
+    _cache: dict[int, type["ConstInfo"] | None] = {}
+
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ConstInfo":
         """
@@ -116,7 +116,10 @@ class ConstInfo:
         """
 
         tag, = stream.read(1)
-        subclass: type[ConstInfo] | None = ConstInfo.lookup(tag)
+        subclass: type[ConstInfo] | None = cls._cache.get(tag)
+        if subclass is None:
+            subclass = cls.lookup(tag)
+            cls._cache[tag] = subclass
         if subclass is None:
             raise ValueError(f"unknown constant pool tag {tag}")
         info = subclass._read(stream, pool)

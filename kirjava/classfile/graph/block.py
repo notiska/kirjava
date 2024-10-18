@@ -76,7 +76,8 @@ class Block:
             self.insns.extend(insns)
 
     def __repr__(self) -> str:
-        return f"<Block(label={self.label}, insns=[{", ".join(map(str, self.insns))}])>"
+        insns_str = ", ".join(map(str, self.insns))
+        return f"<Block(label={self.label}, insns=[{insns_str}])>"
 
     def __str__(self) -> str:
         if self.label == self.LABEL_ENTRY:

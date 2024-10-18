@@ -7,7 +7,6 @@ __all__ = (
 )
 
 import typing
-from typing import Optional
 from weakref import WeakValueDictionary
 
 from .class_ import Class, Field, Method

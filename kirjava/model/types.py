@@ -35,7 +35,6 @@ __all__ = (
     "Array", "Class", "Interface",
 )
 
-from functools import cached_property
 from weakref import WeakValueDictionary
 
 
@@ -726,7 +725,6 @@ class Array(_JavaReference):
     def element(self) -> Type:
         return self._element
 
-    @cached_property
     def dimension(self) -> int:
         dimension = 1
         element = self._element
@@ -735,14 +733,12 @@ class Array(_JavaReference):
             element = element._element
         return dimension
 
-    @cached_property  # Possible because we know this is immutable.
     def lowest(self) -> Type:
         element = self._element
         while isinstance(element, Array):
             element = element._element
         return element
 
-    @cached_property
     def primitive(self) -> bool:
         return isinstance(self._element, Primitive)  # and not self.element.abstract
 

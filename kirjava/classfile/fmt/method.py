@@ -384,7 +384,7 @@ class Code(AttributeInfo):
         The size of the local variable array.
     base: int
         The base offset of the bytecode.
-    instructions: list[Instruction]
+    insns: list[Instruction]
         A list of bytecode the decoded instructions.
         It is assumed that the instructions are ordered correctly.
     handlers: list[Code.ExceptionHandler]
@@ -393,7 +393,7 @@ class Code(AttributeInfo):
         A list of attributes on this code attribute.
     """
 
-    __slots__ = ("max_stack", "max_locals", "base", "instructions", "handlers", "attributes")
+    __slots__ = ("max_stack", "max_locals", "base", "insns", "handlers", "attributes")
 
     tag = b"Code"
     since = JAVA_1_0
@@ -413,12 +413,12 @@ class Code(AttributeInfo):
         # disassembler.disassemble_pure_code(stream, class_file, code_length)
 
         base = stream.tell()
-        instructions = []
+        insns = []
 
         wrapper = CodeIOWrapper(stream, base)
         while wrapper.tell() < size:
             instruction = Instruction.read(wrapper, pool)
-            instructions.append(instruction)
+            insns.append(instruction)
 
         delta = stream.tell() - (base + size)
         if delta:
@@ -444,13 +444,13 @@ class Code(AttributeInfo):
             attributes.append(attr)
             meta.add(child_meta)
 
-        self = cls(max_stack, max_locals, base, instructions, handlers, attributes)
+        self = cls(max_stack, max_locals, base, insns, handlers, attributes)
         meta.element = self
         return self, meta
 
     def __init__(
             self, max_stack: int, max_locals: int, base: int,
-            instructions:    Iterable["Instruction"] | None = None,
+            insns:           Iterable["Instruction"] | None = None,
             handlers: Iterable["Code.ExceptHandler"] | None = None,
             attributes:      Iterable[AttributeInfo] | None = None,
     ) -> None:
@@ -458,28 +458,28 @@ class Code(AttributeInfo):
         self.max_stack = max_stack
         self.max_locals = max_locals
         self.base = base
-        self.instructions: list["Instruction"] = []
+        self.insns: list["Instruction"] = []
         self.handlers: list[Code.ExceptHandler] = []
         self.attributes: list[AttributeInfo] = []
 
-        if instructions is not None:
-            self.instructions.extend(instructions)
+        if insns is not None:
+            self.insns.extend(insns)
         if handlers is not None:
             self.handlers.extend(handlers)
         if attributes is not None:
             self.attributes.extend(attributes)
 
     def __repr__(self) -> str:
+        insns_str = ", ".join(map(str, self.insns))
         return (
-            f"<Code(max_stack={self.max_stack}, max_locals={self.max_locals}, base={self.base}, "
-            f"instructions=[{", ".join(map(str, self.instructions))}], handlers={self.handlers!r})>"
+            f"<Code(max_stack={self.max_stack}, max_locals={self.max_locals}, base={self.base}, insns=[{insns_str}], "
+            f"handlers={self.handlers!r})>"
         )
 
     def __str__(self) -> str:
-        return (
-            f"Code({self.max_stack},{self.max_locals},{self.base},[{",".join(map(str, self.instructions))}],"
-            f"[{",".join(map(str, self.handlers))}])"
-        )
+        insns_str = ",".join(map(str, self.insns))
+        handlers_str = ",".join(map(str, self.handlers))
+        return f"Code({self.max_stack},{self.max_locals},{self.base},[{insns_str}],[{handlers_str}])"
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -487,7 +487,7 @@ class Code(AttributeInfo):
             self.max_stack == other.max_stack and
             self.max_locals == other.max_locals and
             self.base == other.base and
-            self.instructions == other.instructions and
+            self.insns == other.insns and
             self.handlers == other.handlers and
             self.attributes == other.attributes
         )
@@ -505,7 +505,7 @@ class Code(AttributeInfo):
         base = stream.tell()
         wrapper = CodeIOWrapper(stream, base)
 
-        for instruction in self.instructions:
+        for instruction in self.insns:
             # print(instruction.offset + base, instruction)
             instruction.write(wrapper, pool)
 
@@ -608,7 +608,8 @@ class StackMapTable(AttributeInfo):
         return f"<StackMapTable(frames={self.frames!r})>"
 
     def __str__(self) -> str:
-        return f"StackMapTable([{",".join(map(str, self.frames))}])"
+        frames_str = ",".join(map(str, self.frames))
+        return f"StackMapTable([{frames_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, StackMapTable) and self.frames == other.frames
@@ -665,10 +666,12 @@ class Exceptions(AttributeInfo):
             self.exceptions.extend(exceptions)
 
     def __repr__(self) -> str:
-        return f"<Exceptions(exceptions=[{", ".join(map(str, self.exceptions))}])>"
+        exceptions_str = ", ".join(map(str, self.exceptions))
+        return f"<Exceptions(exceptions=[{exceptions_str}])>"
 
     def __str__(self) -> str:
-        return f"Exceptions([{",".join(map(str, self.exceptions))}])"
+        exceptions_str = ",".join(map(str, self.exceptions))
+        return f"Exceptions([{exceptions_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Exceptions) and self.exceptions == other.exceptions
@@ -737,7 +740,8 @@ class LineNumberTable(AttributeInfo):
         return f"<LineNumberTable(lines={self.lines!r})>"
 
     def __str__(self) -> str:
-        return f"LineNumberTable([{",".join(map(str, self.lines))}])"
+        lines_str = ",".join(map(str, self.lines))
+        return f"LineNumberTable([{lines_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LineNumberTable) and self.lines == other.lines
@@ -836,7 +840,8 @@ class LocalVariableTable(AttributeInfo):
         return f"<LocalVariableTable(locals={self.locals!r})>"
 
     def __str__(self) -> str:
-        return f"LocalVariableTable([{",".join(map(str, self.locals))}])"
+        locals_str = ",".join(map(str, self.locals))
+        return f"LocalVariableTable([{locals_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVariableTable) and self.locals == other.locals
@@ -953,7 +958,8 @@ class LocalVariableTypeTable(AttributeInfo):
         return f"<LocalVariableTypeTable(locals={self.locals!r})>"
 
     def __str__(self) -> str:
-        return f"LocalVariableTypeTable([{",".join(map(str, self.locals))}])"
+        locals_str = ",".join(map(str, self.locals))
+        return f"LocalVariableTypeTable([{locals_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVariableTypeTable) and self.locals == other.locals
@@ -1108,7 +1114,8 @@ class MethodParameters(AttributeInfo):
         return f"<MethodParameters(params={self.params!r})>"
 
     def __str__(self) -> str:
-        return f"MethodParameters([{",".join(map(str, self.params))}])"
+        params_str = ",".join(map(str, self.params))
+        return f"MethodParameters([{params_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MethodParameters) and self.params == other.params
@@ -1242,9 +1249,9 @@ class RuntimeVisibleParameterAnnotations(AttributeInfo):
             annotations.append(ParameterAnnotations.read(stream, pool))
         return cls(annotations), None
 
-    def __init__(self, annotations: list[ParameterAnnotations] | None = None) -> None:
+    def __init__(self, annotations: Iterable[ParameterAnnotations] | None = None) -> None:
         super().__init__()
-        self.annotations = []
+        self.annotations: list[ParameterAnnotations] = []
         if annotations is not None:
             self.annotations.extend(annotations)
 
@@ -1252,7 +1259,8 @@ class RuntimeVisibleParameterAnnotations(AttributeInfo):
         return f"<RuntimeVisibleParameterAnnotations(annotations={self.annotations!r})>"
 
     def __str__(self) -> str:
-        return f"RuntimeVisibleParametersAnnotations([{",".join(map(str, self.annotations))}])"
+        annotations_str = ",".join(map(str, self.annotations))
+        return f"RuntimeVisibleParametersAnnotations([{annotations_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeVisibleParameterAnnotations) and self.annotations == other.annotations
@@ -1308,9 +1316,9 @@ class RuntimeInvisibleParameterAnnotations(AttributeInfo):
             annotations.append(ParameterAnnotations.read(stream, pool))
         return cls(annotations), None
 
-    def __init__(self, annotations: list[ParameterAnnotations] | None = None) -> None:
+    def __init__(self, annotations: Iterable[ParameterAnnotations] | None = None) -> None:
         super().__init__()
-        self.annotations = []
+        self.annotations: list[ParameterAnnotations] = []
         if annotations is not None:
             self.annotations.extend(annotations)
 
@@ -1318,7 +1326,8 @@ class RuntimeInvisibleParameterAnnotations(AttributeInfo):
         return f"<RuntimeInvisibleParameterAnnotations(annotations={self.annotations!r})>"
 
     def __str__(self) -> str:
-        return f"RuntimeInvisibleParametersAnnotations([{",".join(map(str, self.annotations))}])"
+        annotations_str = ",".join(map(str, self.annotations))
+        return f"RuntimeInvisibleParametersAnnotations([{annotations_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeInvisibleParameterAnnotations) and self.annotations == other.annotations

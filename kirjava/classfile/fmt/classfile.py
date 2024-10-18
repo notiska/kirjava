@@ -426,7 +426,8 @@ class BootstrapMethods(AttributeInfo):
         return f"<BoostrapMethods(methods={self.methods!r})>"
 
     def __str__(self) -> str:
-        return f"BootstrapMethods([{",".join(map(str, self.methods))}])"
+        methods_str = ",".join(map(str, self.methods))
+        return f"BootstrapMethods([{methods_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, BootstrapMethods) and self.methods == other.methods
@@ -474,10 +475,12 @@ class BootstrapMethods(AttributeInfo):
                 self.args.extend(args)
 
         def __repr__(self) -> str:
-            return f"<BootstrapMethods.BootstrapMethod(ref={self.ref!s}, args=[{", ".join(map(str, self.args))}])>"
+            args_str = ", ".join(map(str, self.args))
+            return f"<BootstrapMethods.BootstrapMethod(ref={self.ref!s}, args=[{args_str}])>"
 
         def __str__(self) -> str:
-            return f"boostrap_method({self.ref!s},[{",".join(map(str, self.args))}])"
+            args_str = ",".join(map(str, self.args))
+            return f"boostrap_method({self.ref!s},[{args_str}])"
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -565,10 +568,12 @@ class NestMembers(AttributeInfo):
             self.classes.extend(classes)
 
     def __repr__(self) -> str:
-        return f"<NestMembers(classes=[{", ".join(map(str, self.classes))}])>"
+        classes_str = ", ".join(map(str, self.classes))
+        return f"<NestMembers(classes=[{classes_str}])>"
 
     def __str__(self) -> str:
-        return f"NestMembers([{",".join(map(str, self.classes))}])"
+        classes_str = ",".join(map(str, self.classes))
+        return f"NestMembers([{classes_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NestMembers) and self.classes == other.classes
@@ -631,10 +636,12 @@ class PermittedSubclasses(AttributeInfo):
             self.classes.extend(classes)
 
     def __repr__(self) -> str:
-        return f"<PermittedSubclasses(classes=[{", ".join(map(str, self.classes))}])>"
+        classes_str = ", ".join(map(str, self.classes))
+        return f"<PermittedSubclasses(classes=[{classes_str}])>"
 
     def __str__(self) -> str:
-        return f"PermittedSubclasses([{",".join(map(str, self.classes))}])"
+        classes_str = ",".join(map(str, self.classes))
+        return f"PermittedSubclasses([{classes_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PermittedSubclasses) and self.classes == other.classes
@@ -702,10 +709,12 @@ class InnerClasses(AttributeInfo):
             self.classes.extend(classes)
 
     def __repr__(self) -> str:
-        return f"<InnerClasses(classes=[{", ".join(map(str, self.classes))}])>"
+        classes_str = ", ".join(map(str, self.classes))
+        return f"<InnerClasses(classes=[{classes_str}])>"
 
     def __str__(self) -> str:
-        return f"InnerClasses([{",".join(map(str, self.classes))}])"
+        classes_str = ",".join(map(str, self.classes))
+        return f"InnerClasses([{classes_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InnerClasses) and self.classes == other.classes
@@ -1050,7 +1059,8 @@ class Record(AttributeInfo):
         return f"<Record(components={self.components!r})>"
 
     def __str__(self) -> str:
-        return f"Record([{",".join(map(str, self.components))}])"
+        components_str = ",".join(map(str, self.components))
+        return f"Record([{components_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Record) and self.components == other.components
@@ -1367,18 +1377,23 @@ class Module(AttributeInfo):
             self.provides.extend(provides)
 
     def __repr__(self) -> str:
+        uses_str = ", ".join(map(str, self.uses))
         return (
             f"<Module(module={self.module!s}, flags=0x{self.flags:04x}, version={self.version!s}, "
-            f"requires={self.requires!r}, exports={self.exports!r}, opens={self.opens!r}, "
-            f"uses=[{", ".join(map(str, self.uses))}], provides={self.provides!r})>"
+            f"requires={self.requires!r}, exports={self.exports!r}, opens={self.opens!r}, uses=[{uses_str}], "
+            f"provides={self.provides!r})>"
         )
 
     def __str__(self) -> str:
         version_str = str(self.version) if self.version is not None else "[none]"
+        requires_str = ",".join(map(str, self.requires))
+        exports_str = ",".join(map(str, self.exports))
+        opens_str = ",".join(map(str, self.opens))
+        uses_str = ",".join(map(str, self.uses))
+        provides_str = ",".join(map(str, self.provides))
         return (  # Wow, this is kinda a mess...
-            f"Module({self.module!s},0x{self.flags:04x},{version_str},[{",".join(map(str, self.requires))}],"
-            f"[{",".join(map(str, self.exports))}],[{",".join(map(str, self.opens))}],"
-            f"[{",".join(map(str, self.uses))}],[{",".join(map(str, self.provides))}])"
+            f"Module({self.module!s},0x{self.flags:04x},{version_str},[{requires_str}],[{exports_str}],[{opens_str}],"
+            f"[{uses_str}],[{provides_str}])"
         )
 
     def __eq__(self, other: object) -> bool:
@@ -1524,13 +1539,14 @@ class Module(AttributeInfo):
                 self.exports_to.extend(exports_to)
 
         def __repr__(self) -> str:
+            exports_to_str = ", ".join(map(str, self.exports_to))
             return (
-                f"<Module.Export(package={self.package!s}, flags=0x{self.flags:04x}, "
-                f"exports_to=[{", ".join(map(str, self.exports_to))}])>"
+                f"<Module.Export(package={self.package!s}, flags=0x{self.flags:04x}, exports_to=[{exports_to_str}])>"
             )
 
         def __str__(self) -> str:
-            return f"module_export({self.package!s},0x{self.flags:04x},[{",".join(map(str, self.exports_to))}])"
+            exports_to_str = ",".join(map(str, self.exports_to))
+            return f"module_export({self.package!s},0x{self.flags:04x},[{exports_to_str}])"
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -1577,13 +1593,12 @@ class Module(AttributeInfo):
                 self.opens_to.extend(opens_to)
 
         def __repr__(self) -> str:
-            return (
-                f"<Module.Open(package={self.package!s}, flags=0x{self.flags:04x}, "
-                f"opens_to=[{", ".join(map(str, self.opens_to))}])>"
-            )
+            opens_to_str = ", ".join(map(str, self.opens_to))
+            return f"<Module.Open(package={self.package!s}, flags=0x{self.flags:04x}, opens_to=[{opens_to_str}])>"
 
         def __str__(self) -> str:
-            return f"module_open({self.package!s},0x{self.flags:04x},[{",".join(map(str, self.opens_to))}])"
+            opens_to_str = ",".join(map(str, self.opens_to))
+            return f"module_open({self.package!s},0x{self.flags:04x},[{opens_to_str}])"
 
         def __eq__(self, other: object) -> bool:
             return (
@@ -1619,10 +1634,12 @@ class Module(AttributeInfo):
                 self.impls.extend(impls)
 
         def __repr__(self) -> str:
-            return f"<Module.Provide(interface={self.interface!s}, impls=[{", ".join(map(str, self.impls))}])>"
+            impls_str = ", ".join(map(str, self.impls))
+            return f"<Module.Provide(interface={self.interface!s}, impls=[{impls_str}])>"
 
         def __str__(self) -> str:
-            return f"module_provide({self.interface!s},[{",".join(map(str, self.impls))}])"
+            impls_str = ",".join(map(str, self.impls))
+            return f"module_provide({self.interface!s},[{impls_str}])"
 
         def __eq__(self, other: object) -> bool:
             return isinstance(other, Module.Provide) and self.interface == other.interface and self.impls == other.impls
@@ -1665,10 +1682,12 @@ class ModulePackages(AttributeInfo):
             self.packages.extend(packages)
 
     def __repr__(self) -> str:
-        return f"<ModulePackages(packages=[{", ".join(map(str, self.packages))}])>"
+        packages_str = ", ".join(map(str, self.packages))
+        return f"<ModulePackages(packages=[{packages_str}])>"
 
     def __str__(self) -> str:
-        return f"ModulePackages([{",".join(map(str, self.packages))}])"
+        packages_str = ",".join(map(str, self.packages))
+        return f"ModulePackages([{packages_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ModulePackages) and self.packages == other.packages

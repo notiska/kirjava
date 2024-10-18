@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 import copy
 import unittest
 from io import BytesIO
@@ -8,7 +10,6 @@ from os import SEEK_SET
 from kirjava.classfile.fmt import ConstPool
 from kirjava.classfile.fmt.constants import *
 from kirjava.classfile.insns import *
-from kirjava.classfile.insns.array import NewArray
 from kirjava.classfile.insns.flow import Jump
 
 

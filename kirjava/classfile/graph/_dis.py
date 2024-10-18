@@ -95,7 +95,7 @@ def disassemble(graph: "Graph", method: MethodInfo, cf: "ClassFile") -> Metadata
         targets.add(handler.handler_pc)
         # targets.append(handler.handler_pc)
 
-    for instruction in code.instructions:
+    for instruction in code.insns:
         # Unfortunately, we can't actually trust that instruction.offset will be correct as it's only really counted as
         # metadata, so we need to re-compute the instruction offsets ourselves, here.
         instruction.write(stream, cf.pool)

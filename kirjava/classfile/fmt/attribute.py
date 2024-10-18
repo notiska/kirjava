@@ -14,7 +14,6 @@ JVM class file shared attributes.
 """
 
 import typing
-from functools import cache
 from os import SEEK_CUR, SEEK_SET
 from typing import IO, Iterable
 
@@ -69,16 +68,18 @@ class AttributeInfo:
 
     __slots__ = ("name", "extra")
 
-    tag: bytes
-    since: Version
-    # TODO: Cutoff "until" version?
-    locations: frozenset[int]
-
     LOC_CLASS            = 0
     LOC_FIELD            = 1
     LOC_METHOD           = 2
     LOC_CODE             = 3
     LOC_RECORD_COMPONENT = 4
+
+    tag: bytes
+    since: Version
+    # TODO: Cutoff "until" version?
+    locations: frozenset[int]
+
+    _cache: dict[bytes, type["AttributeInfo"] | None] = {}
 
     @classmethod
     def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["AttributeInfo", Metadata | None]:
@@ -89,7 +90,6 @@ class AttributeInfo:
         raise NotImplementedError(f"_read() is not implemented for {cls!r}")
 
     @classmethod
-    @cache
     def lookup(cls, tag: bytes) -> type["AttributeInfo"] | None:
         """
         Looks up an attribute type by tag/name.
@@ -146,7 +146,10 @@ class AttributeInfo:
         # if name.value in reader.skip_attrs:
         #     return RawInfo(name, stream.read(length))
 
-        subclass: type[AttributeInfo] | None = cls.lookup(name.value)
+        subclass: type[AttributeInfo] | None = cls._cache.get(name.value)
+        if subclass is None:
+            subclass = cls.lookup(name.value)
+            cls._cache[name.value] = subclass
         if subclass is None:
             meta.error("read.unknown", "Unknown attribute name %s.", name.decode())
             self = RawInfo(name, stream.read(length))
@@ -482,7 +485,8 @@ class RuntimeVisibleAnnotations(AttributeInfo):
         return f"<RuntimeVisibleAnnotations(annotations={self.annotations!r})>"
 
     def __str__(self) -> str:
-        return f"RuntimeVisibleAnnotations([{",".join(map(str, self.annotations))}])"
+        annotations_str = ",".join(map(str, self.annotations))
+        return f"RuntimeVisibleAnnotations([{annotations_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeVisibleAnnotations) and self.annotations == other.annotations
@@ -546,7 +550,8 @@ class RuntimeInvisibleAnnotations(AttributeInfo):
         return f"<RuntimeInvisibleAnnotations(annotations={self.annotations!r})>"
 
     def __str__(self) -> str:
-        return f"RuntimeInvisibleAnnotations([{",".join(map(str, self.annotations))}])"
+        annotations_str = ",".join(map(str, self.annotations))
+        return f"RuntimeInvisibleAnnotations([{annotations_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeInvisibleAnnotations) and self.annotations == other.annotations
@@ -616,7 +621,8 @@ class RuntimeVisibleTypeAnnotations(AttributeInfo):
         return f"<RuntimeVisibleTypeAnnotations(annotations={self.annotations})>"
 
     def __str__(self) -> str:
-        return f"RuntimeVisibleTypeAnnotations([{",".join(map(str, self.annotations))}])"
+        annotations_str = ",".join(map(str, self.annotations))
+        return f"RuntimeVisibleTypeAnnotations([{annotations_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeVisibleTypeAnnotations) and self.annotations == other.annotations
@@ -627,7 +633,7 @@ class RuntimeVisibleTypeAnnotations(AttributeInfo):
     def __setitem__(self, index: int, value: TypeAnnotation) -> None:
         self.annotations[index] = value
 
-    def __delitem__(self, key: int | Annotation) -> None:
+    def __delitem__(self, key: int | TypeAnnotation) -> None:
         if isinstance(key, int):
             del self.annotations[key]
         else:
@@ -686,7 +692,8 @@ class RuntimeInvisibleTypeAnnotations(AttributeInfo):
         return f"<RuntimeInvisibleTypeAnnotations(annotations={self.annotations!r})>"
 
     def __str__(self) -> str:
-        return f"RuntimeInvisibleTypeAnnotations([{",".join(map(str, self.annotations))}])"
+        annotations_str = ",".join(map(str, self.annotations))
+        return f"RuntimeInvisibleTypeAnnotations([{annotations_str}])"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeInvisibleTypeAnnotations) and self.annotations == other.annotations
@@ -697,7 +704,7 @@ class RuntimeInvisibleTypeAnnotations(AttributeInfo):
     def __setitem__(self, index: int, value: TypeAnnotation) -> None:
         self.annotations[index] = value
 
-    def __delitem__(self, key: int | Annotation) -> None:
+    def __delitem__(self, key: int | TypeAnnotation) -> None:
         if isinstance(key, int):
             del self.annotations[key]
         else:
