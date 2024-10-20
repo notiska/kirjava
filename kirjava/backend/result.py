@@ -179,8 +179,9 @@ class Result(Generic[T]):
     ) -> bool:
         if isinstance(exc_value, Exception):
             self._errors.append(exc_value)
+            return True
         # print(exc_value, traceback)
-        return True
+        return False
 
     def ok(self, value: T) -> Self:
         """
