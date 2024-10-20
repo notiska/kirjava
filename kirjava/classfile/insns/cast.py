@@ -9,9 +9,15 @@ __all__ = (
     "CheckCast", "InstanceOf",  # "CheckCastLinked", "InstanceOfLinked",
 )
 
+import sys
 import typing
 from copy import deepcopy
 from typing import IO
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from . import Instruction
 from .._struct import *
@@ -28,7 +34,7 @@ if typing.TYPE_CHECKING:
 
 class ValueCast(Instruction):
     """
-    A value cast instruction base.
+    A value cast instruction.
 
     Performs a value cast (primitive to primitive) on a primitive stack value.
     """
@@ -43,7 +49,7 @@ class ValueCast(Instruction):
     type_out: Primitive
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ValueCast":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -79,7 +85,7 @@ class ValueCast(Instruction):
 
 class Truncate(ValueCast):
     """
-    A truncation instruction base.
+    A truncation instruction.
 
     Truncates a primitive stack value to a smaller fake primitive type, i.e.
     int->short or int->boolean.
@@ -113,7 +119,7 @@ class CheckCast(Instruction):
     rt_throws = frozenset({Class("java/lang/ClassCastException")})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "CheckCast":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -122,14 +128,14 @@ class CheckCast(Instruction):
         self.classref = classref
 
     def __copy__(self) -> "CheckCast":
-        copy = checkcast(self.classref)  # type: ignore[call-arg]
+        copy = checkcast(self.classref)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "CheckCast":
-        copy = checkcast(deepcopy(self.classref, memo))  # type: ignore[call-arg]
+        copy = checkcast(deepcopy(self.classref, memo))
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -183,7 +189,7 @@ class InstanceOf(Instruction):
     rt_throws = frozenset()
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InstanceOf":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -192,14 +198,14 @@ class InstanceOf(Instruction):
         self.classref = classref
 
     def __copy__(self) -> "InstanceOf":
-        copy = instanceof(self.classref)  # type: ignore[call-arg]
+        copy = instanceof(self.classref)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InstanceOf":
-        copy = instanceof(deepcopy(self.classref, memo))  # type: ignore[call-arg]
+        copy = instanceof(deepcopy(self.classref, memo))
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:

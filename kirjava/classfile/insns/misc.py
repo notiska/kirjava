@@ -9,9 +9,15 @@ __all__ = (
     "Nop", "Wide", "MonitorEnter", "MonitorExit", "Internal", "Unknown",
 )
 
+import sys
 import typing
 from os import SEEK_CUR
 from typing import IO
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from . import Instruction
 from ...model.types import Class
@@ -38,7 +44,7 @@ class Nop(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Nop":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -69,15 +75,20 @@ class Wide(Instruction):
     rt_throws = frozenset()
     linked = True
 
+    _cache: dict[int, type[Instruction] | None] = {}
+
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Instruction:
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Instruction:  # type: ignore[override]
         # Note: random wide instructions can cause the JVM to hang, they're not valid at all. We'll parse them as-is
         #       here, though.
         try:
             opcode, = stream.read(1)
         except ValueError:
             return cls()
-        subclass: type[Instruction] | None = Instruction.lookup(opcode, True)
+        subclass: type[Instruction] | None = cls._cache.get(opcode)
+        if subclass is None:
+            subclass = Instruction.lookup(opcode, True)
+            cls._cache[opcode] = subclass
         if subclass is None:
             stream.seek(-1, SEEK_CUR)  # Pretend we didn't just read another opcode.
             return cls()
@@ -112,7 +123,7 @@ class MonitorEnter(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MonitorEnter":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -151,7 +162,7 @@ class MonitorExit(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MonitorExit":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -178,7 +189,7 @@ class MonitorExit(Instruction):
 
 class Internal(Instruction):  # FIXME: Too broad.
     """
-    An internal instruction base.
+    An internal instruction.
     """
 
     __slots__ = ()
@@ -188,7 +199,7 @@ class Internal(Instruction):  # FIXME: Too broad.
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Internal":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -220,7 +231,7 @@ class Unknown(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Unknown":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         raise ValueError("can't read unknown opcode")
 
     def __init__(self, opcode: int) -> None:

@@ -63,11 +63,17 @@ __all__ = (
     "CodeIOWrapper",
 )
 
+import sys
 import typing
 from io import BytesIO
 from os import SEEK_SET
-from typing import IO  # , Self  # FIXME: Ditch support for 3.10 at some point.
+from typing import IO
 from typing_extensions import Buffer
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 if typing.TYPE_CHECKING:
     from ..fmt import ConstPool
@@ -132,7 +138,7 @@ class Instruction:
     _cache: dict[int, type["Instruction"] | None] = {}
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Instruction":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         """
         Instruction internal read.
         """
@@ -218,10 +224,9 @@ class Instruction:
         #         stream.seek(-1, SEEK_CUR)  # Move back one byte as we attempted to read an opcode.
 
     @classmethod
-    def make(
-            cls, opcode: int, mnemonic: str, base: type["Instruction"] | None = None, **kwargs: object,
-    ) -> type["Instruction"]:
+    def make(cls, opcode: int, mnemonic: str, base: type[Self] | None = None, **kwargs: object) -> type[Self]:
         namespace = {
+            "__doc__": cls.__doc__,
             "opcode": opcode,
             "mnemonic": mnemonic,
             **kwargs,

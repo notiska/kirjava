@@ -8,8 +8,14 @@ __all__ = (
     "Graph",
 )
 
+import sys
 import typing
 from collections import defaultdict
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from . import block, edge
 from ._dis import disassemble
@@ -17,7 +23,7 @@ from .block import Block
 from .edge import Catch, Edge, Fallthrough, Jump as JumpEdge
 from ..insns import goto, Instruction
 from ..insns.flow import Jump as JumpInsn
-from ...meta import Metadata
+from ...backend import Result
 
 if typing.TYPE_CHECKING:
     from ..fmt import ClassFile
@@ -49,6 +55,9 @@ class Graph:
 
     Methods
     -------
+    disassemble(method: MethodInfo, cf: ClassFile) -> Result[Self]
+        Disassembled a method into a JVM control flow graph.
+
     block(self) -> Block
         Creates a new block in this graph.
     fallthrough(self, source: int | Block, target: int | Block, *, do_raise: bool = True) -> Fallthrough
@@ -62,7 +71,7 @@ class Graph:
     )
 
     @classmethod
-    def disassemble(cls, method: "MethodInfo", cf: "ClassFile") -> tuple["Graph", Metadata]:
+    def disassemble(cls, method: "MethodInfo", cf: "ClassFile") -> Result[Self]:
         """
         Disassembles a method into a JVM control flow graph.
 
@@ -72,18 +81,9 @@ class Graph:
             The method to disassemble.
         cf: ClassFile
             The class file containing the method.
-
-        Returns
-        -------
-        Graph
-            The disassembled JVM control flow graph.
-        Metadata
-            Any metadata generated during disassembly.
         """
 
-        self = cls()
-        meta = disassemble(self, method, cf)
-        return self, meta
+        return disassemble(cls(), method, cf)
 
     def __init__(self) -> None:
         self.blocks: list[Block] = []

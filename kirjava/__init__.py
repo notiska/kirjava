@@ -5,19 +5,25 @@ kirjava - a Java bytecode library for Python.
 """
 
 __all__ = (
-    "__name__", "__version__", "__author__",
     "backend", "classfile", "model",
+
+    "__name__", "__version__", "__author__",
+    "logger",  # In case anyone wants to modify the logger properties.
 )
 
 import logging
+from logging import NullHandler
 
-from . import backend, classfile, model
+from . import backend, classfile, containers, model
 
 __name__ = "kirjava"
 __version__ = "0.2.3b1"
 __author__ = "notiska / node3112 (Iska)"
 
-logging.getLogger("kirjava").setLevel(logging.CRITICAL)  # As it's a library, we don't want to log any messages.
+logger = logging.getLogger("kirjava")
+logger.addHandler(logging.NullHandler())  # As it's a library, we don't want to log any messages.
+logger.setLevel(logging.DEBUG)
+logger.parent = None
 
 # TODO: Descriptors on constants and implicit casting (i.e. str -> UTF8Info).
 # TODO: ABC regiments for iterables, lists, etc...

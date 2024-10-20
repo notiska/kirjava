@@ -752,7 +752,7 @@ class Array(_JavaReference):
         return self
 
     def __init__(self, element: Type) -> None:
-        self._name = element.name + "[]"
+        self._name = "[" + element.name  # + "[]"
         self._abstract = element.abstract
         self._element = element
 

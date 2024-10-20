@@ -371,7 +371,7 @@ class TestAttributes(unittest.TestCase):
                 data_first = data.getvalue()
                 data.seek(0, SEEK_SET)
 
-                attr_read, _ = AttributeInfo.read(data, JAVA_MAX, self.pool, None)
+                attr_read = AttributeInfo.read(data, JAVA_MAX, self.pool, None).unwrap()
                 self.assertEqual(attr_init, attr_read)
                 if data.read():
                     self.fail("Attribute underread.")

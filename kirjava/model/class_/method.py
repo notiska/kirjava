@@ -7,6 +7,7 @@ __all__ = (
 )
 
 import typing
+from typing import Iterable
 
 if typing.TYPE_CHECKING:
     from ..types import Type
@@ -78,7 +79,7 @@ class Method:
 
     def __init__(
             self,
-            name: str, arg_types: tuple["Type", ...], ret_type: "Type",
+            name: str, arg_types: Iterable["Type"], ret_type: "Type",
             *,
             is_public:       bool = False,
             is_private:      bool = False,
@@ -94,7 +95,7 @@ class Method:
             is_synthetic:    bool = False,
     ) -> None:
         self.name = name
-        self.arg_types = arg_types
+        self.arg_types = tuple(arg_types)
         self.ret_type = ret_type
 
         self.is_public = is_public

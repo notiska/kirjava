@@ -7,9 +7,15 @@ __all__ = (
     "InvokeVirtual", "InvokeSpecial", "InvokeStatic", "InvokeInterface", "InvokeDynamic",
 )
 
+import sys
 import typing
 from copy import deepcopy
 from typing import IO
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from . import Instruction
 # from .stack import New
@@ -47,7 +53,7 @@ class InvokeVirtual(Instruction):
     rt_throws = frozenset({throwable_t})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeVirtual":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -56,14 +62,14 @@ class InvokeVirtual(Instruction):
         self.methodref = methodref
 
     def __copy__(self) -> "InvokeVirtual":
-        copy = invokevirtual(self.methodref)  # type: ignore[call-arg]
+        copy = invokevirtual(self.methodref)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InvokeVirtual":
-        copy = invokevirtual(deepcopy(self.methodref, memo))  # type: ignore[call-arg]
+        copy = invokevirtual(deepcopy(self.methodref, memo))
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -147,7 +153,7 @@ class InvokeSpecial(Instruction):
     rt_throws = frozenset({throwable_t})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeSpecial":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -156,14 +162,14 @@ class InvokeSpecial(Instruction):
         self.methodref = methodref
 
     def __copy__(self) -> "InvokeSpecial":
-        copy = invokespecial(self.methodref)  # type: ignore[call-arg]
+        copy = invokespecial(self.methodref)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InvokeSpecial":
-        copy = invokespecial(deepcopy(self.methodref, memo))  # type: ignore[call-arg]
+        copy = invokespecial(deepcopy(self.methodref, memo))
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -263,7 +269,7 @@ class InvokeStatic(Instruction):
     rt_throws = frozenset({throwable_t})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeStatic":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -272,14 +278,14 @@ class InvokeStatic(Instruction):
         self.methodref = methodref
 
     def __copy__(self) -> "InvokeStatic":
-        copy = invokestatic(self.methodref)  # type: ignore[call-arg]
+        copy = invokestatic(self.methodref)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InvokeStatic":
-        copy = invokestatic(deepcopy(self.methodref, memo))  # type: ignore[call-arg]
+        copy = invokestatic(deepcopy(self.methodref, memo))
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -358,7 +364,7 @@ class InvokeInterface(Instruction):
     rt_throws = frozenset({throwable_t})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeInterface":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, count, reserved = unpack_HBB(stream.read(4))
         return cls(pool[index], count, reserved)
 
@@ -369,14 +375,14 @@ class InvokeInterface(Instruction):
         self.reserved = reserved
 
     def __copy__(self) -> "InvokeInterface":
-        copy = invokeinterface(self.methodref, self.count, self.reserved)  # type: ignore[call-arg]
+        copy = invokeinterface(self.methodref, self.count, self.reserved)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InvokeInterface":
-        copy = invokeinterface(deepcopy(self.methodref, memo), self.count, self.reserved)  # type: ignore[call-arg]
+        copy = invokeinterface(deepcopy(self.methodref, memo), self.count, self.reserved)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -478,7 +484,7 @@ class InvokeDynamic(Instruction):
     rt_throws = frozenset({throwable_t})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeDynamic":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, reserved = unpack_HH(stream.read(4))
         return cls(pool[index], reserved)
 
@@ -488,14 +494,14 @@ class InvokeDynamic(Instruction):
         self.reserved = reserved
 
     def __copy__(self) -> "InvokeDynamic":
-        copy = invokedynamic(self.indyref, self.reserved)  # type: ignore[call-arg]
+        copy = invokedynamic(self.indyref, self.reserved)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InvokeDynamic":
-        copy = invokedynamic(deepcopy(self.indyref, memo), self.reserved)  # type: ignore[call-arg]
+        copy = invokedynamic(deepcopy(self.indyref, memo), self.reserved)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:

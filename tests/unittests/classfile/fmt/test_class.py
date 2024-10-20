@@ -37,7 +37,7 @@ class TestClassFile(unittest.TestCase):
 
                 with open(file, "rb") as stream:
                     data = stream.read()
-                cf, meta = ClassFile.read(BytesIO(data))
+                cf = ClassFile.read(BytesIO(data)).unwrap()
                 stream = BytesIO()
                 cf.write(stream)
                 final = stream.getvalue()

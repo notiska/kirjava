@@ -7,9 +7,15 @@ __all__ = (
     "GetStatic", "PutStatic", "GetField", "PutField",
 )
 
+import sys
 import typing
 from copy import deepcopy
 from typing import IO
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from . import Instruction
 # from .._desc import parse_field_descriptor
@@ -47,7 +53,7 @@ class GetStatic(Instruction):
     rt_throws = frozenset()
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "GetStatic":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -56,14 +62,14 @@ class GetStatic(Instruction):
         self.fieldref = fieldref
 
     def __copy__(self) -> "GetStatic":
-        copy = getstatic(self.fieldref)  # type: ignore[call-arg]
+        copy = getstatic(self.fieldref)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "GetStatic":
-        copy = getstatic(deepcopy(self.fieldref, memo))  # type: ignore[call-arg]
+        copy = getstatic(deepcopy(self.fieldref, memo))
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -126,7 +132,7 @@ class PutStatic(Instruction):
     rt_throws = frozenset()
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PutStatic":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -135,14 +141,14 @@ class PutStatic(Instruction):
         self.fieldref = fieldref
 
     def __copy__(self) -> "PutStatic":
-        copy = putstatic(self.fieldref)  # type: ignore[call-arg]
+        copy = putstatic(self.fieldref)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "PutStatic":
-        copy = putstatic(deepcopy(self.fieldref, memo))  # type: ignore[call-arg]
+        copy = putstatic(deepcopy(self.fieldref, memo))
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -203,7 +209,7 @@ class GetField(Instruction):
     rt_throws = frozenset({Class("java/lang/NullPointerException")})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "GetField":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -212,14 +218,14 @@ class GetField(Instruction):
         self.fieldref = fieldref
 
     def __copy__(self) -> "GetField":
-        copy = getfield(self.fieldref)  # type: ignore[call-arg]
+        copy = getfield(self.fieldref)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "GetField":
-        copy = getfield(deepcopy(self.fieldref, memo))  # type: ignore[call-arg]
+        copy = getfield(deepcopy(self.fieldref, memo))
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -290,7 +296,7 @@ class PutField(Instruction):
     rt_throws = frozenset({Class("java/lang/NullPointerException")})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PutField":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -299,14 +305,14 @@ class PutField(Instruction):
         self.fieldref = fieldref
 
     def __copy__(self) -> "PutField":
-        copy = putfield(self.fieldref)  # type: ignore[call-arg]
+        copy = putfield(self.fieldref)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "PutField":
-        copy = putfield(deepcopy(self.fieldref, memo))  # type: ignore[call-arg]
+        copy = putfield(deepcopy(self.fieldref, memo))
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:

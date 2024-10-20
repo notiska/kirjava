@@ -19,8 +19,14 @@ __all__ = (
     "IntegralCompare", "FloatLCompare", "FloatGCompare",
 )
 
+import sys
 import typing
 from typing import IO
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from . import Instruction
 from ...model.types import *
@@ -35,7 +41,7 @@ if typing.TYPE_CHECKING:
 
 class BinOp(Instruction):
     """
-    A binary operation instruction base.
+    A binary operation instruction.
 
     Performs a arithmetic operation on two stack values.
     """
@@ -49,7 +55,7 @@ class BinOp(Instruction):
     type: Type
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "BinOp":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -102,7 +108,7 @@ class BinOp(Instruction):
 
 class Shift(BinOp):
     """
-    A shift base instruction.
+    A shift instruction.
 
     Performs a shift on an integral stack value with an int stack value.
     """
@@ -131,7 +137,7 @@ class Shift(BinOp):
 
 class Comparison(BinOp):
     """
-    A comparison instruction base.
+    A comparison instruction.
 
     Compares two numeric stack values.
     """
@@ -163,7 +169,7 @@ class Comparison(BinOp):
 
 class Addition(BinOp):
     """
-    An addition instruction base.
+    An addition instruction.
 
     Computes the sum of two numeric stack values.
     """
@@ -198,7 +204,7 @@ class Addition(BinOp):
 
 class Subtraction(BinOp):
     """
-    A subtraction instruction base.
+    A subtraction instruction.
 
     Computes the difference of two numeric stack values.
     """
@@ -233,7 +239,7 @@ class Subtraction(BinOp):
 
 class Multiplication(BinOp):
     """
-    A multiplication instruction base.
+    A multiplication instruction.
 
     Computes the product of two numeric stack values.
     """
@@ -268,7 +274,7 @@ class Multiplication(BinOp):
 
 class Division(BinOp):
     """
-    A division instruction base.
+    A division instruction.
 
     Computes the division of two numeric stack values.
     """
@@ -308,7 +314,7 @@ class Division(BinOp):
 
 class Remainder(BinOp):
     """
-    A remainder (modulo) instruction base.
+    A remainder (modulo) instruction.
 
     Computes the remainder of two numeric stack values.
     """
@@ -348,7 +354,7 @@ class Remainder(BinOp):
 
 class Negate(Instruction):
     """
-    A negation instruction base.
+    A negation instruction.
 
     Negates a numeric stack value.
     """
@@ -362,7 +368,7 @@ class Negate(Instruction):
     type: Type
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Negate":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -411,7 +417,7 @@ class Negate(Instruction):
 
 class ShiftLeft(Shift):
     """
-    A left shift instruction base.
+    A left shift instruction.
 
     Performs a left shift on an integral stack value with an int stack value.
     """
@@ -443,7 +449,7 @@ class ShiftLeft(Shift):
 
 class ShiftRight(Shift):
     """
-    A right shift instruction base.
+    A right shift instruction.
 
     Performs a right shift on an integral stack value with an int stack value.
     """
@@ -475,7 +481,7 @@ class ShiftRight(Shift):
 
 class ShiftRightUnsigned(Shift):
     """
-    An unsigned shift right instruction base.
+    An unsigned shift right instruction.
 
     Performs an unsigned right shift (that is, the sign bit is also shifted) on an
     integral stack value with an int stack value.
@@ -508,7 +514,7 @@ class ShiftRightUnsigned(Shift):
 
 class BitwiseAnd(BinOp):
     """
-    A bitwise AND instruction base.
+    A bitwise AND instruction.
 
     Performs a bitwise AND operation on two integral stack values.
     """
@@ -543,7 +549,7 @@ class BitwiseAnd(BinOp):
 
 class BitwiseOr(BinOp):
     """
-    A bitwise OR instruction base.
+    A bitwise OR instruction.
 
     Performs a bitwise OR operation on two integral stack values.
     """
@@ -578,7 +584,7 @@ class BitwiseOr(BinOp):
 
 class BitwiseXor(BinOp):
     """
-    A bitwise XOR instruction base.
+    A bitwise XOR instruction.
 
     Performs a bitwise XOR operation on two integral stack values.
     """
@@ -613,9 +619,9 @@ class BitwiseXor(BinOp):
 
 class IntegralCompare(Comparison):
     """
-    A integral comparison instruction base.
+    A integral comparison instruction.
 
-    Compares two integral stack values.
+    Compares two integral (non-float) stack values.
     """
 
     __slots__ = ()
@@ -653,7 +659,7 @@ class IntegralCompare(Comparison):
 
 class FloatLCompare(Comparison):
     """
-    A float comparison instruction base.
+    A float comparison instruction.
 
     Compares two floats, if either one or two of them are NaN, -1 is pushed to the
     stack.
@@ -696,7 +702,7 @@ class FloatLCompare(Comparison):
 
 class FloatGCompare(Comparison):
     """
-    A float comparison instruction base.
+    A float comparison instruction.
 
     Compares two floats, if either one or two of them are NaN, 1 is pushed to the
     stack.

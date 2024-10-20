@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 
 __all__ = (
+    "result",
+
     "USING_CYTHON", "USING_NUMPY",
+
+    # "ok", "err", "meta",
+    "Result", "Ok", "Err",
+
     "u8", "u16", "u32", "u64",
     "i8", "i16", "i32", "i64",
     "f32", "f64",
@@ -17,6 +23,9 @@ Provides various types and functions for the library to use.
 """
 
 import logging
+
+from . import result
+from .result import *
 
 logger = logging.getLogger("kirjava.backend")
 

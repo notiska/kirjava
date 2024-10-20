@@ -18,8 +18,14 @@ __all__ = (
 JVM class file stack map frame and verification type structs.
 """
 
+import sys
 import typing
 from typing import IO, Iterable
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from .constants import ClassInfo, ConstInfo
 from .._struct import *
@@ -55,7 +61,7 @@ class VerificationTypeInfo:
     _cache: dict[int, type["VerificationTypeInfo"] | None] = {}
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "VerificationTypeInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         """
         Internal verification type read.
         """
@@ -162,7 +168,7 @@ class StackMapFrame:
     _cache: dict[int, type["StackMapFrame"] | None] = {}
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> "StackMapFrame":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> Self:
         """
         Stack map frame internal read.
         """
@@ -392,7 +398,7 @@ class ObjectVarInfo(VerificationTypeInfo):
     tag = 7
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ObjectVarInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -428,7 +434,7 @@ class UninitializedVarInfo(VerificationTypeInfo):
     tag = 8
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "UninitializedVarInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         offset, = unpack_H(stream.read(2))
         return cls(offset)
 
@@ -468,7 +474,7 @@ class SameFrame(StackMapFrame):
     tags = range(0, 64)
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> "SameFrame":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> Self:
         return cls(tag)
 
     @property
@@ -515,7 +521,7 @@ class SameLocalsOneStackItemFrame(StackMapFrame):
     tags = range(64, 128)
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> "SameLocalsOneStackItemFrame":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> Self:
         stack = VerificationTypeInfo.read(stream, pool)
         return cls(tag, stack)
 
@@ -567,7 +573,7 @@ class SameLocalsOneStackItemFrameExtended(StackMapFrame):
     tag = 247
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> "SameLocalsOneStackItemFrameExtended":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> Self:
         delta, = unpack_H(stream.read(2))
         stack = VerificationTypeInfo.read(stream, pool)
         return cls(delta, stack)
@@ -614,7 +620,7 @@ class ChopFrame(StackMapFrame):
     tags = range(248, 251)
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> "ChopFrame":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> Self:
         delta, = unpack_H(stream.read(2))
         return cls(tag, delta)
 
@@ -663,7 +669,7 @@ class SameFrameExtended(StackMapFrame):
     tag = 251
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> "SameFrameExtended":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> Self:
         delta, = unpack_H(stream.read(2))
         return cls(delta)
 
@@ -703,7 +709,7 @@ class AppendFrame(StackMapFrame):
     tags = range(252, 255)
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> "AppendFrame":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> Self:
         delta, = unpack_H(stream.read(2))
         locals_ = [VerificationTypeInfo.read(stream, pool) for _ in range(tag - 251)]
         return cls(tag, delta, locals_)
@@ -763,7 +769,7 @@ class FullFrame(StackMapFrame):
     tag = 255
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> "FullFrame":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> Self:
         delta, locals_count = unpack_HH(stream.read(4))
         locals_ = tuple(VerificationTypeInfo.read(stream, pool) for _ in range(locals_count))
         stack_count, = unpack_H(stream.read(2))

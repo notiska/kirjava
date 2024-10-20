@@ -11,19 +11,26 @@ __all__ = (
 JVM class file field info struct and attributes.
 """
 
+import sys
 import typing
 from typing import IO, Iterable
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from .attribute import AttributeInfo
 from .constants import *
 from .._desc import parse_field_descriptor
 from .._struct import *
 from ..version import JAVA_1_0, Version
-from ...meta import Metadata
+from ...backend import Result
 from ...model.class_.field import Field
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
+    from ..visitor import FieldInfoVisitor
 
 
 class FieldInfo:
@@ -90,11 +97,13 @@ class FieldInfo:
 
     Methods
     -------
-    read(stream: IO[bytes], version: Version, pool: ConstPool) -> tuple[FieldInfo, Metadata]
+    read(stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]
         Reads a field from the binary stream.
 
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
         Writes this field to the binary stream.
+    visit(self, visitor: FieldInfoVisitor) -> None
+        Calls a visitor on this field.
     unwrap(self) -> Field
         Unwraps this field info.
     """
@@ -112,7 +121,7 @@ class FieldInfo:
     ACC_ENUM      = 0x4000
 
     @classmethod
-    def read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["FieldInfo", Metadata]:
+    def read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
         """
         Reads a field from the binary stream.
 
@@ -122,20 +131,18 @@ class FieldInfo:
             The binary stream to read from.
         version: Version
             The class file version.
-        pool: ConstantPool
+        pool: ConstPool
             The class file constant pool.
         """
 
-        meta = Metadata(__name__)
-        access, name_index, desc_index, attr_count = unpack_HHHH(stream.read(8))
-        attributes = []
-        for _ in range(attr_count):
-            attr, child_meta = AttributeInfo.read(stream, version, pool, AttributeInfo.LOC_FIELD)
-            attributes.append(attr)
-            meta.add(child_meta)
-        self = cls(access, pool[name_index], pool[desc_index], attributes)
-        meta.element = self
-        return self, meta
+        with Result[Self].meta(__name__) as result:
+            access, name_index, desc_index, attr_count = unpack_HHHH(stream.read(8))
+            attributes = [
+                AttributeInfo.read(stream, version, pool, AttributeInfo.LOC_FIELD).unwrap_into(result)
+                for _ in range(attr_count)
+            ]
+            return result.ok(cls(access, pool[name_index], pool[desc_index], attributes))
+        return result
 
     @property
     def is_public(self) -> bool:
@@ -272,6 +279,16 @@ class FieldInfo:
         for attribute in self.attributes:
             attribute.write(stream, version, pool)
 
+    def visit(self, visitor: "FieldInfoVisitor") -> None:
+        """
+        Calls a visitor on this field.
+        """
+
+        visitor.visit_start(self)
+        for attribute in self.attributes:
+            visitor.visit_attribute(attribute)
+        visitor.visit_end(self)
+
     def unwrap(self) -> Field:
         """
         Unwraps this field info.
@@ -323,9 +340,11 @@ class ConstantValue(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_FIELD})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["ConstantValue", None]:
-        index, = unpack_H(stream.read(2))
-        return cls(pool[index]), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            index, = unpack_H(stream.read(2))
+            return result.ok(cls(pool[index]))
+        return result
 
     def __init__(self, value: ConstInfo) -> None:
         super().__init__()

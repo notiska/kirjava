@@ -13,10 +13,17 @@ __all__ = (
     "ModuleInfo", "PackageInfo",
 )
 
+import sys
 import typing
 from copy import deepcopy
-from typing import IO
+from typing import Any, IO
 
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
+
+from .._desc import *
 from .._struct import *
 from ..version import *
 from ...backend import *
@@ -59,8 +66,8 @@ class ConstInfo:
         Dereferences any indices in this constant.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes the constant info to a binary stream.
-    unwrap(self) -> Constant
-        Unwraps this constant info into a model constant.
+    unwrap(self) -> Result[Any]
+        Unwraps this constant info.
     """
 
     __slots__ = ("index",)
@@ -73,7 +80,7 @@ class ConstInfo:
     _cache: dict[int, type["ConstInfo"] | None] = {}
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ConstInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         """
         Internal constant read.
         """
@@ -81,7 +88,6 @@ class ConstInfo:
         raise NotImplementedError(f"_read() is not implemented for {cls!r}")
 
     @classmethod
-    @cache
     def lookup(cls, tag: int) -> type["ConstInfo"] | None:
         """
         Looks up a constant info type by tag.
@@ -219,22 +225,12 @@ class ConstInfo:
 
         raise NotImplementedError(f"write() is not implemented for {type(self)!r}")
 
-    def unwrap(self) -> Constant:
+    def unwrap(self) -> Result[Any]:
         """
         Unwraps this constant info.
-
-        Returns
-        -------
-        Constant
-            The unwrapped `Constant`.
-
-        Raises
-        ------
-        ValueError
-            If this constant info cannot be unwrapped.
         """
 
-        raise ValueError(f"cannot unwrap constant {self!r}")
+        return Err(ValueError(f"cannot unwrap constant {self!r}"))
 
 
 class ConstIndex(ConstInfo):
@@ -255,7 +251,7 @@ class ConstIndex(ConstInfo):
     loadable = False
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ConstIndex":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls(len(pool))  # Shouldn't really happen, though.
 
     def __init__(self, index: int) -> None:
@@ -306,7 +302,7 @@ class UTF8Info(ConstInfo):
     loadable = False
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "UTF8Info":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         length, = unpack_H(stream.read(2))
         return cls(stream.read(length))
 
@@ -368,7 +364,7 @@ class IntegerInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "IntegerInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls(unpack_i32(stream.read(4)))
 
     def __init__(self, value: i32) -> None:
@@ -400,8 +396,8 @@ class IntegerInfo(ConstInfo):
         stream.write(bytes((IntegerInfo.tag,)))
         stream.write(pack_i32(self.value))
 
-    def unwrap(self) -> Integer:
-        return Integer(self.value)
+    def unwrap(self) -> Result[Integer]:
+        return Ok(Integer(self.value))
 
 
 class FloatInfo(ConstInfo):
@@ -424,7 +420,7 @@ class FloatInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "FloatInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls(unpack_f32(stream.read(4)))
 
     def __init__(self, value: f32) -> None:
@@ -463,8 +459,8 @@ class FloatInfo(ConstInfo):
         stream.write(bytes((FloatInfo.tag,)))
         stream.write(pack_f32(self.value))
 
-    def unwrap(self) -> Float:
-        return Float(self.value)
+    def unwrap(self) -> Result[Float]:
+        return Ok(Float(self.value))
 
 
 class LongInfo(ConstInfo):
@@ -487,7 +483,7 @@ class LongInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LongInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls(unpack_i64(stream.read(8)))
 
     def __init__(self, value: i64) -> None:
@@ -519,8 +515,8 @@ class LongInfo(ConstInfo):
         stream.write(bytes((LongInfo.tag,)))
         stream.write(pack_i64(self.value))
 
-    def unwrap(self) -> Long:
-        return Long(self.value)
+    def unwrap(self) -> Result[Long]:
+        return Ok(Long(self.value))
 
 
 class DoubleInfo(ConstInfo):
@@ -543,7 +539,7 @@ class DoubleInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DoubleInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls(unpack_f64(stream.read(8)))
 
     def __init__(self, value: f64) -> None:
@@ -581,8 +577,8 @@ class DoubleInfo(ConstInfo):
         stream.write(bytes((DoubleInfo.tag,)))
         stream.write(pack_f64(self.value))
 
-    def unwrap(self) -> Double:
-        return Double(self.value)
+    def unwrap(self) -> Result[Double]:
+        return Ok(Double(self.value))
 
 
 class ClassInfo(ConstInfo):
@@ -605,7 +601,7 @@ class ClassInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ClassInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -644,10 +640,13 @@ class ClassInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(ClassInfo.tag, pool.add(self.name)))
 
-    def unwrap(self) -> Class:
-        if not isinstance(self.name, UTF8Info):
-            raise ValueError(f"{self!r} name is not a UTF8 constant")
-        return Class(self.name.decode())
+    def unwrap(self) -> Result[Class]:
+        with Result[Class]() as result:
+            if not isinstance(self.name, UTF8Info):
+                return result.err(TypeError(f"name {self.name!s} is not a UTF8 constant"))
+            # https://github.com/ItzSomebody/stopdecompilingmyjava/blob/master/decompiler-tool-bugs/entry-007/entry.md
+            return result.ok(Class(parse_reference(self.name.decode())))
+        return result
 
 
 class StringInfo(ConstInfo):
@@ -670,7 +669,7 @@ class StringInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "StringInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -708,10 +707,12 @@ class StringInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(StringInfo.tag, pool.add(self.value)))
 
-    def unwrap(self) -> String:
-        if not isinstance(self.value, UTF8Info):
-            raise ValueError(f"{self!r} value is not a UTF8 constant")
-        return String(self.value.decode())
+    def unwrap(self) -> Result[String]:
+        with Result[String]() as result:
+            if not isinstance(self.value, UTF8Info):
+                return result.err(TypeError(f"value {self.value!s} is not a UTF8 constant"))
+            return result.ok(String(self.value.decode()))
+        return result
 
 
 class FieldrefInfo(ConstInfo):
@@ -737,7 +738,7 @@ class FieldrefInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "FieldrefInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         class_index, nat_index = unpack_HH(stream.read(4))
         return cls(pool[class_index], pool[nat_index])
 
@@ -806,7 +807,7 @@ class MethodrefInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MethodrefInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         class_index, nat_index = unpack_HH(stream.read(4))
         return cls(pool[class_index], pool[nat_index])
 
@@ -875,7 +876,7 @@ class InterfaceMethodrefInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InterfaceMethodrefInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         class_index, nat_index = unpack_HH(stream.read(4))
         return cls(pool[class_index], pool[nat_index])
 
@@ -946,7 +947,7 @@ class NameAndTypeInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "NameAndTypeInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         name_index, desc_index = unpack_HH(stream.read(4))
         return cls(pool[name_index], pool[desc_index])
 
@@ -1061,7 +1062,7 @@ class MethodHandleInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MethodHandleInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         kind, index = unpack_BH(stream.read(3))
         return cls(kind, pool[index])
 
@@ -1102,46 +1103,56 @@ class MethodHandleInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBH(MethodHandleInfo.tag, self.kind, pool.add(self.ref)))
 
-    # TODO
-    # def unwrap(self) -> MethodHandle:
-    #     if self.reference_kind in range(self.REF_GET_FIELD, self.REF_PUT_STATIC + 1):
-    #         if not isinstance(self.reference_index.info, ConstantFieldrefInfo):
-    #             raise ValueError("%r reference index is not a field reference" % self)
-    #         reference = self.reference_index.info
-    #
-    #     elif self.reference_kind in (self.REF_INVOKE_VIRTUAL, self.REF_NEW_INVOKE_SPECIAL):
-    #         if not isinstance(self.reference_index.info, ConstantMethodrefInfo):
-    #             raise ValueError("%r reference index is not a method reference" % self)
-    #         reference = self.reference_index.info
-    #
-    #     elif self.reference_kind in (self.REF_INVOKE_STATIC, self.REF_INVOKE_SPECIAL, self.REF_INVOKE_INTERFACE):
-    #         # FIXME: Version 52.0 and below does not allow all this.
-    #         if (
-    #             not isinstance(self.reference_index.info, ConstantMethodrefInfo) and
-    #             not isinstance(self.reference_index.info, ConstantInterfaceMethodrefInfo)
-    #         ):
-    #             raise ValueError("%r reference index is not an method/interface method reference" % self)
-    #         reference = self.reference_index.info
-    #
-    #     else:
-    #         raise ValueError("%r reference kind is not a valid method handle kind" % self)
-    #
-    #     if not isinstance(reference.class_index.info, ConstantClassInfo):
-    #         raise ValueError("%r reference index class index is not a class reference" % self)
-    #     if not isinstance(reference.name_and_type_index.info, ConstantNameAndTypeInfo):
-    #         raise ValueError("%r reference index name and type index is not a name and type reference" % self)
-    #     name_and_type = reference.name_and_type_index.info
-    #
-    #     if not isinstance(name_and_type.name_index.info, ConstantUTF8Info):
-    #         raise ValueError("%r name and type name index is not a UTF8 constant" % self)
-    #     if not isinstance(name_and_type.descriptor_index.info, ConstantUTF8Info):
-    #         raise ValueError("%r name and type descriptor index is not a UTF8 constant" % self)
-    #
-    #     return MethodHandle(
-    #         self.reference_kind,
-    #         reference.class_index.info.unwrap(),
-    #         str(name_and_type.name_index), str(name_and_type.descriptor_index),
-    #     )
+    def unwrap(self) -> Result[MethodHandle]:
+        with Result[MethodHandle]() as result:
+            field = False
+
+            if self.kind in (
+                MethodHandleInfo.GET_FIELD, MethodHandleInfo.GET_STATIC,
+                MethodHandleInfo.PUT_FIELD, MethodHandleInfo.PUT_STATIC
+            ):
+                if not isinstance(self.ref, FieldrefInfo):
+                    return result.err(TypeError(f"reference {self.ref!s} is not a field reference"))
+                field = True
+            elif self.kind in (MethodHandleInfo.INVOKE_VIRTUAL, MethodHandleInfo.NEW_INVOKE_SPECIAL):
+                if not isinstance(self.ref, MethodrefInfo):
+                    return result.err(TypeError(f"reference {self.ref!s} is not a method reference"))
+            elif self.kind in (
+                MethodHandleInfo.INVOKE_STATIC, MethodHandleInfo.INVOKE_SPECIAL, MethodHandleInfo.INVOKE_INTERFACE,
+            ):
+                # Note that Java 8 and below does not allow this to be an interface method, but we can't check the
+                # version so we'll just be generous in this case.
+                if not isinstance(self.ref, (MethodrefInfo, InterfaceMethodrefInfo)):
+                    return result.err(TypeError(f"reference {self.ref!s} is not a method or interface method reference"))
+            else:
+                return result.err(ValueError(f"reference kind {self.kind} is not valid"))
+
+            class_ = self.ref.class_
+            name_and_type = self.ref.name_and_type
+
+            if not isinstance(class_, ClassInfo):
+                return result.err(TypeError(f"reference class {class_!s} is not a class constant"))
+            if not isinstance(name_and_type, NameAndTypeInfo):
+                return result.err(TypeError(f"reference name and type {name_and_type!s} is not a name and type constant"))
+
+            name = name_and_type.name
+            descriptor = name_and_type.descriptor
+
+            if not isinstance(name, UTF8Info):
+                return result.err(TypeError(f"reference name {name!s} is not a UTF8 constant"))
+            if not isinstance(descriptor, UTF8Info):
+                return result.err(TypeError(f"reference descriptor {descriptor!s} is not a UTF8 constant"))
+
+            if not field:
+                arg_types, ret_type = parse_method_descriptor(descriptor.decode())
+            else:
+                arg_types = ()
+                ret_type = parse_field_descriptor(descriptor.decode())
+
+            return result.ok(MethodHandle(
+                MethodHandle.Kind(self.kind), class_.unwrap().unwrap_into(result), name.decode(), arg_types, ret_type,
+            ))
+        return result
 
 
 class MethodTypeInfo(ConstInfo):
@@ -1163,7 +1174,7 @@ class MethodTypeInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MethodTypeInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -1201,11 +1212,12 @@ class MethodTypeInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(MethodTypeInfo.tag, pool.add(self.descriptor)))
 
-    def unwrap(self) -> MethodType:
-        if not isinstance(self.descriptor, UTF8Info):
-            raise ValueError(f"{self!r} descriptor index is not a UTF8 constant")
-        # TODO: Parse descriptor.
-        return MethodType(self.descriptor.decode())
+    def unwrap(self) -> Result[MethodType]:
+        with Result[MethodType]() as result:
+            if not isinstance(self.descriptor, UTF8Info):
+                return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))
+            return result.ok(MethodType(*parse_method_descriptor(self.descriptor.decode())))
+        return result
 
 
 class DynamicInfo(ConstInfo):
@@ -1231,7 +1243,7 @@ class DynamicInfo(ConstInfo):
     loadable = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DynamicInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         attr_index, nat_index = unpack_HH(stream.read(4))
         return cls(attr_index, pool[nat_index])
 
@@ -1300,7 +1312,7 @@ class InvokeDynamicInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "InvokeDynamicInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         attr_index, nat_index = unpack_HH(stream.read(4))
         return cls(attr_index, pool[nat_index])
 
@@ -1365,7 +1377,7 @@ class ModuleInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ModuleInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -1422,7 +1434,7 @@ class PackageInfo(ConstInfo):
     loadable = False
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PackageInfo":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 

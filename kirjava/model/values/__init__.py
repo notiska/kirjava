@@ -15,17 +15,12 @@ if typing.TYPE_CHECKING:
 
 class Value:
     """
-    A model value.
+    A value.
 
     Attributes
     ----------
     type: Type
-        The type of value.
-
-    Methods
-    -------
-    cast(self, type_: Type) -> Value
-        Casts this value to another type.
+        The type of this value.
     """
 
     __slots__ = ()
@@ -33,26 +28,33 @@ class Value:
     type: "Type"
 
     def __repr__(self) -> str:
-        return f"<Value(type={self.type!s})>"
+        raise NotImplementedError(f"repr() is not implemented for {type(self)!r}")
 
-    def cast(self, type_: "Type") -> "Value":
-        """
-        Casts this value to another type.
+    def __str__(self) -> str:
+        raise NotImplementedError(f"str() is not implemented for {type(self)!r}")
 
-        Parameters
-        ----------
-        type_: Type
-            The type to cast this value to.
+    def __eq__(self, other: object) -> bool:
+        raise NotImplementedError(f"== is not implemented for {type(self)!r}")
 
-        Returns
-        -------
-        Value
-            The new value.
+    # TODO
+    # def cast(self, type_: "Type") -> "Value":
+    #     """
+    #     Casts this value to another type.
 
-        Raises
-        ------
-        ValueError
-            If this value cannot be cast to the given type.
-        """
+    #     Parameters
+    #     ----------
+    #     type_: Type
+    #         The type to cast this value to.
 
-        raise ValueError(f"cannot cast {self!r} to {type_!s}")
+    #     Returns
+    #     -------
+    #     Value
+    #         The new value.
+
+    #     Raises
+    #     ------
+    #     ValueError
+    #         If this value cannot be cast to the given type.
+    #     """
+
+    #     raise ValueError(f"cannot cast {self!r} to {type_!s}")

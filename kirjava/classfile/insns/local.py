@@ -23,8 +23,14 @@ __all__ = (
     "LoadLocalAtWide", "StoreLocalAtWide", "IIncWide",
 )
 
+import sys
 import typing
 from typing import IO
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from . import Instruction
 from .misc import wide
@@ -41,7 +47,7 @@ if typing.TYPE_CHECKING:
 
 class LoadLocal(Instruction):
     """
-    A local variable load instruction base.
+    A local variable load instruction.
 
     Loads a local variable from the provided index.
 
@@ -63,7 +69,7 @@ class LoadLocal(Instruction):
     index: int
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadLocal":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -86,7 +92,7 @@ class LoadLocal(Instruction):
 
 class StoreLocal(Instruction):
     """
-    A local variable store instruction base.
+    A local variable store instruction.
 
     Attributes
     ----------
@@ -106,7 +112,7 @@ class StoreLocal(Instruction):
     index: int
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "StoreLocal":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -137,7 +143,7 @@ class StoreLocal(Instruction):
 
 class LoadLocalAt(LoadLocal):
     """
-    A local variable load instruction base, where the index is explicitly provided.
+    A local variable load instruction with the index is explicitly provided.
     """
 
     __slots__ = ("index",)
@@ -145,7 +151,7 @@ class LoadLocalAt(LoadLocal):
     type: Type
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadLocalAt":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = stream.read(1)
         return cls(index)
 
@@ -181,7 +187,7 @@ class LoadLocalAt(LoadLocal):
 
 class StoreLocalAt(StoreLocal):
     """
-    A local variable store instruction base, where the index is explicitly provided.
+    A local variable store instruction with the index is explicitly provided.
     """
 
     __slots__ = ("index",)
@@ -189,7 +195,7 @@ class StoreLocalAt(StoreLocal):
     type: Type
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "StoreLocalAt":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = stream.read(1)
         return cls(index)
 
@@ -244,7 +250,7 @@ class IInc(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "IInc":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, value = unpack_Bb(stream.read(2))
         return cls(index, value)
 
@@ -254,9 +260,9 @@ class IInc(Instruction):
         self.value = value
 
     def __copy__(self) -> "IInc":
-        copy = iinc(self.index, self.value)  # type: ignore[call-arg]
+        copy = iinc(self.index, self.value)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -300,7 +306,7 @@ class IInc(Instruction):
 
 class LoadLocalAtWide(LoadLocalAt):
     """
-    A load local instruction with a wide mutation.
+    A load local instruction (wide mutation).
     """
 
     __slots__ = ()
@@ -308,7 +314,7 @@ class LoadLocalAtWide(LoadLocalAt):
     mutated = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadLocalAtWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(index)
 
@@ -330,7 +336,7 @@ class LoadLocalAtWide(LoadLocalAt):
 
 class StoreLocalAtWide(StoreLocalAt):
     """
-    A store local instruction with a wide mutation.
+    A store local instruction (wide mutation).
     """
 
     __slots__ = ()
@@ -338,7 +344,7 @@ class StoreLocalAtWide(StoreLocalAt):
     mutated = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "StoreLocalAtWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(index)
 
@@ -360,7 +366,7 @@ class StoreLocalAtWide(StoreLocalAt):
 
 class IIncWide(IInc):
     """
-    An `iinc` instruction with a wide mutation.
+    An `iinc` instruction (wide mutation).
     """
 
     __slots__ = ()
@@ -368,14 +374,14 @@ class IIncWide(IInc):
     mutated = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "IIncWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, value = unpack_Hh(stream.read(4))
         return cls(index, value)
 
     def __copy__(self) -> "IIncWide":
-        copy = iinc_w(self.index, self.value)  # type: ignore[call-arg]
+        copy = iinc_w(self.index, self.value)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:

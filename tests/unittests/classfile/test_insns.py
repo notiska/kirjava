@@ -119,7 +119,7 @@ class TestInstructions(unittest.TestCase):
                 init = self._DEFAULTS.get(subclass)
                 if init is None:
                     self.skipTest(f"Missing default init values for {subclass!r}.")
-                insn = subclass(*init)
+                insn = subclass(*init)  # type: ignore[arg-type]
                 self.assertIsInstance(insn.opcode, int)
                 self.assertIsInstance(insn.mnemonic, str)
                 # self.assertIsInstance(insn.since, Version)  # FIXME
@@ -132,7 +132,7 @@ class TestInstructions(unittest.TestCase):
                 init = self._DEFAULTS.get(subclass)
                 if init is None:
                     self.skipTest(f"Missing default init values for {subclass!r}.")
-                insn_no_offset = subclass(*init)
+                insn_no_offset = subclass(*init)  # type: ignore[arg-type]
 
                 print(str(insn_no_offset), repr(insn_no_offset), end=" ")
                 insn_offset = copy.copy(insn_no_offset)
@@ -165,7 +165,7 @@ class TestInstructions(unittest.TestCase):
                 init = self._DEFAULTS.get(subclass)
                 if init is None:
                     self.skipTest(f"Missing default init values for {subclass!r}.")
-                insn_init = subclass(*init)
+                insn_init = subclass(*init)  # type: ignore[arg-type]
 
                 data = BytesIO()
                 insn_init.write(data, self.pool)

@@ -13,15 +13,21 @@ __all__ = (
 JVM class file shared attributes.
 """
 
+import sys
 import typing
 from os import SEEK_CUR, SEEK_SET
 from typing import IO, Iterable
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from .annotation import Annotation, TypeAnnotation
 from .constants import ConstInfo, UTF8Info
 from .._struct import *
 from ..version import *
-from ...meta import Metadata
+from ...backend import Err, Ok, Result
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
@@ -59,7 +65,7 @@ class AttributeInfo:
     -------
     lookup(tag: bytes) -> type[AttributeInfo] | None
         Looks up an attribute type by tag/name.
-    read(stream: IO[bytes], version: Version, pool: ConstPool, location: int) -> tuple[AttributeInfo, Metadata]
+    read(stream: IO[bytes], version: Version, pool: ConstPool, location: int) -> Result[AttributeInfo]
         Reads an attribute from a binary stream.
 
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
@@ -82,7 +88,7 @@ class AttributeInfo:
     _cache: dict[bytes, type["AttributeInfo"] | None] = {}
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["AttributeInfo", Metadata | None]:
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
         """
         Internal attribute read.
         """
@@ -113,7 +119,7 @@ class AttributeInfo:
     @classmethod
     def read(
             cls, stream: IO[bytes], version: Version, pool: "ConstPool", location: int | None,
-    ) -> tuple["AttributeInfo", Metadata]:
+    ) -> Result["AttributeInfo"]:
         """
         Reads an attribute from the binary stream.
 
@@ -129,78 +135,60 @@ class AttributeInfo:
             The location the attribute is being read from.
         """
 
-        self: AttributeInfo
+        with Result[AttributeInfo].meta(__name__) as result:
+            index, length = unpack_HI(stream.read(6))
+            name = pool[index]
 
-        meta = Metadata(__name__)
+            if not isinstance(name, UTF8Info):
+                result.err(TypeError(f"attribute name {name!s} is not a UTF8 constant"))
+                return result.ok(RawInfo(name, stream.read(length)))
 
-        index, length = unpack_HI(stream.read(6))
-        name = pool[index]
+            # TODO: Would be nice to have this feature, potentially.
+            # if name.value in reader.skip_attrs:
+            #     return RawInfo(name, stream.read(length))
 
-        if not isinstance(name, UTF8Info):
-            meta.error("read.name", "Invalid attribute name index %i (%s).", index, name)
-            self = RawInfo(name, stream.read(length))
-            meta.element = self
-            return self, meta
+            subclass = cls._cache.get(name.value)
+            if subclass is None:
+                subclass = cls.lookup(name.value)
+                cls._cache[name.value] = subclass
+            if subclass is None:
+                result.err(ValueError(f"attribute name {name!s} is unknown"))
+                return result.ok(RawInfo(name, stream.read(length)))
 
-        # TODO: Would be nice to have this feature, potentially.
-        # if name.value in reader.skip_attrs:
-        #     return RawInfo(name, stream.read(length))
+            bad_version = version < subclass.since  # FIXME: This check can't be this simple, as preview features exist.
+            bad_location = location is not None and location not in subclass.locations
 
-        subclass: type[AttributeInfo] | None = cls._cache.get(name.value)
-        if subclass is None:
-            subclass = cls.lookup(name.value)
-            cls._cache[name.value] = subclass
-        if subclass is None:
-            meta.error("read.unknown", "Unknown attribute name %s.", name.decode())
-            self = RawInfo(name, stream.read(length))
-            meta.element = self
-            return self, meta
+            assert stream.seekable(), "stream is not seekable"
 
-        bad_version = version < subclass.since  # FIXME: This check can't be this simple, as preview features exist.
-        bad_location = location is not None and location not in subclass.locations
+            start = stream.tell()
+            # print(subclass, start, "-", start + length)
+            try:
+                self = subclass._read(stream, version, pool).unwrap_into(result, reraise=True)
+                self.name = name
 
-        if bad_version:
-            meta.warn("read.version", "Attribute %s appears in class with lower version than required.", name.decode())
-        if bad_location:
-            meta.warn("read.location", "Attribute %s is in wrong location.", name.decode())
+                if bad_version:
+                    result.warn("Attribute %s appears in class with lower version than required.", self)
+                if bad_location:
+                    result.warn("Attribute %s appears in wrong location.", self)
 
-        assert stream.seekable(), "stream is not seekable"
+                # TODO: Be able to handle extra data at the end, and re-write it back out if needed.
 
-        start = stream.tell()
-        # print(subclass, start, "-", start + length)
-        try:
-            self, child_meta = subclass._read(stream, version, pool)
-            self.name = name
-            if child_meta is not None:
-                meta.add(child_meta)
+                diff = stream.tell() - (start + length)  # Reading sanity checks, over-reading can be an issue, etc.
+                if diff > 0:
+                    # TODO: In the future, perhaps have a way of noting that this has occurred so that we can keep the
+                    #       "parsed" attribute for extra info?
+                    result.err(ValueError(f"attribute {self!s} read {diff} too many byte(s)"), reraise=True)
+                elif diff < 0:
+                    # FIXME: Attributes at the end of the file that underread due to EOF will not preserve original length.
+                    result.warn("Attribute %s read %i too few byte(s).", self, -diff)
+                    self.extra = stream.read(-diff)
 
-            # TODO: Be able to handle extra data at the end, and re-write it back out if needed.
+                return result.ok(self)
+            except Exception:
+                stream.seek(start, SEEK_SET)
+            return result.ok(RawInfo(name, stream.read(length)))
 
-            # Reading sanity checks, over-reading can be an issue, etc.
-            diff = stream.tell() - (start + length)
-            if diff > 0:
-                if bad_version or bad_location:
-                    # Bad grammar, oh well.
-                    meta.warn("read.overread", "Attribute %s read %i too many byte(s).", name.decode(), diff)
-                else:
-                    meta.error("read.overread", "Attribute %s read %i too many byte(s).", name.decode(), diff)
-                raise ValueError("overread")
-            elif diff < 0:
-                # FIXME: Attributes at the end of the file that underread due to EOF will not preserve original length.
-                meta.warn("read.underread", "Attribute %s read %i too few byte(s).", name.decode(), -diff)
-                self.extra = stream.read(-diff)
-
-        except Exception as error:
-            if not isinstance(error, ValueError) or error.args[0] != "overread":  # Don't add this error twice.
-                if bad_version or bad_location:
-                    meta.warn("read.error", "Error reading attribute %s: %s", name.decode(), error)
-                else:
-                    meta.error("read.error", "Error reading attribute %s: %s", name.decode(), error)
-            stream.seek(start, SEEK_SET)
-            self = RawInfo(name, stream.read(length))
-
-        meta.element = self
-        return self, meta
+        return result
 
     def __init__(self, name: ConstInfo | None = None, extra: bytes = b"") -> None:
         self.name = name
@@ -271,8 +259,8 @@ class RawInfo(AttributeInfo):
     })
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["RawInfo", Metadata | None]:
-        raise ValueError("attempted to parse raw attribute")
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        return Err(ValueError("attempted to parse raw attribute"))
 
     def __init__(self, name: ConstInfo, data: bytes) -> None:
         super().__init__(name)
@@ -311,11 +299,13 @@ class Documentation(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS, AttributeInfo.LOC_FIELD, AttributeInfo.LOC_METHOD})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["Documentation", None]:
-        assert stream.seekable(), "stream is not seekable"
-        stream.seek(-4, SEEK_CUR)
-        length, = unpack_I(stream.read(4))
-        return cls(stream.read(length)), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            assert stream.seekable(), "stream is not seekable"
+            stream.seek(-4, SEEK_CUR)
+            length, = unpack_I(stream.read(4))
+            return result.ok(cls(stream.read(length)))
+        return result
 
     def __init__(self, doc: bytes) -> None:
         super().__init__()
@@ -351,8 +341,8 @@ class Synthetic(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS, AttributeInfo.LOC_FIELD, AttributeInfo.LOC_METHOD})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["Synthetic", None]:
-        return cls(), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        return Ok(cls())
 
     def __repr__(self) -> str:
         return "<Synthetic>"
@@ -390,9 +380,11 @@ class Signature(AttributeInfo):
     })
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["Signature", None]:
-        index, = unpack_H(stream.read(2))
-        return cls(pool[index]), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            index, = unpack_H(stream.read(2))
+            return result.ok(cls(pool[index]))
+        return result
 
     def __init__(self, signature: ConstInfo) -> None:
         super().__init__()
@@ -430,8 +422,8 @@ class Deprecated(AttributeInfo):
     })
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["Deprecated", None]:
-        return cls(), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        return Ok(cls())
 
     def __repr__(self) -> str:
         return "<Deprecated>"
@@ -468,12 +460,12 @@ class RuntimeVisibleAnnotations(AttributeInfo):
     })
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["RuntimeVisibleAnnotations", None]:
-        count, = unpack_H(stream.read(2))
-        annotations = []
-        for _ in range(count):
-            annotations.append(Annotation.read(stream, pool))
-        return cls(annotations), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            annotations = [Annotation.read(stream, pool) for _ in range(count)]
+            return result.ok(cls(annotations))
+        return result
 
     def __init__(self, annotations: Iterable[Annotation] | None = None) -> None:
         super().__init__()
@@ -533,12 +525,12 @@ class RuntimeInvisibleAnnotations(AttributeInfo):
     })
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["RuntimeInvisibleAnnotations", None]:
-        count, = unpack_H(stream.read(2))
-        annotations = []
-        for _ in range(count):
-            annotations.append(Annotation.read(stream, pool))
-        return cls(annotations), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            annotations = [Annotation.read(stream, pool) for _ in range(count)]
+            return result.ok(cls(annotations))
+        return result
 
     def __init__(self, annotations: Iterable[Annotation] | None = None) -> None:
         super().__init__()
@@ -602,14 +594,12 @@ class RuntimeVisibleTypeAnnotations(AttributeInfo):
     })
 
     @classmethod
-    def _read(
-            cls, stream: IO[bytes], version: Version, pool: "ConstPool",
-    ) -> tuple["RuntimeVisibleTypeAnnotations", None]:
-        count, = unpack_H(stream.read(2))
-        annotations = []
-        for _ in range(count):
-            annotations.append(TypeAnnotation.read(stream, pool))
-        return cls(annotations), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            annotations = [TypeAnnotation.read(stream, pool) for _ in range(count)]
+            return result.ok(cls(annotations))
+        return result
 
     def __init__(self, annotations: Iterable[TypeAnnotation] | None = None) -> None:
         super().__init__()
@@ -673,14 +663,12 @@ class RuntimeInvisibleTypeAnnotations(AttributeInfo):
     })
 
     @classmethod
-    def _read(
-            cls, stream: IO[bytes], version: Version, pool: "ConstPool",
-    ) -> tuple["RuntimeInvisibleTypeAnnotations", None]:
-        count, = unpack_H(stream.read(2))
-        annotations = []
-        for _ in range(count):
-            annotations.append(TypeAnnotation.read(stream, pool))
-        return cls(annotations), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            annotations = [TypeAnnotation.read(stream, pool) for _ in range(count)]
+            return result.ok(cls(annotations))
+        return result
 
     def __init__(self, annotations: Iterable[TypeAnnotation] | None = None) -> None:
         super().__init__()

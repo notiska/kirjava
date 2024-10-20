@@ -14,9 +14,15 @@ __all__ = (
 JVM class file method info struct and attributes.
 """
 
+import sys
 import typing
 from os import SEEK_CUR, SEEK_SET
 from typing import IO, Iterable, Union
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from .annotation import ElementValue, ParameterAnnotations
 from .attribute import AttributeInfo
@@ -26,11 +32,12 @@ from .._desc import parse_method_descriptor
 from .._struct import *
 from ..insns import CodeIOWrapper, Instruction
 from ..version import *
-from ...meta import Metadata
+from ...backend import Result
 from ...model.class_.method import Method
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
+    from ..visitor import MethodInfoVisitor
 
 
 class MethodInfo:
@@ -112,11 +119,13 @@ class MethodInfo:
 
     Methods
     -------
-    read(stream: IO[bytes], version: Version, pool: ConstPool) -> tuple[MethodInfo, Metadata]
+    read(stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]
         Reads a method from a binary stream.
 
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
         Writes this method to a binary stream.
+    visit(self, visitor: MethodInfoVisitor) -> None
+        Calls a visitor on this method.
     unwrap(self) -> Method
         Unwraps this method info.
     """
@@ -137,7 +146,7 @@ class MethodInfo:
     ACC_SYNTHETIC    = 0x1000
 
     @classmethod
-    def read(cls, stream: IO[bytes], version: "Version", pool: "ConstPool") -> tuple["MethodInfo", Metadata]:
+    def read(cls, stream: IO[bytes], version: "Version", pool: "ConstPool") -> Result[Self]:
         """
         Reads a method from a binary stream.
 
@@ -147,20 +156,18 @@ class MethodInfo:
             The binary stream to read from.
         version: Version
             The class file version.
-        pool: ConstantPool
+        pool: ConstPool
             The class file constant pool.
         """
 
-        meta = Metadata(__name__)
-        access, name_index, desc_index, attr_count = unpack_HHHH(stream.read(8))
-        attributes = []
-        for _ in range(attr_count):
-            attr, child_meta = AttributeInfo.read(stream, version, pool, AttributeInfo.LOC_METHOD)
-            attributes.append(attr)
-            meta.add(child_meta)
-        self = cls(access, pool[name_index], pool[desc_index], attributes)
-        meta.element = self
-        return self, meta
+        with Result[Self].meta(__name__) as result:
+            access, name_index, desc_index, attr_count = unpack_HHHH(stream.read(8))
+            attributes = [
+                AttributeInfo.read(stream, version, pool, AttributeInfo.LOC_METHOD).unwrap_into(result)
+                for _ in range(attr_count)
+            ]
+            return result.ok(cls(access, pool[name_index], pool[desc_index], attributes))
+        return result
 
     @property
     def is_public(self) -> bool:
@@ -335,6 +342,16 @@ class MethodInfo:
         for attribute in self.attributes:
             attribute.write(stream, version, pool)
 
+    def visit(self, visitor: "MethodInfoVisitor") -> None:
+        """
+        Calls a visitor on this method.
+        """
+
+        visitor.visit_start(self)
+        for attribute in self.attributes:
+            visitor.visit_attribute(attribute)
+        visitor.visit_end(self)
+
     def unwrap(self) -> Method:
         """
         Unwraps this method info.
@@ -400,53 +417,51 @@ class Code(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_METHOD})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["Code", Metadata]:
-        meta = Metadata(__name__)
-        # Well known undocumented feature of older Java versions (<45.3) regarding sizes, that we need to account for.
-        if version < JAVA_1_1:
-            meta.info("read.old", "Read old code size.")
-            max_stack, max_locals, size = unpack_BBH(stream.read(4))
-        else:
-            max_stack, max_locals, size = unpack_HHI(stream.read(8))
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self].meta(__name__) as result:
+            # Well known undocumented feature of older Java versions (<45.3) regarding sizes, that we need to account
+            # for.
+            if version < JAVA_1_1:
+                result.info("Read pre-1.1 code size.")
+                max_stack, max_locals, size = unpack_BBH(stream.read(4))
+            else:
+                max_stack, max_locals, size = unpack_HHI(stream.read(8))
 
-        # disassembler = Disassembler()
-        # disassembler.disassemble_pure_code(stream, class_file, code_length)
+            # disassembler = Disassembler()
+            # disassembler.disassemble_pure_code(stream, class_file, code_length)
 
-        base = stream.tell()
-        insns = []
+            base = stream.tell()
+            insns = []
 
-        wrapper = CodeIOWrapper(stream, base)
-        while wrapper.tell() < size:
-            instruction = Instruction.read(wrapper, pool)
-            insns.append(instruction)
+            wrapper = CodeIOWrapper(stream, base)
+            while wrapper.tell() < size:
+                instruction = Instruction.read(wrapper, pool)
+                insns.append(instruction)
 
-        delta = stream.tell() - (base + size)
-        if delta:
-            meta.error("read.overread", "Code instructions overread by %i byte(s).", delta)
-            stream.seek(-delta, SEEK_CUR)
+            delta = stream.tell() - (base + size)
+            if delta:
+                result.warn("Code instructions overread by %i byte(s).", delta)
+                stream.seek(-delta, SEEK_CUR)
 
-        # TODO: Version checking.
+            # TODO: Version checking instructions?
 
-        handler_count, = unpack_H(stream.read(2))
-        handlers = []
-        for _ in range(handler_count):
-            start_pc, end_pc, handler_pc, type_index = unpack_HHHH(stream.read(8))
-            handlers.append(cls.ExceptHandler(start_pc, end_pc, handler_pc, pool[type_index] if type_index else None))
+            handler_count, = unpack_H(stream.read(2))
+            handlers = []
+            for _ in range(handler_count):
+                start_pc, end_pc, handler_pc, type_index = unpack_HHHH(stream.read(8))
+                handlers.append(cls.ExceptHandler(start_pc, end_pc, handler_pc, pool[type_index] if type_index else None))
 
-        # disassembler.add_exception_table(exception_table)
-        # disassembler.disassemble_non_pure_code(stream, class_file)
-        # graph = disassembler.make_graph()
+            # disassembler.add_exception_table(exception_table)
+            # disassembler.disassemble_non_pure_code(stream, class_file)
+            # graph = disassembler.make_graph()
 
-        attr_count, = unpack_H(stream.read(2))
-        attributes = []
-        for _ in range(attr_count):
-            attr, child_meta = AttributeInfo.read(stream, version, pool, AttributeInfo.LOC_CODE)
-            attributes.append(attr)
-            meta.add(child_meta)
-
-        self = cls(max_stack, max_locals, base, insns, handlers, attributes)
-        meta.element = self
-        return self, meta
+            attr_count, = unpack_H(stream.read(2))
+            attributes = [
+                AttributeInfo.read(stream, version, pool, AttributeInfo.LOC_CODE).unwrap_into(result)
+                for _ in range(attr_count)
+            ]
+            return result.ok(cls(max_stack, max_locals, base, insns, handlers, attributes))
+        return result
 
     def __init__(
             self, max_stack: int, max_locals: int, base: int,
@@ -591,12 +606,12 @@ class StackMapTable(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CODE})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["StackMapTable", None]:
-        count, = unpack_H(stream.read(2))
-        frames = []
-        for _ in range(count):
-            frames.append(StackMapFrame.read(stream, pool))
-        return cls(frames), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            frames = [StackMapFrame.read(stream, pool) for _ in range(count)]
+            return result.ok(cls(frames))
+        return result
 
     def __init__(self, frames: Iterable[StackMapFrame] | None = None) -> None:
         super().__init__()
@@ -655,9 +670,14 @@ class Exceptions(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_METHOD})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["Exceptions", None]:
-        count, = unpack_H(stream.read(2))
-        return cls([pool[index] for index, in iter_unpack_H(stream.read(count * 2))]), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            exceptions = [pool[index] for index, in iter_unpack_H(stream.read(count * 2))]
+            if len(exceptions) != count:
+                return result.err(ValueError("exceptions underread"))
+            return result.ok(cls(exceptions))
+        return result
 
     def __init__(self, exceptions: Iterable[ConstInfo] | None = None) -> None:
         super().__init__()
@@ -722,13 +742,15 @@ class LineNumberTable(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CODE})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["LineNumberTable", None]:
-        count, = unpack_H(stream.read(2))
-        lines = []
-        for _ in range(count):
-            start_pc, line_number = unpack_HH(stream.read(4))
-            lines.append(cls.LineNumber(start_pc, line_number))
-        return cls(lines), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            lines = []
+            for _ in range(count):
+                start_pc, line_number = unpack_HH(stream.read(4))
+                lines.append(cls.LineNumber(start_pc, line_number))
+            return result.ok(cls(lines))
+        return result
 
     def __init__(self, lines: Iterable["LineNumberTable.LineNumber"] | None = None) -> None:
         super().__init__()
@@ -822,13 +844,15 @@ class LocalVariableTable(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CODE})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["LocalVariableTable", None]:
-        count, = unpack_H(stream.read(2))
-        locals_ = []
-        for _ in range(count):
-            start_pc, length, name_index, desc_index, index = unpack_HHHHH(stream.read(10))
-            locals_.append(cls.LocalVariable(start_pc, length, pool[name_index], pool[desc_index], index))
-        return cls(locals_), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            locals_ = []
+            for _ in range(count):
+                start_pc, length, name_index, desc_index, index = unpack_HHHHH(stream.read(10))
+                locals_.append(cls.LocalVariable(start_pc, length, pool[name_index], pool[desc_index], index))
+            return result.ok(cls(locals_))
+        return result
 
     def __init__(self, locals_: Iterable["LocalVariableTable.LocalVariable"] | None = None) -> None:
         super().__init__()
@@ -940,13 +964,15 @@ class LocalVariableTypeTable(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CODE})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["LocalVariableTypeTable", None]:
-        count, = unpack_H(stream.read(2))
-        locals_ = []
-        for _ in range(count):
-            start_pc, length, name_index, sig_index, index = unpack_HHHHH(stream.read(10))
-            locals_.append(cls.LocalVariable(start_pc, length, pool[name_index], pool[sig_index], index))
-        return cls(locals_), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            locals_ = []
+            for _ in range(count):
+                start_pc, length, name_index, sig_index, index = unpack_HHHHH(stream.read(10))
+                locals_.append(cls.LocalVariable(start_pc, length, pool[name_index], pool[sig_index], index))
+            return result.ok(cls(locals_))
+        return result
 
     def __init__(self, locals_: Iterable["LocalVariableTypeTable.LocalVariable"] | None = None) -> None:
         super().__init__()
@@ -1056,8 +1082,10 @@ class AnnotationDefault(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_METHOD})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["AnnotationDefault", None]:
-        return cls(ElementValue.read(stream, pool)), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            return result.ok(cls(ElementValue.read(stream, pool)))
+        return result
 
     def __init__(self, default: ElementValue) -> None:
         super().__init__()
@@ -1096,13 +1124,15 @@ class MethodParameters(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_METHOD})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> tuple["MethodParameters", None]:
-        count, = stream.read(1)
-        params = []
-        for _ in range(count):
-            name_index, flags = unpack_HH(stream.read(4))
-            params.append(cls.Parameter(pool[name_index] if name_index else None, flags))
-        return cls(params), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = stream.read(1)
+            params = []
+            for _ in range(count):
+                name_index, flags = unpack_HH(stream.read(4))
+                params.append(cls.Parameter(pool[name_index] if name_index else None, flags))
+            return result.ok(cls(params))
+        return result
 
     def __init__(self, params: Iterable["MethodParameters.Parameter"] | None = None) -> None:
         super().__init__()
@@ -1240,14 +1270,12 @@ class RuntimeVisibleParameterAnnotations(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_METHOD})
 
     @classmethod
-    def _read(
-            cls, stream: IO[bytes], version: Version, pool: "ConstPool",
-    ) -> tuple["RuntimeVisibleParameterAnnotations", None]:
-        count, = stream.read(1)
-        annotations = []
-        for _ in range(count):
-            annotations.append(ParameterAnnotations.read(stream, pool))
-        return cls(annotations), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = stream.read(1)
+            annotations = [ParameterAnnotations.read(stream, pool) for _ in range(count)]
+            return result.ok(cls(annotations))
+        return result
 
     def __init__(self, annotations: Iterable[ParameterAnnotations] | None = None) -> None:
         super().__init__()
@@ -1307,14 +1335,12 @@ class RuntimeInvisibleParameterAnnotations(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_METHOD})
 
     @classmethod
-    def _read(
-            cls, stream: IO[bytes], version: Version, pool: "ConstPool",
-    ) -> tuple["RuntimeInvisibleParameterAnnotations", None]:
-        count, = stream.read(1)
-        annotations = []
-        for _ in range(count):
-            annotations.append(ParameterAnnotations.read(stream, pool))
-        return cls(annotations), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
+        with Result[Self]() as result:
+            count, = stream.read(1)
+            annotations = [ParameterAnnotations.read(stream, pool) for _ in range(count)]
+            return result.ok(cls(annotations))
+        return result
 
     def __init__(self, annotations: Iterable[ParameterAnnotations] | None = None) -> None:
         super().__init__()

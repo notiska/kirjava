@@ -18,9 +18,15 @@ __all__ = (
     "Pop", "Pop2", "Dup", "DupX1", "DupX2", "Dup2", "Dup2X1", "Dup2X2", "Swap",
 )
 
+import sys
 import typing
 from copy import deepcopy
 from typing import IO
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from . import Instruction
 from .._struct import *
@@ -38,7 +44,7 @@ if typing.TYPE_CHECKING:
 
 class PushConstant(Instruction):
     """
-    A constant push instruction base.
+    A constant push instruction.
 
     Pushes a constant onto the top of the stack.
 
@@ -57,7 +63,7 @@ class PushConstant(Instruction):
     constant: Constant
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "PushConstant":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -103,7 +109,7 @@ class BIPush(PushConstant):
     __slots__ = ("value",)
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "BIPush":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         value, = stream.read(1)
         return cls(value)
 
@@ -120,9 +126,9 @@ class BIPush(PushConstant):
         self.value = value
 
     def __copy__(self) -> "BIPush":
-        copy = bipush(self.value)  # type: ignore[call-arg]
+        copy = bipush(self.value)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -160,7 +166,7 @@ class SIPush(PushConstant):
     __slots__ = ("value",)
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "SIPush":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         value, = unpack_H(stream.read(2))
         return cls(value)
 
@@ -177,9 +183,9 @@ class SIPush(PushConstant):
         self.value = value
 
     def __copy__(self) -> "SIPush":
-        copy = sipush(self.value)  # type: ignore[call-arg]
+        copy = sipush(self.value)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -204,7 +210,7 @@ class SIPush(PushConstant):
 
 class LoadConstant(Instruction):
     """
-    A load constant instruction base.
+    A load constant instruction.
 
     Loads a constant from the constant pool and pushes it onto the top of the stack.
 
@@ -220,7 +226,7 @@ class LoadConstant(Instruction):
     rt_throws = frozenset()
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadConstant":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = stream.read(1)
         return cls(pool[index])
 
@@ -293,7 +299,7 @@ class LoadConstantWide(LoadConstant):
     __slots__ = ()
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LoadConstantWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -345,7 +351,7 @@ class New(Instruction):
     rt_throws = frozenset()  # TODO: True?
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "New":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -354,14 +360,14 @@ class New(Instruction):
         self.classref = classref
 
     def __copy__(self) -> "New":
-        copy = new(self.classref)  # type: ignore[call-arg]
+        copy = new(self.classref)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "New":
-        copy = new(deepcopy(self.classref, memo))  # type: ignore[call-arg]
+        copy = new(deepcopy(self.classref, memo))
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -416,7 +422,7 @@ class Pop(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Pop":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -455,7 +461,7 @@ class Pop2(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Pop2":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -493,7 +499,7 @@ class Dup(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -531,7 +537,7 @@ class DupX1(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DupX1":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -569,7 +575,7 @@ class DupX2(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "DupX2":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -607,7 +613,7 @@ class Dup2(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -651,7 +657,7 @@ class Dup2X1(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2X1":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -684,7 +690,7 @@ class Dup2X2(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Dup2X2":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -717,7 +723,7 @@ class Swap(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Swap":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:

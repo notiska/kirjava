@@ -15,8 +15,14 @@ __all__ = (
 JVM class file annotation structs found in annotation attributes.
 """
 
+import sys
 import typing
 from typing import IO, Iterable, Union
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from .._struct import *
 
@@ -40,7 +46,7 @@ class ElementValue:
     -------
     lookup(kind: int) -> type[ElementValue] | None
         Looks up an element value type by kind.
-    read(stream: IO[bytes], pool: ConstPool) -> ElementValue
+    read(stream: IO[bytes], pool: ConstPool) -> Self
         Reads an annotation element value from a binary stream.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes this annotation element value to a binary stream.
@@ -53,7 +59,7 @@ class ElementValue:
     _cache: dict[int, type["ElementValue"] | None] = {}
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> "ElementValue":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> Self:
         """
         Internal annotation element value read.
         """
@@ -95,7 +101,7 @@ class ElementValue:
         """
 
         kind, = stream.read(1)
-        subclass: type[ElementValue] | None = cls._cache.get(kind)
+        subclass = cls._cache.get(kind)
         if subclass is None:
             subclass = cls.lookup(kind)
             cls._cache[kind] = subclass
@@ -143,7 +149,7 @@ class Annotation:
 
     Methods
     -------
-    read(stream: IO[bytes], pool: ConstPool) -> Annotation
+    read(stream: IO[bytes], pool: ConstPool) -> Self
         Reads an annotation from a binary stream.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes this annotation to a binary stream.
@@ -152,7 +158,7 @@ class Annotation:
     __slots__ = ("type", "elements")
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "Annotation":
+    def read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         """
         Reads an annotation from a binary stream.
 
@@ -162,11 +168,6 @@ class Annotation:
             The binary stream to read from.
         pool: ConstPool
             The class file constant pool.
-
-        Returns
-        -------
-        Annotation
-            The read annotation.
         """
 
         type_index, count = unpack_HH(stream.read(4))
@@ -268,7 +269,7 @@ class ParameterAnnotations:
 
     Methods
     -------
-    read(stream: IO[bytes], pool: ConstPool) -> ParameterAnnotations
+    read(stream: IO[bytes], pool: ConstPool) -> Self
         Reads parameter annotations from a binary stream.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes these parameter annotations to a binary stream.
@@ -277,7 +278,7 @@ class ParameterAnnotations:
     __slots__ = ("annotations",)
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "ParameterAnnotations":
+    def read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         """
         Reads parameter annotations from a binary stream.
 
@@ -479,7 +480,7 @@ class TargetInfo:
     _cache: dict[int, type["TargetInfo"] | None] = {}
 
     @classmethod
-    def _read(cls, stream: IO[bytes], kind: int) -> "TargetInfo":
+    def _read(cls, stream: IO[bytes], kind: int) -> Self:
         """
         Internal target info read.
         """
@@ -524,7 +525,7 @@ class TargetInfo:
         """
 
         kind, = stream.read(1)
-        subclass: type[TargetInfo] | None = cls._cache.get(kind)
+        subclass = cls._cache.get(kind)
         if subclass is None:
             subclass = cls.lookup(kind)
             cls._cache[kind] = subclass
@@ -571,7 +572,7 @@ class TypePath:
 
     Methods
     -------
-    read(stream: IO[bytes]) -> TypePath
+    read(stream: IO[bytes]) -> Self
         Reads a type path from a binary stream.
     write(self, stream: IO[bytes]) -> None
         Writes this type path to a binary stream.
@@ -580,7 +581,7 @@ class TypePath:
     __slots__ = ("path",)
 
     @classmethod
-    def read(cls, stream: IO[bytes]) -> "TypePath":
+    def read(cls, stream: IO[bytes]) -> Self:
         """
         Reads a type path from a binary stream.
 
@@ -711,7 +712,7 @@ class TypeAnnotation(Annotation):
     __slots__ = ("info", "path")
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "TypeAnnotation":
+    def read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         info = TargetInfo.read(stream)
         path = TypePath.read(stream)
 
@@ -816,7 +817,7 @@ class ConstValue(ElementValue):
     }
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> "ConstValue":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> Self:
         index, = unpack_H(stream.read(2))
         return cls(kind, pool[index])
 
@@ -857,7 +858,7 @@ class EnumConstValue(ElementValue):
     tags = b"e"
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> "EnumConstValue":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> Self:
         type_index, name_index = unpack_HH(stream.read(4))
         return cls(pool[type_index], pool[name_index])
 
@@ -896,7 +897,7 @@ class ClassValue(ElementValue):
     tags = b"c"
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> "ElementValue":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -932,7 +933,7 @@ class AnnotationValue(ElementValue):
     tags = b"@"
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> "ElementValue":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> Self:
         return cls(Annotation.read(stream, pool))
 
     def __init__(self, annotation: Annotation) -> None:
@@ -968,7 +969,7 @@ class ArrayValue(ElementValue):
     tags = b"["
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> "ElementValue":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool", kind: int) -> Self:
         count, = unpack_H(stream.read(2))
         return cls([ElementValue.read(stream, pool) for _ in range(count)])
 
@@ -1029,7 +1030,7 @@ class TypeParameterTarget(TargetInfo):
     tags = frozenset({TargetInfo.GENERIC_CLASS_TYPE_PARAMETER, TargetInfo.GENERIC_METHOD_TYPE_PARAMETER})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], kind: int) -> "TypeParameterTarget":
+    def _read(cls, stream: IO[bytes], kind: int) -> Self:
         index, = stream.read(1)
         return cls(kind, index)
 
@@ -1073,7 +1074,7 @@ class SuperTypeTarget(TargetInfo):
     tags = frozenset({TargetInfo.SUPER_CLASS_OR_INTERFACE_TYPE})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], kind: int) -> "SuperTypeTarget":
+    def _read(cls, stream: IO[bytes], kind: int) -> Self:
         index, = unpack_H(stream.read(2))
         return cls(index)
 
@@ -1114,7 +1115,7 @@ class TypeParameterBoundTarget(TargetInfo):
     tags = frozenset({TargetInfo.GENERIC_CLASS_TYPE_PARAMETER_BOUND, TargetInfo.GENERIC_METHOD_TYPE_PARAMETER_BOUND})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], kind: int) -> "TypeParameterBoundTarget":
+    def _read(cls, stream: IO[bytes], kind: int) -> Self:
         param_index, bound_index = stream.read(2)
         return cls(kind, param_index, bound_index)
 
@@ -1164,7 +1165,7 @@ class EmptyTarget(TargetInfo):
     })
 
     @classmethod
-    def _read(cls, stream: IO[bytes], kind: int) -> "EmptyTarget":
+    def _read(cls, stream: IO[bytes], kind: int) -> Self:
         return cls(kind)
 
     def __init__(self, kind: int) -> None:
@@ -1204,7 +1205,7 @@ class FormalParameterTarget(TargetInfo):
     tags = frozenset({TargetInfo.FORMAL_PARAMETER_TYPE})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], kind: int) -> "FormalParameterTarget":
+    def _read(cls, stream: IO[bytes], kind: int) -> Self:
         index, = stream.read(1)
         return cls(index)
 
@@ -1242,7 +1243,7 @@ class ThrowsTarget(TargetInfo):
     tags = frozenset({TargetInfo.THROWS_CLAUSE_TYPE})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], kind: int) -> "ThrowsTarget":
+    def _read(cls, stream: IO[bytes], kind: int) -> Self:
         index, = unpack_H(stream.read(2))
         return cls(index)
 
@@ -1281,7 +1282,7 @@ class LocalVarTarget(TargetInfo):
     tags = frozenset({TargetInfo.LOCAL_VARIABLE_TYPE, TargetInfo.RESOURCE_VARIABLE_TYPE})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], kind: int) -> "LocalVarTarget":
+    def _read(cls, stream: IO[bytes], kind: int) -> Self:
         count, = unpack_H(stream.read(2))
         ranges = []
         for _ in range(count):
@@ -1384,7 +1385,7 @@ class CatchTarget(TargetInfo):
     tags = frozenset({TargetInfo.CATCH_PARAMETER_TYPE})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], kind: int) -> "CatchTarget":
+    def _read(cls, stream: IO[bytes], kind: int) -> Self:
         index, = unpack_H(stream.read(2))
         return cls(index)
 
@@ -1429,7 +1430,7 @@ class OffsetTarget(TargetInfo):
     })
 
     @classmethod
-    def _read(cls, stream: IO[bytes], kind: int) -> "OffsetTarget":
+    def _read(cls, stream: IO[bytes], kind: int) -> Self:
         offset, = unpack_H(stream.read(2))
         return cls(kind, offset)
 
@@ -1483,7 +1484,7 @@ class TypeArgumentTarget(TargetInfo):
     })
 
     @classmethod
-    def _read(cls, stream: IO[bytes], kind: int) -> "TypeArgumentTarget":
+    def _read(cls, stream: IO[bytes], kind: int) -> Self:
         offset, index = unpack_HB(stream.read(3))
         return cls(kind, offset, index)
 

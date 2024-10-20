@@ -9,6 +9,8 @@ from kirjava.backend import *
 
 class TestBackend(unittest.TestCase):
 
+    # TODO: Tests for results and metadata.
+
     def test_u8(self) -> None:
         self.assertEqual(u8(0), 0)
         self.assertEqual(u8(255), 255)

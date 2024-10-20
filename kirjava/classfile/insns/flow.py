@@ -18,9 +18,15 @@ __all__ = (
     "Return", "AThrow",
 )
 
+import sys
 import typing
 from enum import Enum
 from typing import IO, Mapping
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from . import Instruction
 from .misc import wide
@@ -38,7 +44,7 @@ if typing.TYPE_CHECKING:
 
 class Jump(Instruction):
     """
-    A jump instruction base.
+    A jump instruction.
 
     Jumps to a relative offset in the instructions.
 
@@ -57,7 +63,7 @@ class Jump(Instruction):
     conditional = False
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Jump":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         delta, = unpack_h(stream.read(2))
         return cls(delta)
 
@@ -122,7 +128,7 @@ class GotoWide(Jump):
     delta: int
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "GotoWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         delta, = unpack_i(stream.read(4))
         return cls(delta)
 
@@ -141,7 +147,7 @@ class GotoWide(Jump):
 
 class Compare(Jump):
     """
-    A comparative conditional jump instruction base.
+    A comparative jump instruction.
 
     Compares two values and jumps based on the result.
 
@@ -157,7 +163,8 @@ class Compare(Jump):
 
     conditional = True
 
-    comparison: "Compare.Type"  # type: ignore[name-defined]
+    # Mypy bug? CLI mypy says not defined but Sublime says it's fine.
+    comparison: "Compare.Type"  # type: ignore[name-defined,unused-ignore]
     type: Type
 
     delta: int
@@ -266,7 +273,7 @@ class Compare(Jump):
 
 class CompareToZero(Compare):
     """
-    A compare to zero instruction base.
+    A compare to zero instruction.
 
     Compares an int stack value to zero.
     """
@@ -323,7 +330,7 @@ class IfNe(CompareToZero):
 
 class CompareToNull(Compare):
     """
-    A compare to null instruction base.
+    A compare to null instruction.
 
     Compares a reference stack value to null.
     """
@@ -384,7 +391,7 @@ class JsrWide(Jsr):
     __slots__ = ()
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "JsrWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         delta, = unpack_i(stream.read(4))
         return cls(delta)
 
@@ -417,7 +424,7 @@ class Ret(Jump):
     __slots__ = ("index",)
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Ret":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = stream.read(1)
         return cls(index)
 
@@ -480,7 +487,7 @@ class RetWide(Ret):
     mutated = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "RetWide":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(index)
 
@@ -504,7 +511,7 @@ class RetWide(Ret):
 
 class Switch(Instruction):
     """
-    A switch instruction base.
+    A switch instruction.
 
     Jumps to a relative offset based on a key value.
 
@@ -528,6 +535,18 @@ class Switch(Instruction):
         self.offsets: dict[int, int] = {}
         if offsets is not None:
             self.offsets.update(offsets)
+
+    def __getitem__(self, key: int) -> int:
+        return self.offsets[key]
+
+    def __setitem__(self, key: int, branch: int) -> None:
+        self.offsets[key] = branch
+
+    def __delitem__(self, key: int) -> None:
+        del self.offsets[key]
+
+    def __len__(self) -> int:
+        return len(self.offsets)
 
     # class Metadata(Source.Metadata):
     #
@@ -561,7 +580,7 @@ class TableSwitch(Switch):
     __slots__ = ("low", "high")
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "TableSwitch":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         stream.read((4 - stream.tell()) % 4)
         default, low, high = unpack_iii(stream.read(12))
         offsets = {}
@@ -575,9 +594,9 @@ class TableSwitch(Switch):
         self.high = high
 
     def __copy__(self) -> "TableSwitch":
-        copy = tableswitch(self.default, self.low, self.high, self.offsets)  # type: ignore[call-arg]
+        copy = tableswitch(self.default, self.low, self.high, self.offsets)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -643,7 +662,7 @@ class LookupSwitch(Switch):
     __slots__ = ()
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "LookupSwitch":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         stream.read((4 - stream.tell()) % 4)
         default, count = unpack_ii(stream.read(8))
         offsets = {}
@@ -653,9 +672,9 @@ class LookupSwitch(Switch):
         return cls(default, offsets)
 
     def __copy__(self) -> "LookupSwitch":
-        copy = lookupswitch(self.default, self.offsets)  # type: ignore[call-arg]
+        copy = lookupswitch(self.default, self.offsets)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -701,7 +720,7 @@ class LookupSwitch(Switch):
 
 class Return(Jump):
     """
-    A return instruction base.
+    A return instruction.
 
     Returns from the current method.
 
@@ -718,7 +737,7 @@ class Return(Jump):
     type: Type
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "Return":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __init__(self) -> None:
@@ -771,7 +790,7 @@ class AThrow(Jump):
     rt_throws = frozenset({throwable_t})  # Specifics (monitor state / NPE) aren't really needed in this case.
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "AThrow":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __init__(self) -> None:
@@ -780,7 +799,7 @@ class AThrow(Jump):
     def __copy__(self) -> "AThrow":
         copy = athrow()
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:

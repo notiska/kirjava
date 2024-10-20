@@ -7,14 +7,20 @@ __all__ = (
     "iastore", "lastore", "fastore", "dastore", "aastore", "bastore", "castore", "sastore",
     "newarray", "anewarray", "multianewarray",  # "anewarray_l", "multianewarray_l",
     "arraylength",
-    "ArrayLoad", "ArrayStore", "NewArray",
-    "ANewArray", "MultiANewArray",  # "ANewArrayLinked", "MultiANewArrayLinked",
+    "ArrayLoad", "ArrayStore",
+    "NewArray", "ANewArray", "MultiANewArray",  # "ANewArrayLinked", "MultiANewArrayLinked",
     "ArrayLength",
 )
 
+import sys
 import typing
 from copy import deepcopy
 from typing import IO
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from . import Instruction
 from .._struct import *
@@ -31,7 +37,7 @@ if typing.TYPE_CHECKING:
 
 class ArrayLoad(Instruction):
     """
-    An array load instruction base.
+    An array load instruction.
 
     Loads an element from an array.
 
@@ -50,7 +56,7 @@ class ArrayLoad(Instruction):
     type: Type
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ArrayLoad":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -98,7 +104,7 @@ class ArrayLoad(Instruction):
 
 class ArrayStore(Instruction):
     """
-    An array store instruction base.
+    An array store instruction.
 
     Stores an element in an array.
 
@@ -117,7 +123,7 @@ class ArrayStore(Instruction):
     type: Type
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ArrayStore":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:
@@ -157,6 +163,8 @@ class ArrayStore(Instruction):
     #     codegen.emit(IRArrayStore(step, codegen.value(array), codegen.value(index), codegen.value(item)))
 
 
+# FIXME: Honestly classes like this are a bit weird, perhaps they should be hidden (i.e. _NewArray). Although, this
+#        could make the repr() output a bit weird.
 class NewArray(Instruction):
     """
     A `newarray` instruction.
@@ -211,7 +219,7 @@ class NewArray(Instruction):
     }
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "NewArray":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         tag, = stream.read(1)
         return cls(tag)
 
@@ -220,11 +228,9 @@ class NewArray(Instruction):
         self.tag = tag
 
     def __copy__(self) -> "NewArray":
-        # FIXME: Type ignored because we need to support 3.10, so can't use Self type. If support is dropped, need to
-        #        update all occurrences of this.
-        copy = newarray(self.tag)  # type: ignore[call-arg]
+        copy = newarray(self.tag)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         tag_str = NewArray._TAGS.get(self.tag) or str(self.tag)
@@ -292,7 +298,7 @@ class ANewArray(Instruction):
     rt_throws = frozenset({Class("java/lang/NegativeArraySizeException")})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ANewArray":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
@@ -301,14 +307,14 @@ class ANewArray(Instruction):
         self.classref = classref
 
     def __copy__(self) -> "ANewArray":
-        copy = anewarray(self.classref)  # type: ignore[call-arg]
+        copy = anewarray(self.classref)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "ANewArray":
-        copy = anewarray(deepcopy(self.classref, memo))  # type: ignore[call-arg]
+        copy = anewarray(deepcopy(self.classref, memo))
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -375,7 +381,7 @@ class MultiANewArray(Instruction):
     rt_throws = frozenset({Class("java/lang/NegativeArraySizeException")})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "MultiANewArray":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         index, dimensions = unpack_HB(stream.read(3))
         return cls(pool[index], dimensions)
 
@@ -385,14 +391,14 @@ class MultiANewArray(Instruction):
         self.dimensions = dimensions
 
     def __copy__(self) -> "MultiANewArray":
-        copy = multianewarray(self.classref, self.dimensions)  # type: ignore[call-arg]
+        copy = multianewarray(self.classref, self.dimensions)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __deepcopy__(self, memo: dict[int, object]) -> "MultiANewArray":
-        copy = multianewarray(deepcopy(self.classref, memo), self.dimensions)  # type: ignore[call-arg]
+        copy = multianewarray(deepcopy(self.classref, memo), self.dimensions)
         copy.offset = self.offset
-        return copy  # type: ignore[return-value]
+        return copy
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -483,7 +489,7 @@ class ArrayLength(Instruction):
     linked = True
 
     @classmethod
-    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> "ArrayLength":
+    def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
 
     def __repr__(self) -> str:

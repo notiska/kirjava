@@ -6,8 +6,14 @@ __all__ = (
     "ConstPool",
 )
 
+import sys
 from os import SEEK_SET
 from typing import IO, Iterable, Union
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from .constants import ConstIndex, ConstInfo
 from .._struct import *
@@ -28,7 +34,7 @@ class ConstPool:
 
     Methods
     -------
-    read(stream: IO[bytes]) -> ConstPool
+    read(stream: IO[bytes]) -> Self
         Reads a constant pool from a binary stream.
 
     write(self, stream: IO[bytes]) -> None
@@ -53,7 +59,7 @@ class ConstPool:
     __slots__ = ("_contiguous", "_non_contiguous", "_low", "_index")
 
     @classmethod
-    def read(cls, stream: IO[bytes]) -> "ConstPool":
+    def read(cls, stream: IO[bytes]) -> Self:
         """
         Reads a constant pool from a binary stream.
 

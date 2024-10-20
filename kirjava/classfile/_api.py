@@ -51,13 +51,8 @@ def load(file_or_stream: str | PathLike[str] | IO[bytes]) -> ClassFile:
         file_or_stream = os.fspath(file_or_stream)
     if isinstance(file_or_stream, str):
         with open(file_or_stream, "rb") as stream:
-            cf, meta = ClassFile.read(stream)
-    else:
-        cf, meta = ClassFile.read(file_or_stream)
-
-    ...  # TODO: Check metadata for any errors.
-
-    return cf
+            return ClassFile.read(stream).unwrap()
+    return ClassFile.read(file_or_stream).unwrap()
 
 
 def loads(data: bytes) -> ClassFile:
@@ -65,9 +60,4 @@ def loads(data: bytes) -> ClassFile:
     Loads a class file from binary data.
     """
 
-    stream = BytesIO(data)
-    cf, meta = ClassFile.read(stream)
-
-    ...  # TODO: Check metadata for any errors.
-
-    return cf
+    return ClassFile.read(BytesIO(data)).unwrap()

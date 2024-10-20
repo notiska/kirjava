@@ -9,8 +9,15 @@ __all__ = (
     "SourceDebugExtension", "Module", "ModulePackages", "ModuleMainClass",
 )
 
+import sys
+import typing
 from os import SEEK_CUR
 from typing import IO, Iterable, Union
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from .attribute import AttributeInfo
 from .constants import *
@@ -19,8 +26,11 @@ from .method import MethodInfo
 from .pool import ConstPool
 from .._struct import *
 from ..version import *
-from ...meta import Metadata
-from ...model.class_ import Class
+from ...backend import Result
+from ...model import Class, Linker
+
+if typing.TYPE_CHECKING:
+    from ..visitor import ClassFileVisitor
 
 
 class ClassFile:
@@ -96,12 +106,14 @@ class ClassFile:
 
     Methods
     -------
-    read(stream: IO[bytes], reader: Reader) -> tuple[ClassFile, Metadata]
+    read(stream: IO[bytes], reader: Reader) -> Result[Self]
         Reads a class file from a binary stream.
 
     write(self, stream: IO[bytes]) -> None
         Writes this class file to a binary stream.
-    unwrap(self) -> Class
+    visit(self, visitor: ClassFileVisitor) -> None
+        Calls a visitor on this class file.
+    unwrap(self, linker: Linker) -> Result[Class]
         Unwraps this class file.
     """
 
@@ -122,7 +134,7 @@ class ClassFile:
     ACC_MODULE     = 0x8000
 
     @classmethod
-    def read(cls, stream: IO[bytes]) -> tuple["ClassFile", Metadata]:
+    def read(cls, stream: IO[bytes]) -> Result[Self]:
         """
         Reads a class file from a binary stream.
 
@@ -132,47 +144,35 @@ class ClassFile:
             The binary stream to read from.
         """
 
-        meta = Metadata(__name__)
+        with Result[Self].meta(__name__) as result:
+            magic = stream.read(4)
+            if magic != b"\xca\xfe\xba\xbe":
+                result.err(ValueError(f"invalid class file magic {magic!r}"))
 
-        magic = stream.read(4)
-        if magic != b"\xca\xfe\xba\xbe":
-            meta.error("read.magic", "Invalid class file magic %r.", magic)
+            minor, major = unpack_HH(stream.read(4))
+            version = Version(major, minor)
+            pool = ConstPool.read(stream)
 
-        minor, major = unpack_HH(stream.read(4))
-        version = Version(major, minor)
-        pool = ConstPool.read(stream)
+            access, this_index, super_index, interface_count = unpack_HHHH(stream.read(8))
+            interfaces = [pool[index] for index, in iter_unpack_H(stream.read(interface_count * 2))]
 
-        access, this_index, super_index, interface_count = unpack_HHHH(stream.read(8))
-        interfaces = [pool[index] for index, in iter_unpack_H(stream.read(interface_count * 2))]
+            field_count, = unpack_H(stream.read(2))
+            fields = [FieldInfo.read(stream, version, pool).unwrap_into(result) for _ in range(field_count)]
+            method_count, = unpack_H(stream.read(2))
+            methods = [MethodInfo.read(stream, version, pool).unwrap_into(result) for _ in range(method_count)]
 
-        field_count, = unpack_H(stream.read(2))
-        fields = []
-        for _ in range(field_count):
-            field, child_meta = FieldInfo.read(stream, version, pool)
-            fields.append(field)
-            meta.add(child_meta)
+            attr_count, = unpack_H(stream.read(2))
+            attributes = [
+                AttributeInfo.read(stream, version, pool, AttributeInfo.LOC_CLASS).unwrap_into(result)
+                for _ in range(attr_count)
+            ]
 
-        method_count, = unpack_H(stream.read(2))
-        methods = []
-        for _ in range(method_count):
-            method, child_meta = MethodInfo.read(stream, version, pool)
-            methods.append(method)
-            meta.add(child_meta)
-
-        attr_count, = unpack_H(stream.read(2))
-        attributes = []
-        for _ in range(attr_count):
-            attr, child_meta = AttributeInfo.read(stream, version, pool, AttributeInfo.LOC_CLASS)
-            attributes.append(attr)
-            meta.add(child_meta)
-
-        self = cls(
-            version, pool,
-            access, pool[this_index], pool[super_index] if super_index else None, interfaces,
-            fields, methods, attributes,
-        )
-        meta.element = self
-        return self, meta
+            return result.ok(cls(
+                version, pool,
+                access, pool[this_index], pool[super_index] if super_index else None, interfaces,
+                fields, methods, attributes,
+            ))
+        return result
 
     @property
     def is_public(self) -> bool:
@@ -352,34 +352,68 @@ class ClassFile:
         for attribute in self.attributes:
             attribute.write(stream, self.version, self.pool)
 
-    def unwrap(self) -> Class:
+    def visit(self, visitor: "ClassFileVisitor") -> None:
+        """
+        Calls a visitor on this class file.
+        """
+
+        visitor.visit_start(self)
+        visitor.visit_pool(self.pool)
+        for field in self.fields:
+            visitor.visit_field(field)
+        for method in self.methods:
+            visitor.visit_method(method)
+        for attribute in self.attributes:
+            visitor.visit_attribute(attribute)
+        visitor.visit_end(self)
+
+    def unwrap(self, linker: Linker) -> Result[Class]:
         """
         Unwraps this class file.
 
-        Returns
-        -------
-        Class
-            The unwrapped `Class`.
+        Parameters
+        ----------
+        linker: Linker
+            The linker to use to resolve references.
         """
 
-        if not isinstance(self.this, ClassInfo):
-            raise ValueError(f"{self!r} this class is not a class constant")
+        with Result[Class].meta(__name__, self) as result:
+            if not isinstance(self.this, ClassInfo):
+                return result.err(TypeError(f"this class {self.this!s} is not a class constant"))
 
-        return Class(
-            str(self.this.name),
-            None, [],  # TODO: Fix the super and interface unwrapping.
-            [field.unwrap() for field in self.fields],
-            [method.unwrap() for method in self.methods],
-            is_public=self.is_public,
-            is_final=self.is_final,
-            is_super=self.is_super,
-            is_interface=self.is_interface,
-            is_abstract=self.is_abstract,
-            is_synthetic=self.is_synthetic,
-            is_annotation=self.is_annotation,
-            is_enum=self.is_enum,
-            is_module=self.is_module,
-        )
+            # FIXME: This is actually quite lenient as we assume that this is a UTF8 constant, more thorough type checking
+            #        should be required.
+            name = str(self.this.name)
+            super_ = None
+            interfaces: list[Class] = []
+
+            if self.super is not None:
+                if not isinstance(self.super, ClassInfo):
+                    return result.err(TypeError(f"super class {self.super!s} is not a class constant"))
+                super_ = linker.find_class(str(self.super.name))
+
+            for interface in self.interfaces:
+                if not isinstance(interface, ClassInfo):
+                    return result.err(TypeError(f"interface {interface!s} is not a class constant"))
+                linker.find_class(str(interface.name))
+                # interfaces.append()
+
+            return result.ok(Class(
+                str(self.this.name),
+                super_, interfaces,
+                [field.unwrap() for field in self.fields],
+                [method.unwrap() for method in self.methods],
+                is_public=self.is_public,
+                is_final=self.is_final,
+                is_super=self.is_super,
+                is_interface=self.is_interface,
+                is_abstract=self.is_abstract,
+                is_synthetic=self.is_synthetic,
+                is_annotation=self.is_annotation,
+                is_enum=self.is_enum,
+                is_module=self.is_module,
+            ))
+        return result
 
 
 # ---------------------------------------- Attributes ---------------------------------------- #
@@ -404,17 +438,19 @@ class BootstrapMethods(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["BootstrapMethods", None]:
-        method_count, = unpack_H(stream.read(2))
-        methods = []
-        for _ in range(method_count):
-            ref_index, arg_count = unpack_HH(stream.read(4))
-            args = []
-            for _ in range(arg_count):
-                arg_index, = unpack_H(stream.read(2))
-                args.append(pool[arg_index])
-            methods.append(cls.BootstrapMethod(pool[ref_index], args))
-        return cls(methods), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self]() as result:
+            method_count, = unpack_H(stream.read(2))
+            methods = []
+            for _ in range(method_count):
+                ref_index, arg_count = unpack_HH(stream.read(4))
+                args = []
+                for _ in range(arg_count):
+                    arg_index, = unpack_H(stream.read(2))
+                    args.append(pool[arg_index])
+                methods.append(cls.BootstrapMethod(pool[ref_index], args))
+            return result.ok(cls(methods))
+        return result
 
     def __init__(self, methods: Iterable["BootstrapMethods.BootstrapMethod"] | None = None) -> None:
         super().__init__()
@@ -510,9 +546,11 @@ class NestHost(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["NestHost", None]:
-        index, = unpack_H(stream.read(2))
-        return cls(pool[index]), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self]() as result:
+            index, = unpack_H(stream.read(2))
+            return result.ok(cls(pool[index]))
+        return result
 
     def __init__(self, host: ConstInfo) -> None:
         super().__init__()
@@ -552,14 +590,16 @@ class NestMembers(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["NestMembers", None]:
-        count, = unpack_H(stream.read(2))
-        classes = [pool[index] for index, in iter_unpack_H(stream.read(count * 2))]
-        # Some explicit checks do need to be added for some attributes, as the stream.read(count * 2) may not read all
-        # required bytes which could result in a seemingly valid attribute read, which would not be correct.
-        if len(classes) != count:
-            raise ValueError("nest members underread")
-        return cls(classes), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            classes = [pool[index] for index, in iter_unpack_H(stream.read(count * 2))]
+            # Some explicit checks do need to be added for some attributes, as the stream.read(count * 2) may not read
+            # all required bytes which could result in a seemingly valid attribute read, which would not be correct.
+            if len(classes) != count:
+                return result.err(ValueError("nest members underread"))
+            return result.ok(cls(classes))
+        return result
 
     def __init__(self, classes: Iterable[ConstInfo] | None = None) -> None:
         super().__init__()
@@ -622,12 +662,14 @@ class PermittedSubclasses(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["PermittedSubclasses", None]:
-        count, = unpack_H(stream.read(2))
-        classes = [pool[index] for index, in iter_unpack_H(stream.read(count * 2))]
-        if len(classes) != count:
-            raise ValueError("permitted subclasses underread")
-        return cls(classes), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            classes = [pool[index] for index, in iter_unpack_H(stream.read(count * 2))]
+            if len(classes) != count:
+                return result.err(ValueError("permitted subclasses underread"))
+            return result.ok(cls(classes))
+        return result
 
     def __init__(self, classes: Iterable[ConstInfo] | None = None) -> None:
         super().__init__()
@@ -689,18 +731,20 @@ class InnerClasses(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["InnerClasses", None]:
-        count, = unpack_H(stream.read(2))
-        classes = []
-        for _ in range(count):
-            inner_index, outer_index, name_index, access = unpack_HHHH(stream.read(8))
-            classes.append(cls.InnerClass(
-                pool[inner_index],
-                pool[outer_index] if outer_index else None,
-                pool[name_index] if name_index else None,
-                access,
-            ))
-        return cls(classes), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            classes = []
+            for _ in range(count):
+                inner_index, outer_index, name_index, access = unpack_HHHH(stream.read(8))
+                classes.append(cls.InnerClass(
+                    pool[inner_index],
+                    pool[outer_index] if outer_index else None,
+                    pool[name_index] if name_index else None,
+                    access,
+                ))
+            return result.ok(cls(classes))
+        return result
 
     def __init__(self, classes: Iterable["InnerClasses.InnerClass"] | None = None) -> None:
         super().__init__()
@@ -988,9 +1032,11 @@ class EnclosingMethod(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["EnclosingMethod", None]:
-        class_index, method_index = unpack_HH(stream.read(4))
-        return cls(pool[class_index], pool[method_index] if method_index else None), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self]() as result:
+            class_index, method_index = unpack_HH(stream.read(4))
+            return result.ok(cls(pool[class_index], pool[method_index] if method_index else None))
+        return result
 
     def __init__(self, class_: ConstInfo, method: ConstInfo | None) -> None:
         super().__init__()
@@ -1033,21 +1079,19 @@ class Record(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["Record", Metadata]:
-        meta = Metadata(__name__)
-        component_count, = unpack_H(stream.read(2))
-        components = []
-        for _ in range(component_count):
-            name_index, desc_index, attr_count = unpack_HHH(stream.read(6))
-            attributes = []
-            for _ in range(attr_count):
-                attr, child_meta = AttributeInfo.read(stream, version, pool, AttributeInfo.LOC_RECORD_COMPONENT)
-                attributes.append(attr)
-                meta.add(child_meta)
-            components.append(cls.ComponentInfo(pool[name_index], pool[desc_index], attributes))
-        self = cls(components)
-        meta.element = self
-        return self, meta
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self].meta(__name__) as result:
+            component_count, = unpack_H(stream.read(2))
+            components = []
+            for _ in range(component_count):
+                name_index, desc_index, attr_count = unpack_HHH(stream.read(6))
+                attributes = [
+                    AttributeInfo.read(stream, version, pool, AttributeInfo.LOC_RECORD_COMPONENT).unwrap_into(result)
+                    for _ in range(attr_count)
+                ]
+                components.append(cls.ComponentInfo(pool[name_index], pool[desc_index], attributes))
+            return result.ok(cls(components))
+        return result
 
     def __init__(self, components: Iterable["Record.ComponentInfo"] | None = None) -> None:
         super().__init__()
@@ -1148,9 +1192,11 @@ class SourceFile(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["SourceFile", None]:
-        index, = unpack_H(stream.read(2))
-        return cls(pool[index]), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self]() as result:
+            index, = unpack_H(stream.read(2))
+            return result.ok(cls(pool[index]))
+        return result
 
     def __init__(self, file: ConstInfo) -> None:
         super().__init__()
@@ -1189,11 +1235,13 @@ class SourceDebugExtension(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["SourceDebugExtension", None]:
-        assert stream.seekable(), "stream is not seekable"
-        stream.seek(-4, SEEK_CUR)
-        length, = unpack_I(stream.read(4))
-        return cls(stream.read(length)), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self]() as result:
+            assert stream.seekable(), "stream is not seekable"
+            stream.seek(-4, SEEK_CUR)
+            length, = unpack_I(stream.read(4))
+            return result.ok(cls(stream.read(length)))
+        return result
 
     def __init__(self, extension: bytes) -> None:
         super().__init__()
@@ -1270,48 +1318,53 @@ class Module(AttributeInfo):
     ACC_MANDATED  = 0x8000
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["Module", None]:
-        module_index, flags, version_index = unpack_HHH(stream.read(6))
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self]() as result:
+            module_index, flags, version_index = unpack_HHH(stream.read(6))
 
-        require_count, = unpack_H(stream.read(2))
-        requires = []
-        for _ in range(require_count):
-            require_index, require_flags, require_version_index = unpack_HHH(stream.read(6))
-            requires.append(cls.Require(
-                pool[require_index], require_flags, pool[require_version_index] if require_version_index else None
+            require_count, = unpack_H(stream.read(2))
+            requires = []
+            for _ in range(require_count):
+                require_index, require_flags, require_version_index = unpack_HHH(stream.read(6))
+                requires.append(cls.Require(
+                    pool[require_index], require_flags, pool[require_version_index] if require_version_index else None
+                ))
+
+            export_count, = unpack_H(stream.read(2))
+            exports = []
+            for _ in range(export_count):
+                export_index, export_flags, exports_to_count = unpack_HHH(stream.read(6))
+                exports_to = [pool[index] for index, in iter_unpack_H(stream.read(exports_to_count * 2))]
+                if len(exports_to) != exports_to_count:
+                    return result.err(ValueError("module exports underread"))
+                exports.append(cls.Export(pool[export_index], export_flags, exports_to))
+
+            open_count, = unpack_H(stream.read(2))
+            opens = []
+            for _ in range(open_count):
+                open_index, open_flags, opens_to_count = unpack_HHH(stream.read(6))
+                opens_to = [pool[index] for index, in iter_unpack_H(stream.read(opens_to_count * 2))]
+                if len(opens_to) != opens_to_count:
+                    return result.err(ValueError("module opens underread"))
+                opens.append(cls.Open(pool[open_index], open_flags, opens_to))
+
+            use_count, = unpack_H(stream.read(2))
+            uses = [pool[index] for index, in iter_unpack_H(stream.read(use_count * 2))]
+
+            provide_count, = unpack_H(stream.read(2))
+            provides = []
+            for _ in range(provide_count):
+                provide_index, provides_with_count = unpack_HH(stream.read(4))
+                provides_with = [pool[index] for index, in iter_unpack_H(stream.read(provides_with_count * 2))]
+                if len(provides_with) != provides_with_count:
+                    return result.err(ValueError("module provides underread"))
+                provides.append(cls.Provide(pool[provide_index], provides_with))
+
+            return result.ok(cls(
+                pool[module_index], flags, pool[version_index] if version_index else None,
+                requires, exports, opens, uses, provides,
             ))
-
-        export_count, = unpack_H(stream.read(2))
-        exports = []
-        for _ in range(export_count):
-            export_index, export_flags, exports_to_count = unpack_HHH(stream.read(6))
-            exports_to = [pool[index] for index, in iter_unpack_H(stream.read(exports_to_count * 2))]
-            exports.append(cls.Export(pool[export_index], export_flags, exports_to))
-
-        open_count, = unpack_H(stream.read(2))
-        opens = []
-        for _ in range(open_count):
-            open_index, open_flags, opens_to_count = unpack_HHH(stream.read(6))
-            opens_to = [pool[index] for index, in iter_unpack_H(stream.read(opens_to_count * 2))]
-            opens.append(cls.Open(pool[open_index], open_flags, opens_to))
-
-        use_count, = unpack_H(stream.read(2))
-        uses = [pool[index] for index, in iter_unpack_H(stream.read(use_count * 2))]
-
-        provide_count, = unpack_H(stream.read(2))
-        provides = []
-        for _ in range(provide_count):
-            provide_index, provides_with_count = unpack_HH(stream.read(4))
-            provides_with = [pool[index] for index, in iter_unpack_H(stream.read(provides_with_count * 2))]
-            if len(provides_with) != provides_with_count:
-                raise ValueError("module underread")
-            provides.append(cls.Provide(pool[provide_index], provides_with))
-
-        self = cls(
-            pool[module_index], flags, pool[version_index] if version_index else None,
-            requires, exports, opens, uses, provides,
-        )
-        return self, None
+        return result
 
     @property
     def is_open(self) -> bool:
@@ -1668,12 +1721,14 @@ class ModulePackages(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["ModulePackages", None]:
-        count, = unpack_H(stream.read(2))
-        packages = [pool[index] for index, in iter_unpack_H(stream.read(count * 2))]
-        if len(packages) != count:
-            raise ValueError("module packages underread")
-        return cls(packages), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self]() as result:
+            count, = unpack_H(stream.read(2))
+            packages = [pool[index] for index, in iter_unpack_H(stream.read(count * 2))]
+            if len(packages) != count:
+                return result.err(ValueError("module packages underread"))
+            return result.ok(cls(packages))
+        return result
 
     def __init__(self, packages: Iterable[ConstInfo] | None = None) -> None:
         super().__init__()
@@ -1735,9 +1790,11 @@ class ModuleMainClass(AttributeInfo):
     locations = frozenset({AttributeInfo.LOC_CLASS})
 
     @classmethod
-    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> tuple["ModuleMainClass", None]:
-        index, = unpack_H(stream.read(2))
-        return cls(pool[index]), None
+    def _read(cls, stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]:
+        with Result[Self]() as result:
+            index, = unpack_H(stream.read(2))
+            return result.ok(cls(pool[index]))
+        return result
 
     def __init__(self, class_: ConstInfo) -> None:
         super().__init__()
