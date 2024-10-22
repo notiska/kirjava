@@ -19,15 +19,12 @@ else:
 
 from . import block, edge
 from ._dis import disassemble
-from .block import Block
+from .block import *
 from .edge import Catch, Edge, Fallthrough, Jump as JumpEdge
+from ..fmt import ClassFile, MethodInfo
 from ..insns import goto, Instruction
 from ..insns.flow import Jump as JumpInsn
 from ...backend import Result
-
-if typing.TYPE_CHECKING:
-    from ..fmt import ClassFile
-    from ..fmt.method import MethodInfo
 
 
 # FIXME: Make the graph structure more/less expressive? Want to maximise usability, analysis can have a separate data
@@ -38,12 +35,6 @@ class Graph:
 
     Attributes
     ----------
-    blocks: list[Block]
-        A list of all blocks in this graph.
-    edges_out: dict[Block, set[Edge]]
-        A mapping of all blocks to the edges leading out of them.
-    edges_in: dict[Block, set[Edge]]
-        A mapping of all blocks to the edges leading into them.
     entry: Block
         The entry block of the graph.
     return_: Block
@@ -55,23 +46,20 @@ class Graph:
 
     Methods
     -------
-    disassemble(method: MethodInfo, cf: ClassFile) -> Result[Self]
+    disassemble(method: MethodInfo, cf: ClassFile | None = None) -> Result[Self]
         Disassembled a method into a JVM control flow graph.
 
-    block(self) -> Block
-        Creates a new block in this graph.
-    fallthrough(self, source: int | Block, target: int | Block, *, do_raise: bool = True) -> Fallthrough
+    fallthrough(self, source: int | Block, target: int | Block, *, doraise: bool = True) -> Fallthrough
         Creates a fallthrough edge between two blocks.
     """
 
     __slots__ = (
-        "blocks", "edges_out", "edges_in",
         "entry", "return_", "rethrow", "opaque",
-        "_label",
+        "_blocks", "_edges_out", "_edges_in",
     )
 
     @classmethod
-    def disassemble(cls, method: "MethodInfo", cf: "ClassFile") -> Result[Self]:
+    def disassemble(cls, method: "MethodInfo", cf: ClassFile | None = None) -> Result[Self]:
         """
         Disassembles a method into a JVM control flow graph.
 
@@ -79,50 +67,28 @@ class Graph:
         ----------
         method: MethodInfo
             The method to disassemble.
-        cf: ClassFile
+        cf: ClassFile | None
             The class file containing the method.
         """
 
         return disassemble(cls(), method, cf)
 
     def __init__(self) -> None:
-        self.blocks: list[Block] = []
-        self.edges_out: dict[Block, set[Edge]] = defaultdict(set)
-        self.edges_in:  dict[Block, set[Edge]] = defaultdict(set)
+        self.entry   = MutableBlock(0)
+        self.return_ = Return()
+        self.rethrow = Rethrow()
+        self.opaque  = Opaque()
 
-        self.entry   = self.block(Block.LABEL_ENTRY)
-        self.return_ = self.block(Block.LABEL_RETURN)
-        self.rethrow = self.block(Block.LABEL_RETHROW)
-        self.opaque  = self.block(Block.LABEL_OPAQUE)
+        self._blocks = {
+            self.opaque.label: self.opaque,
+            self.rethrow.label: self.rethrow,
+            self.return_.label: self.return_,
+            self.entry.label: self.entry,
+        }
+        self._edges_out: dict[Block, set[Edge]] = defaultdict(set)
+        self._edges_in:  dict[Block, set[Edge]] = defaultdict(set)
 
-        self._label = 0
-
-    def block(self, label: int | None = None) -> Block:
-        """
-        Creates a new block in this graph.
-
-        Parameters
-        ----------
-        label: int | None
-            The label of the block, or None to generate a unique one.
-
-        Returns
-        -------
-        Block
-            The new block with a valid label for this graph.
-        """
-
-        if label is None:
-            # Faster to do it this way, might need to change later if I add better external API support.
-            # ^^ to clarify, I mean by checking the maximum label already in the graph to avoid collisions.
-            self._label += 1
-            label = self._label
-
-        block = Block(label)
-        self.blocks.append(block)
-        return block
-
-    def fallthrough(self, source: int | Block, target: int | Block, *, do_raise: bool = True) -> Fallthrough:
+    def fallthrough(self, source: int | Block, target: int | Block, *, doraise: bool = True) -> Fallthrough:
         """
         Creates a fallthrough edge between two blocks.
 
@@ -132,7 +98,7 @@ class Graph:
             The label or block to fall through from.
         target: int | Block
             The label or block to fall through to.
-        do_raise: bool
+        doraise: bool
             Raises an exception if the edge puts the graph in an invalid state.
 
         Returns
@@ -143,24 +109,24 @@ class Graph:
         Raises
         ------
         ValueError
-            If `do_raise=True` and the edge would be invalid in the graph.
+            If `doraise=True` and the edge would be invalid in the graph.
         """
 
         if not isinstance(source, Block):
-            source = self.blocks[source]
+            source = self._blocks[source]
         if not isinstance(target, Block):
-            target = self.blocks[target]
+            target = self._blocks[target]
 
         edge = Fallthrough(source, target)  # TODO: Checks for duplicate edges, etc.
-        self.edges_out[source].add(edge)
-        self.edges_in[target].add(edge)
+        self._edges_out[source].add(edge)
+        self._edges_in[target].add(edge)
 
         return edge
 
     def jump(
             self, source: int | Block, target: int | Block | None = None,
-            instruction: Instruction | type[Instruction] = goto,
-            *, do_raise: bool = True,
+            instruction: JumpInsn | type[JumpInsn] = goto,
+            *, doraise: bool = True,
     ) -> JumpEdge:
         """
         Creates a jump edge between two blocks.
@@ -172,9 +138,9 @@ class Graph:
         target: int | Block | None
             The label or block to jump to, or `None` for certain instructions (i.e.
             return, athrow).
-        instruction: Instruction | type[Instruction]
+        instruction: JumpInsn | type[JumpInsn]
             The instruction to use for the jump.
-        do_raise: bool
+        doraise: bool
             Raises an exception if the edge puts the graph in an invalid state.
 
         Returns
@@ -185,20 +151,18 @@ class Graph:
         Raises
         ------
         TypeError
-            If `do_raise=True` and the instruction is not a jump instruction.
+            If `doraise=True` and the instruction is not a jump instruction.
         ValueError
-            If `do_raise=True` and the edge would be invalid in the graph.
+            If `doraise=True` and the edge would be invalid in the graph.
         """
 
         if not isinstance(source, Block):
-            source = self.blocks[source]
+            source = self._blocks[source]
         if target is not None and not isinstance(target, Block):
-            target = self.blocks[target]
+            target = self._blocks[target]
 
-        if not isinstance(instruction, Instruction):
-            instruction = instruction(0)  # type: ignore[call-arg]
-        if do_raise and not isinstance(instruction, JumpInsn):
-            raise TypeError("expected jump instruction")
+        if not isinstance(instruction, JumpInsn):
+            instruction = instruction(0)
 
         # FIXME
         # edge = JumpEdge(source, target, instruction)

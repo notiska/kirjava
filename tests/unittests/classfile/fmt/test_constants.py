@@ -15,6 +15,8 @@ from kirjava.classfile.version import Version
 
 class TestConstants(unittest.TestCase):
 
+    # TODO: Tests for unwrapping.
+
     _DEFAULTS = {
         # ConstIndex:        (1,),
         UTF8Info:          (b"test",),

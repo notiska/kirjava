@@ -24,7 +24,6 @@ else:
 
 from . import Instruction
 from .._struct import *
-from ..fmt.constants import ClassInfo, ConstInfo
 from ...model.types import *
 # from ...model.values.constants import Integer, Null
 # from ...model.values.objects import Array as ArrayValue
@@ -32,7 +31,7 @@ from ...model.types import *
 if typing.TYPE_CHECKING:
     # from ..analyse.frame import Frame
     # from ..analyse.state import State
-    from ..fmt import ConstPool
+    from ..fmt import ConstInfo, ConstPool
 
 
 class ArrayLoad(Instruction):
@@ -302,7 +301,7 @@ class ANewArray(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, classref: ConstInfo) -> None:
+    def __init__(self, classref: "ConstInfo") -> None:
         super().__init__()
         self.classref = classref
 
@@ -385,7 +384,7 @@ class MultiANewArray(Instruction):
         index, dimensions = unpack_HB(stream.read(3))
         return cls(pool[index], dimensions)
 
-    def __init__(self, classref: ConstInfo, dimensions: int) -> None:
+    def __init__(self, classref: "ConstInfo", dimensions: int) -> None:
         super().__init__()
         self.classref = classref
         self.dimensions = dimensions

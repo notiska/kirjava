@@ -4,9 +4,13 @@ from __future__ import annotations
 
 __all__ = (
     "Block",
+    "MutableBlock", "ImmutableBlock",
+    "Return", "Rethrow", "Opaque",
 )
 
 import typing
+from copy import deepcopy
+from itertools import chain
 from typing import Iterable
 
 from ..insns import Instruction
@@ -22,199 +26,57 @@ class Block:
 
     Attributes
     ----------
-    LABEL_ENTRY: int
-        The label of all entry blocks.
-    LABEL_RETURN: int
-        The label of all return blocks.
-    LABEL_RETHROW: int
-        The label of all rethrow blocks.
-    LABEL_OPAQUE: int
-        The label of all opaque blocks.
-
-    throws: frozenset[Class]
-        A set of exceptions that could be thrown by instructions in this block.
     label: int
         A unique label for this block.
-    insns: list[Instruction]
-        An ordered list of the instructions in this block.
+    insns: tuple[Instruction, ...]
+        The instructions in this block, ordered correctly.
+    lt_throws: frozenset[Class]
+        A set of exceptions that could be thrown at link time.
+    rt_throws: frozenset[Class]
+        A set of exceptions that could be thrown at run time.
 
     Methods
     -------
-    add(self, instruction: Instruction | type[Instruction], *, do_raise: bool = True) -> None
-        Adds an instruction to the end of this block.
-    extend(self, instructions: Iterable[Instruction | type[Instruction]]) -> None
-        Extends this block with a sequence of instructions.
-    insert(self, index: int, instruction: Instruction | type[Instruction]) -> None
-        Inserts an instruction at the given index.
-    remove(self, instruction: Instruction | type[Instruction]) -> Instruction
-        Removes and returns the first occurrence of an instruction from this block.
-    pop(self, index: int = -1) -> Instruction | None
-        Removes and returns the instruction at the given index.
+    index(self, instruction: Instruction | type[Instruction], start: int = 0, stop: int = -1) -> int
+        Returns the index of the first occurrence of an instruction in this block.
+    count(self, instruction: Instruction | type[Instruction]) -> int
+        Returns the number of occurrences of an instruction in this block.
     trace(frame: Frame) -> list[Trace.Step]
         Traces the execution of this block.
     """
 
-    __slots__ = ("label", "insns")
+    __slots__ = ("_label",)
 
-    LABEL_ENTRY   = 0
-    LABEL_RETURN  = -1
-    LABEL_RETHROW = -2
-    LABEL_OPAQUE  = -3
+    insns: tuple[Instruction, ...]
+    lt_throws: frozenset["Class"]
+    rt_throws: frozenset["Class"]
 
     @property
-    def throws(self) -> frozenset["Class"]:
-        throws: set["Class"] = set()
-        for instruction in self.insns:
-            throws.update(instruction.lt_throws)
-            throws.update(instruction.rt_throws)
-        return frozenset(throws)
+    def label(self) -> int:
+        return self._label
 
-    def __init__(self, label: int, insns: Iterable["Instruction"] | None = None) -> None:
-        self.label = label
-        self.insns: list["Instruction"] = []
-        if insns is not None:
-            self.insns.extend(insns)
+    def __init__(self, label: int) -> None:
+        self._label = label
 
     def __repr__(self) -> str:
-        insns_str = ", ".join(map(str, self.insns))
-        return f"<Block(label={self.label}, insns=[{insns_str}])>"
+        raise NotImplementedError(f"repr() is not implemented for {type(self)!r}")
 
     def __str__(self) -> str:
-        if self.label == self.LABEL_ENTRY:
-            return "block_entry"
-        elif self.label == self.LABEL_RETURN:
-            return "block_return"
-        elif self.label == self.LABEL_RETHROW:
-            return "block_rethrow"
-        elif self.label == self.LABEL_OPAQUE:
-            return "block_opaque"
-        return f"block_{self.label}"
+        return f"block_{self._label}"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Block) and self.label == other.label and self.insns == other.insns
+        raise NotImplementedError(f"== is not implemented for {type(self)!r}")
 
     def __hash__(self) -> int:
-        return id(self)
+        raise NotImplementedError(f"hash() is not implemented for {type(self)!r}")
 
     def __getitem__(self, index: int) -> Instruction:
         return self.insns[index]
 
-    def __setitem__(self, index: int, value: Instruction | type[Instruction]) -> None:
-        if not isinstance(value, Instruction):
-            value = value()
-        self.insns[index] = value
-
-    def __delitem__(self, key: int | Instruction | type[Instruction]) -> None:
-        if isinstance(key, int):
-            del self.insns[key]
-        else:
-            self.remove(key)
-
     def __len__(self) -> int:
         return len(self.insns)
 
-    def add(self, instruction: Instruction | type[Instruction], *, do_raise: bool = True) -> None:
-        """
-        Adds an instruction to the end of this block.
-
-        Parameters
-        ----------
-        instruction: Instruction | type[Instruction]
-            The instruction to add.
-        do_raise: bool
-            Raises an exception if the instruction cannot be added to the block.
-
-        Raises
-        -------
-        TypeError
-            If `do_raise=True` and the instruction cannot exist in the block.
-        """
-
-        if not isinstance(instruction, Instruction):
-            instruction = instruction()
-        if do_raise and isinstance(instruction, (Jump, Switch)):
-            raise TypeError("cannot add jump instruction to block")
-
-        self.insns.append(instruction)
-
-    def extend(self, instructions: Iterable[Instruction | type[Instruction]]) -> None:
-        """
-        Extends this block with a sequence of instructions.
-
-        Parameters
-        ----------
-        instructions: Iterable[Instruction | type[Instruction]]
-            The instructions to add.
-        """
-
-        for instruction in instructions:
-            self.add(instruction)
-
-    def insert(self, index: int, instruction: Instruction | type[Instruction]) -> None:
-        """
-        Inserts an instruction at the given index.
-
-        Parameters
-        ----------
-        index: int
-            The index to insert the instruction at.
-        instruction: Instruction | type[Instruction]
-            The instruction to insert.
-        """
-
-        if not isinstance(instruction, Instruction):
-            instruction = instruction()
-        self.insns.insert(index, instruction)
-
-    def remove(self, instruction: Instruction | type[Instruction]) -> Instruction | None:
-        """
-        Removes and returns the first occurrence of an instruction from this block.
-
-        Parameters
-        ----------
-        instruction: Instruction | type[Instruction]
-            The instruction to remove.
-
-        Returns
-        -------
-        Instruction | None
-            The removed instruction, or `None` if not found.
-        """
-
-        if isinstance(instruction, Instruction):
-            for index, instruction_ in enumerate(self.insns):
-                if instruction == instruction_:
-                    return self.insns.pop(index)
-        else:
-            for index, instruction_ in enumerate(self.insns):
-                if isinstance(instruction_, instruction):
-                    return self.insns.pop(index)
-
-        return None
-
-    def pop(self, index: int = -1) -> Instruction | None:
-        """
-        Removes and returns the instruction at the given index.
-
-        Parameters
-        ----------
-        index: int
-            The index of the instruction to remove.
-        """
-
-        try:
-            return self.insns.pop(index)
-        except IndexError:
-            return None
-
-    def clear(self) -> None:
-        """
-        Removes all instructions from this block.
-        """
-
-        self.insns.clear()
-
-    def index(self, instruction: Instruction | type[Instruction]) -> int:
+    def index(self, instruction: Instruction | type[Instruction], start: int = 0, stop: int = -1) -> int:
         """
         Returns the index of the first occurrence of an instruction in this block.
 
@@ -222,16 +84,18 @@ class Block:
         ----------
         instruction: Instruction | type[Instruction]
             The instruction to find.
+        start: int
+            The index to start searching from.
+        stop: int
+            The index to stop searching at.
 
         Returns
         -------
         int
-            The index of the instruction.
+            The index of the instruction, or `-1` if not found.
         """
 
-        if not isinstance(instruction, Instruction):
-            instruction = instruction()
-        return self.insns.index(instruction)
+        raise NotImplementedError(f"index() is not implemented for {type(self)!r}")
 
     def count(self, instruction: Instruction | type[Instruction]) -> int:
         """
@@ -248,9 +112,7 @@ class Block:
             The number of occurrences of the instruction.
         """
 
-        if not isinstance(instruction, Instruction):
-            instruction = instruction()
-        return self.insns.count(instruction)
+        raise NotImplementedError(f"count() is not implemented for {type(self)!r}")
 
     # def trace(self, frame: "Frame", state: "State") -> None:
     #     """
@@ -272,3 +134,351 @@ class Block:
     #             break
     #
     #     logger.debug("Traced %s (%i insns) in %i step(s).", self, len(self.insns), steps)
+
+
+class MutableBlock(Block):
+    """
+    A block that can be modified.
+
+    Methods
+    -------
+    add(self, instruction: Instruction | type[Instruction], *, doraise: bool = True) -> None
+        Adds an instruction to the end of this block.
+    extend(self, instructions: Iterable[Instruction | type[Instruction]]) -> None
+        Extends this block with a sequence of instructions.
+    insert(self, index: int, instruction: Instruction | type[Instruction]) -> None
+        Inserts an instruction at the given index.
+    remove(self, instruction: Instruction | type[Instruction]) -> Instruction
+        Removes and returns the first occurrence of an instruction from this block.
+    pop(self, index: int = -1) -> Instruction | None
+        Removes and returns the instruction at the given index.
+    immutable(self) -> ImmutableBlock
+        Creates an immutable block from this block.
+    """
+
+    __slots__ = ("_insns", "_hash")
+
+    @property  # type: ignore[override]
+    def insns(self) -> tuple[Instruction, ...]:
+        return tuple(self._insns)
+
+    @property  # type: ignore[override]
+    def lt_throws(self) -> frozenset["Class"]:
+        return frozenset(chain(*[instruction.lt_throws for instruction in self._insns]))
+
+    @property  # type: ignore[override]
+    def rt_throws(self) -> frozenset["Class"]:
+        return frozenset(chain(*[instruction.rt_throws for instruction in self._insns]))
+
+    def __init__(self, label: int, insns: Iterable[Instruction] | None = None) -> None:
+        super().__init__(label)
+        self._insns: list["Instruction"] = []
+        if insns is not None:
+            self._insns.extend(insns)
+        self._hash = hash(label)
+
+    def __copy__(self) -> "MutableBlock":
+        return MutableBlock(self._label, self._insns)
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "MutableBlock":
+        return MutableBlock(self._label, [deepcopy(instruction, memo) for instruction in self._insns])
+
+    def __repr__(self) -> str:
+        insns_str = ", ".join(map(str, self._insns))
+        return f"<MutableBlock(label={self._label}, insns=({insns_str}))>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, MutableBlock) and self._label == other._label and self._insns == other._insns
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def __getitem__(self, index: int) -> Instruction:
+        return self._insns[index]
+
+    def __setitem__(self, index: int, value: Instruction | type[Instruction]) -> None:
+        if not isinstance(value, Instruction):
+            value = value()
+        self._insns[index] = value
+
+    def __delitem__(self, key: int | Instruction | type[Instruction]) -> None:
+        if isinstance(key, int):
+            del self._insns[key]
+        else:
+            self.remove(key)
+
+    def __len__(self) -> int:
+        return len(self._insns)
+
+    def index(self, instruction: Instruction | type[Instruction], start: int = 0, stop: int = -1) -> int:
+        if not isinstance(instruction, Instruction):
+            instruction = instruction()
+        try:
+            return self._insns.index(instruction, start, stop)
+        except ValueError:
+            return -1
+
+    def count(self, instruction: Instruction | type[Instruction]) -> int:
+        if not isinstance(instruction, Instruction):
+            instruction = instruction()
+        return self._insns.count(instruction)
+
+    def add(self, instruction: Instruction | type[Instruction], *, doraise: bool = True) -> None:
+        """
+        Adds an instruction to the end of this block.
+
+        Parameters
+        ----------
+        instruction: Instruction | type[Instruction]
+            The instruction to add.
+        doraise: bool
+            Raises an exception if the instruction cannot be added to this block.
+
+        Raises
+        -------
+        TypeError
+            If `doraise=True` and the instruction cannot be added to this block.
+        """
+
+        if not isinstance(instruction, Instruction):
+            instruction = instruction()
+        if doraise and isinstance(instruction, (Jump, Switch)):
+            raise TypeError("cannot add jump instruction to block")
+
+        self._insns.append(instruction)
+
+    def extend(self, instructions: Iterable[Instruction | type[Instruction]], *, doraise: bool = True) -> None:
+        """
+        Extends this block with a sequence of instructions.
+
+        Parameters
+        ----------
+        instructions: Iterable[Instruction | type[Instruction]]
+            The instructions to add.
+        doraise: bool
+            Raises an exception if one or more instructions cannot be added to this
+            block.
+
+        Raises
+        ------
+        TypeError
+            If `doraise=True` and one or more instructiosn cannot be added to this
+            block.
+        """
+
+        for instruction in instructions:
+            self.add(instruction, doraise=doraise)
+
+    def insert(self, index: int, instruction: Instruction | type[Instruction]) -> None:
+        """
+        Inserts an instruction at the given index.
+
+        Parameters
+        ----------
+        index: int
+            The index to insert the instruction at.
+        instruction: Instruction | type[Instruction]
+            The instruction to insert.
+        """
+
+        if not isinstance(instruction, Instruction):
+            instruction = instruction()
+        self._insns.insert(index, instruction)
+
+    def remove(self, instruction: Instruction | type[Instruction]) -> Instruction | None:
+        """
+        Removes and returns the first occurrence of an instruction from this block.
+
+        Parameters
+        ----------
+        instruction: Instruction | type[Instruction]
+            The instruction to remove.
+
+        Returns
+        -------
+        Instruction | None
+            The removed instruction, or `None` if not found.
+        """
+
+        if isinstance(instruction, Instruction):
+            for index, instruction_ in enumerate(self._insns):
+                if instruction == instruction_:
+                    return self._insns.pop(index)
+        else:
+            for index, instruction_ in enumerate(self._insns):
+                if isinstance(instruction_, instruction):
+                    return self._insns.pop(index)
+
+        return None
+
+    def pop(self, index: int = -1) -> Instruction | None:
+        """
+        Removes and returns the instruction at the given index.
+
+        Parameters
+        ----------
+        index: int
+            The index of the instruction to remove.
+        """
+
+        try:
+            return self._insns.pop(index)
+        except IndexError:
+            return None
+
+    def clear(self) -> None:
+        """
+        Removes all instructions from this block.
+        """
+
+        self._insns.clear()
+
+    def immutable(self) -> "ImmutableBlock":
+        """
+        Creates an immutable block from this block.
+        """
+
+        return ImmutableBlock(self._label, self._insns)
+
+
+class ImmutableBlock(Block):
+    """
+    A block that cannot be modified once created.
+
+    Methods
+    -------
+    mutable(self) -> MutableBlock
+        Creates a mutable block from this block.
+    """
+
+    __slots__ = ("_insns", "_lt_throws", "_rt_throws", "_hash")
+
+    @property  # type: ignore[override]
+    def insns(self) -> tuple[Instruction, ...]:
+        return self._insns
+
+    @property  # type: ignore[override]
+    def lt_throws(self) -> frozenset["Class"]:
+        return self._lt_throws
+
+    @property  # type: ignore[override]
+    def rt_throws(self) -> frozenset["Class"]:
+        return self._rt_throws
+
+    def __init__(self, label: int, insns: Iterable[Instruction]) -> None:
+        super().__init__(label)
+        self._insns = tuple(insns)
+        self._lt_throws = frozenset(chain(*[instruction.lt_throws for instruction in self._insns]))
+        self._rt_throws = frozenset(chain(*[instruction.rt_throws for instruction in self._insns]))
+        self._hash = hash((label, (instruction.opcode for instruction in self._insns)))
+
+    def __repr__(self) -> str:
+        insns_str = ", ".join(map(str, self._insns))
+        return f"<ImmutableBlock(label={self._label}, insns=({insns_str}))>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, ImmutableBlock) and self._label == other._label and self._insns == other._insns
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def __getitem__(self, index: int) -> Instruction:
+        return self._insns[index]
+
+    def __len__(self) -> int:
+        return len(self._insns)
+
+    def index(self, instruction: Instruction | type[Instruction], start: int = 0, stop: int = -1) -> int:
+        if not isinstance(instruction, Instruction):
+            instruction = instruction()
+        try:
+            return self._insns.index(instruction, start, stop)
+        except ValueError:
+            return -1
+
+    def count(self, instruction: Instruction | type[Instruction]) -> int:
+        if not isinstance(instruction, Instruction):
+            instruction = instruction()
+        return self._insns.count(instruction)
+
+    def mutable(self) -> MutableBlock:
+        """
+        Creates a mutable block from this block.
+        """
+
+        return MutableBlock(self._label, self._insns)
+
+
+class Return(ImmutableBlock):
+    """
+    A return block.
+
+    Represents the exit point of a graph via normal method return.
+    """
+
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        super().__init__(-1, ())
+
+    def __repr__(self) -> str:
+        return "<Return>"
+
+    def __str__(self) -> str:
+        return "block_return"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Return)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+
+class Rethrow(ImmutableBlock):
+    """
+    A rethrow block.
+
+    Represents the exit point of a graph via a rethrown exception.
+    """
+
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        super().__init__(-2, ())
+
+    def __repr__(self) -> str:
+        return "<Rethrow>"
+
+    def __str__(self) -> str:
+        return "block_rethrow"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Rethrow)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+
+class Opaque(ImmutableBlock):
+    """
+    An opaque block.
+
+    Represents the target of a jump whose real target is currently unknown.
+    """
+
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        super().__init__(-3, ())
+
+    def __repr__(self) -> str:
+        return "<Opaque>"
+
+    def __str__(self) -> str:
+        return "block_opaque"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Opaque)
+
+    def __hash__(self) -> int:
+        return self._hash

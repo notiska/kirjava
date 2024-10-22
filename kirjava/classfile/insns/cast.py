@@ -21,15 +21,13 @@ else:
 
 from . import Instruction
 from .._struct import *
-from ..fmt.constants import ConstInfo
 from ...model.types import *
 # from ...model.values.constants import *
 
 if typing.TYPE_CHECKING:
     # from ..analyse.frame import Frame
     # from ..analyse.state import State
-    from ..fmt import ConstPool
-    # from ..verify import Verifier
+    from ..fmt import ConstInfo, ConstPool
 
 
 class ValueCast(Instruction):
@@ -123,7 +121,7 @@ class CheckCast(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, classref: ConstInfo) -> None:
+    def __init__(self, classref: "ConstInfo") -> None:
         super().__init__()
         self.classref = classref
 
@@ -193,7 +191,7 @@ class InstanceOf(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, classref: ConstInfo) -> None:
+    def __init__(self, classref: "ConstInfo") -> None:
         super().__init__()
         self.classref = classref
 

@@ -11,7 +11,7 @@ __all__ = (
     "JAVA_13", "JAVA_14", "JAVA_15",
     "JAVA_16", "JAVA_17", "JAVA_18",
     "JAVA_19", "JAVA_20", "JAVA_21",
-    "JAVA_22",
+    "JAVA_22", "JAVA_23",
     "JAVA_MIN", "JAVA_MAX",
     "Version",
 )
@@ -66,6 +66,7 @@ class Version:  # FIXME: Class restructuring required.
         64: "20",
         65: "21",
         66: "22",
+        67: "23",
     }
 
     @staticmethod
@@ -217,6 +218,7 @@ JAVA_19    = Version(63, 0)
 JAVA_20    = Version(64, 0)
 JAVA_21    = Version(65, 0)
 JAVA_22    = Version(66, 0)
+JAVA_23    = Version(67, 0)
 
 JAVA_MIN = JAVA_1_0
-JAVA_MAX = JAVA_22
+JAVA_MAX = JAVA_23

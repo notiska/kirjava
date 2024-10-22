@@ -21,7 +21,6 @@ from . import Instruction
 # from .stack import New
 # from .._desc import parse_method_descriptor
 from .._struct import *
-from ..fmt.constants import *
 from ...model.types import error_t, throwable_t
 # from ...model.types import *
 # from ...model.values.constants import Null
@@ -29,7 +28,7 @@ from ...model.types import error_t, throwable_t
 if typing.TYPE_CHECKING:
     # from ..analyse.frame import Frame
     # from ..analyse.state import State
-    from ..fmt import ConstPool
+    from ..fmt import ConstInfo, ConstPool
     # from ..verify import Verifier
 
 
@@ -57,7 +56,7 @@ class InvokeVirtual(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, methodref: ConstInfo) -> None:
+    def __init__(self, methodref: "ConstInfo") -> None:
         super().__init__()
         self.methodref = methodref
 
@@ -157,7 +156,7 @@ class InvokeSpecial(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, methodref: ConstInfo) -> None:
+    def __init__(self, methodref: "ConstInfo") -> None:
         super().__init__()
         self.methodref = methodref
 
@@ -273,7 +272,7 @@ class InvokeStatic(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, methodref: ConstInfo) -> None:
+    def __init__(self, methodref: "ConstInfo") -> None:
         super().__init__()
         self.methodref = methodref
 
@@ -368,7 +367,7 @@ class InvokeInterface(Instruction):
         index, count, reserved = unpack_HBB(stream.read(4))
         return cls(pool[index], count, reserved)
 
-    def __init__(self, methodref: ConstInfo, count: int, reserved: int) -> None:
+    def __init__(self, methodref: "ConstInfo", count: int, reserved: int) -> None:
         super().__init__()
         self.methodref = methodref
         self.count = count
@@ -488,7 +487,7 @@ class InvokeDynamic(Instruction):
         index, reserved = unpack_HH(stream.read(4))
         return cls(pool[index], reserved)
 
-    def __init__(self, indyref: ConstInfo, reserved: int) -> None:
+    def __init__(self, indyref: "ConstInfo", reserved: int) -> None:
         super().__init__()
         self.indyref = indyref
         self.reserved = reserved

@@ -16,7 +16,7 @@ __all__ = (
 import sys
 import typing
 from copy import deepcopy
-from typing import Any, IO
+from typing import Any, IO, Iterable
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -188,16 +188,6 @@ class ConstInfo:
 
     def __eq__(self, other: object) -> bool:
         raise NotImplementedError(f"== is not implemented for {type(self)!r}")
-
-    # TODO: Descriptors, coercion/expectation.
-
-    # def __get__(self, instance: object, owner: type) -> "ConstInfo":
-    #     if instance is None:
-    #         return self
-    #     return instance.__dict__[self.__name__]
-
-    # def __set__(self, instance: object, value: "ConstInfo") -> None:
-    #     instance.__dict__[self.__name__] = value
 
     def deref(self, pool: "ConstPool") -> None:
         """
@@ -774,6 +764,9 @@ class FieldrefInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
+    def __iter__(self) -> Iterable[ConstInfo]:
+        return iter((self.class_, self.name_and_type))
+
     def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.class_, ConstIndex):
             self.class_ = pool[self.class_.index]
@@ -842,6 +835,9 @@ class MethodrefInfo(ConstInfo):
             self.class_ == other.class_ and
             self.name_and_type == other.name_and_type
         )
+
+    def __iter__(self) -> Iterable[ConstInfo]:
+        return iter((self.class_, self.name_and_type))
 
     def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.class_, ConstIndex):
@@ -915,6 +911,9 @@ class InterfaceMethodrefInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
+    def __iter__(self) -> Iterable[ConstInfo]:
+        return iter((self.class_, self.name_and_type))
+
     def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.class_, ConstIndex):
             self.class_ = pool[self.class_.index]
@@ -978,6 +977,9 @@ class NameAndTypeInfo(ConstInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NameAndTypeInfo) and self.name == other.name and self.descriptor == other.descriptor
+
+    def __iter__(self) -> Iterable[ConstInfo]:
+        return iter((self.name, self.descriptor))
 
     def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.name, ConstIndex):
@@ -1095,6 +1097,9 @@ class MethodHandleInfo(ConstInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MethodHandleInfo) and self.kind == other.kind and self.ref == other.ref
+
+    def __iter__(self) -> Iterable[int | ConstInfo]:
+        return iter((self.kind, self.ref))
 
     def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.ref, ConstIndex):
@@ -1281,6 +1286,9 @@ class DynamicInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
+    def __iter__(self) -> Iterable[int | ConstInfo]:
+        return iter((self.attr_index, self.name_and_type))
+
     def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.name_and_type, ConstIndex):
             self.name_and_type = pool[self.name_and_type.index]
@@ -1350,6 +1358,9 @@ class InvokeDynamicInfo(ConstInfo):
             self.attr_index == other.attr_index and
             self.name_and_type == other.name_and_type
         )
+
+    def __iter__(self) -> Iterable[int | ConstInfo]:
+        return iter((self.attr_index, self.name_and_type))
 
     def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.name_and_type, ConstIndex):

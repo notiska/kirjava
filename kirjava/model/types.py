@@ -428,8 +428,8 @@ class _Integer(Primitive, OneWord):
         self._width = width
         self._hash = id(self)
 
-    def __repr__(self) -> str:
-        return f"<Primitive(name={self.name!r})>"
+    # def __repr__(self) -> str:
+    #     return f"<Primitive(name={self.name!r})>"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, _Integer) and self._width == other._width

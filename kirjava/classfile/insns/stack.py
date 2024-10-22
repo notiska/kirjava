@@ -30,7 +30,6 @@ else:
 
 from . import Instruction
 from .._struct import *
-from ..fmt.constants import *
 from ...backend import f32, f64, i32, i64
 from ...model.types import error_t, Class
 from ...model.values.constants import Constant, Double, Float, Integer, Long, Null
@@ -38,8 +37,7 @@ from ...model.values.constants import Constant, Double, Float, Integer, Long, Nu
 if typing.TYPE_CHECKING:
     # from ..analyse.frame import Frame
     # from ..analyse.state import State
-    from ..fmt import ConstPool
-    # from ..verify import Verifier
+    from ..fmt import ConstInfo, ConstPool
 
 
 class PushConstant(Instruction):
@@ -230,7 +228,7 @@ class LoadConstant(Instruction):
         index, = stream.read(1)
         return cls(pool[index])
 
-    def __init__(self, info: ConstInfo) -> None:
+    def __init__(self, info: "ConstInfo") -> None:
         super().__init__()
         self.info = info
 
@@ -355,7 +353,7 @@ class New(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, classref: ConstInfo) -> None:
+    def __init__(self, classref: "ConstInfo") -> None:
         super().__init__()
         self.classref = classref
 

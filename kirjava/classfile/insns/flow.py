@@ -38,7 +38,6 @@ if typing.TYPE_CHECKING:
     # from ..analyse.frame import Frame
     # from ..analyse.state import State
     from ..fmt import ConstPool
-    # from ..verify import Verifier
     # from ...model.values import Value
 
 

@@ -210,7 +210,7 @@ class StackMapFrame:
         """
 
         tag, = stream.read(1)
-        subclass: type[StackMapFrame] | None = cls._cache.get(tag)
+        subclass = cls._cache.get(tag)
         if subclass is None:
             subclass = cls.lookup(tag)
             cls._cache[tag] = subclass

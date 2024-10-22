@@ -20,7 +20,6 @@ else:
 from . import Instruction
 # from .._desc import parse_field_descriptor
 from .._struct import *
-from ..fmt.constants import ClassInfo, ConstInfo, FieldrefInfo, NameAndTypeInfo
 from ...model.types import error_t, Class
 # from ...model.types import *
 # from ...model.values.constants import Null
@@ -28,8 +27,7 @@ from ...model.types import error_t, Class
 if typing.TYPE_CHECKING:
     # from ..analyse.frame import Frame
     # from ..analyse.state import State
-    from ..fmt import ConstPool
-    # from ..verify import Verifier
+    from ..fmt import ConstInfo, ConstPool
 
 
 class GetStatic(Instruction):
@@ -57,7 +55,7 @@ class GetStatic(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, fieldref: ConstInfo) -> None:
+    def __init__(self, fieldref: "ConstInfo") -> None:
         super().__init__()
         self.fieldref = fieldref
 
@@ -136,7 +134,7 @@ class PutStatic(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, fieldref: ConstInfo) -> None:
+    def __init__(self, fieldref: "ConstInfo") -> None:
         super().__init__()
         self.fieldref = fieldref
 
@@ -213,7 +211,7 @@ class GetField(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, fieldref: ConstInfo) -> None:
+    def __init__(self, fieldref: "ConstInfo") -> None:
         super().__init__()
         self.fieldref = fieldref
 
@@ -300,7 +298,7 @@ class PutField(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, fieldref: ConstInfo) -> None:
+    def __init__(self, fieldref: "ConstInfo") -> None:
         super().__init__()
         self.fieldref = fieldref
 

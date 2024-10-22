@@ -23,15 +23,6 @@ class Edge:
 
     Attributes
     ----------
-    PRECEDENCE_JUMP: int
-        The edge precedence of a jump.
-    PRECEDENCE_SWITCH: int
-        The edge precedence of a switch.
-    PRECEDENCE_FALLTHROUGH: int
-        The edge precedence of a fallthrough.
-    PRECEDENCE_CATCH: int
-        The edge precedence of a catch.
-
     precedence: int
         The precedence of this edge, determines the order they are evaluated.
     symbolic: bool
@@ -43,25 +34,35 @@ class Edge:
         The target block of this edge.
     """
 
-    __slots__ = ("source", "target")
-
-    PRECEDENCE_JUMP        = 1
-    PRECEDENCE_SWITCH      = 1
-    PRECEDENCE_FALLTHROUGH = 2
-    PRECEDENCE_CATCH       = 3
+    __slots__ = ("_source", "_target")
 
     precedence: int
     symbolic: bool
 
+    @property
+    def source(self) -> "Block":
+        return self._source
+
+    @property
+    def target(self) -> "Block":
+        return self._target
+
     def __init__(self, source: "Block", target: "Block") -> None:
-        self.source = source
-        self.target = target
+        self._source = source
+        self._target = target
 
     def __repr__(self) -> str:
-        return f"<Edge(source={self.source!s}, target={self.target!s})>"
+        # return f"<Edge(source={self.source!s}, target={self.target!s})>"
+        raise NotImplementedError(f"repr() is not implemented for {type(self)!r}")
 
     def __str__(self) -> str:
-        return f"{self.source!s} -> {self.target!s}"
+        return f"{self._source!s} -> {self._target!s}"
+
+    def __eq__(self, other: object) -> bool:
+        raise NotImplementedError(f"== is not implemented for {type(self)!r}")
+
+    def __hash__(self) -> int:
+        raise NotImplementedError(f"hash() is not implemented for {type(self)!r}")
 
     # def trace(self, frame: "Frame", state: "State") -> Optional["State.Target"]:
     #     """
@@ -113,25 +114,44 @@ class Fallthrough(Edge):
         The instruction that caused this fallthrough.
     """
 
-    __slots__ = ("insn", "symbolic")
+    __slots__ = ("_insn", "_symbolic", "_hash")
 
-    precedence = Edge.PRECEDENCE_FALLTHROUGH
+    precedence = 2
+
+    @property  # type: ignore[override]
+    def symbolic(self) -> bool:
+        return self._symbolic
+
+    @property
+    def insn(self) -> Optional["JumpInsn"]:
+        return self._insn
 
     def __init__(self, source: "Block", target: "Block", insn: Optional["JumpInsn"] = None) -> None:
         super().__init__(source, target)
-        self.insn = insn
+        self._insn = insn
         # We'll say this fallthrough is symbolic if the jump is not conditional (meaning that this fallthrough will never
         # actually be taken).
         # Only really for jsrs.
-        self.symbolic = insn is not None and not insn.conditional
+        self._symbolic = insn is not None and not insn.conditional
+        self._hash = hash((source, target, insn.opcode if insn is not None else None))
 
     def __repr__(self) -> str:
-        return f"<Fallthrough(source={self.source!s}, target={self.target!s}, insn={self.insn!s})>"
+        return f"<Fallthrough(source={self._source!s}, target={self._target!s}, insn={self._insn!s})>"
 
     def __str__(self) -> str:
-        if self.insn is not None:
-            return f"{self.insn!s} : fallthrough {self.source!s} -> {self.target!s}"
-        return f"fallthrough {self.source!s} -> {self.target!s}"
+        if self._insn is not None:
+            return f"{self._insn!s} : fallthrough {self._source!s} -> {self._target!s}"
+        return f"fallthrough {self._source!s} -> {self._target!s}"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Fallthrough) or self._source != other._source or self._target != other._target:
+            return False
+        elif self._insn is not None and other._insn is not None:
+            return self._insn.opcode == other._insn.opcode
+        return self._insn is None and other._insn is None
+
+    def __hash__(self) -> int:
+        return self._hash
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Target":
     #     if frame.thrown is not None or self.symbolic:
@@ -155,32 +175,48 @@ class Fallthrough(Edge):
 
 class Jump(Edge):
     """
-    A jump edge with a JVM jump instruction.
+    An edge with a jump instruction.
 
-    This may represent an unconditional or conditional jump.
+    This may represent either an unconditional or conditional jump.
 
     Attributes
     ----------
     insn: JumpInsn
-        The JVM jump instruction.
+        The jump instruction.
     """
 
-    __slots__ = ("insn",)
+    __slots__ = ("_insn", "_hash")
 
-    precedence = Edge.PRECEDENCE_JUMP
+    precedence = 1
     symbolic = False
+
+    @property
+    def insn(self) -> "JumpInsn":
+        return self._insn
 
     def __init__(self, source: "Block", target: "Block", insn: "JumpInsn") -> None:
         super().__init__(source, target)
-        self.insn = insn
+        self._insn = insn
+        self._hash = hash((source, target, insn.opcode))
 
     def __repr__(self) -> str:
-        return f"<Jump(source={self.source!s}, target={self.target!s}, insn={self.insn!s})>"
+        return f"<Jump(source={self._source!s}, target={self._target!s}, insn={self._insn!s})>"
 
     def __str__(self) -> str:
         # if self.fallthrough is not None:
         #     return "%s : [%s] %s -> %s" % (self.insn, self.fallthrough, self.source, self.target)
-        return f"{self.insn!s} : {self.source!s} -> {self.target!s}"
+        return f"{self._insn!s} : {self._source!s} -> {self._target!s}"
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, Jump) and
+            self._source == other._source and
+            self._target == other._target and
+            self._insn.opcode == other._insn.opcode
+        )
+
+    def __hash__(self) -> int:
+        return self._hash
 
     # def trace(self, frame: "Frame", state: "State") -> Optional["State.Target"]:
     #     if frame.thrown is not None:
@@ -203,7 +239,7 @@ class Jump(Edge):
 
 class Ret(Jump):
     """
-    A jump edge with a JVM ret instruction.
+    A jump edge with a ret instruction.
 
     These need special handling, so a separate ege is used.
     """
@@ -214,7 +250,7 @@ class Ret(Jump):
         super().__init__(source, target, insn)
 
     def __repr__(self) -> str:
-        return f"<Ret(source={self.source!s}, target={self.target!s}, insn={self.insn!s})>"
+        return f"<Ret(source={self._source!s}, target={self._target!s}, insn={self._insn!s})>"
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Target":
     #     if frame.thrown is not None:
@@ -249,23 +285,44 @@ class Switch(Edge):
         The lookup value of the switch, or `None` if it's the default.
     """
 
-    __slots__ = ("insn", "value")
+    __slots__ = ("_insn", "_value", "_hash")
 
-    precedence = Edge.PRECEDENCE_SWITCH
+    precedence = 1
     symbolic = False
+
+    @property
+    def insn(self) -> "SwitchInsn":
+        return self._insn
+
+    @property
+    def value(self) -> int | None:
+        return self._value
 
     def __init__(self, source: "Block", target: "Block", insn: "SwitchInsn", value: int | None) -> None:
         super().__init__(source, target)
-        self.insn = insn
-        self.value = value
+        self._insn = insn
+        self._value = value
+        self._hash = hash((source, target, insn.opcode, value))
 
     def __repr__(self) -> str:
-        return f"<Switch(source={self.source!s}, target={self.target!s}, insn={self.insn!s}, value={self.value!s})>"
+        return f"<Switch(source={self._source!s}, target={self._target!s}, insn={self._insn!s}, value={self._value})>"
 
     def __str__(self) -> str:
-        if self.value is None:
-            return f"{self.insn!s} [default] {self.source!s} -> {self.target!s}"
-        return f"{self.insn!s} [{self.value}] {self.source!s} -> {self.target!s}"
+        if self._value is None:
+            return f"{self._insn!s} [default] {self._source!s} -> {self._target!s}"
+        return f"{self._insn!s} [{self._value}] {self._source!s} -> {self._target!s}"
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, Switch) and
+            self._source == other._source and
+            self._target == other._target and
+            self._insn.opcode == other._insn.opcode and
+            self._value == other._value
+        )
+
+    def __hash__(self) -> int:
+        return self._hash
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Target":
     #     if frame.thrown is not None:
@@ -310,30 +367,48 @@ class Catch(Edge):
         The priority of this catch edge, lower values are checked first.
     """
 
-    __slots__ = ("class_", "priority")
+    __slots__ = ("_class", "_priority", "_hash")
 
     symbolic = False
 
-    @property
+    @property  # type: ignore[override]
     def precedence(self) -> int:
-        return Edge.PRECEDENCE_CATCH + self.priority
+        return self._priority + 3
 
-    @precedence.setter
-    def precedence(self, value: int) -> None:
-        self.priority = value - Edge.PRECEDENCE_CATCH
+    @property
+    def class_(self) -> Optional["ConstInfo"]:
+        return self._class
+
+    @property
+    def priority(self) -> int:
+        return self._priority
 
     def __init__(self, source: "Block", target: "Block", class_: Optional["ConstInfo"], priority: int) -> None:
         super().__init__(source, target)
-        self.class_ = class_
-        self.priority = priority
+        self._class = class_
+        self._priority = priority
+        self._hash = hash((source, target, id(class_) if class_ is not None else None, priority))
 
     def __repr__(self) -> str:
         return (
-            f"<Catch(source={self.source!s}, target={self.target!s}, class_={self.class_!s}, priority={self.priority})>"
+            f"<Catch(source={self._source!s}, target={self._target!s}, class_={self._class!s}, "
+            f"priority={self._priority})>"
         )
 
     def __str__(self) -> str:
-        return f"catch [{self.class_!s} priority {self.priority}] {self.source!s} -> {self.target!s}"
+        return f"catch [{self._class!s} priority {self._priority}] {self._source!s} -> {self._target!s}"
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, Catch) and
+            self._source == other._source and
+            self._target == other._target and
+            self._class == other._class and
+            self._priority == other._priority
+        )
+
+    def __hash__(self) -> int:
+        return self._hash
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Target":
     #     frame = frame.copy()

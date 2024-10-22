@@ -433,6 +433,7 @@ class Code(AttributeInfo):
             base = stream.tell()
             insns = []
 
+            # TODO: Read all into BytesIO instead of using CodeIOWrapper, could be faster?
             wrapper = CodeIOWrapper(stream, base)
             while wrapper.tell() < size:
                 instruction = Instruction.read(wrapper, pool)
@@ -585,6 +586,10 @@ class Code(AttributeInfo):
                 self.handler_pc == other.handler_pc and
                 self.class_ == other.class_
             )
+
+        # Yeah this might be pushing it a little on what I allow to be unpackable in the API...
+        def __iter__(self) -> Iterable[int | ConstInfo | None]:
+            return iter((self.start_pc, self.end_pc, self.handler_pc, self.class_))
 
 
 class StackMapTable(AttributeInfo):
@@ -822,6 +827,9 @@ class LineNumberTable(AttributeInfo):
                 self.line == other.line
             )
 
+        def __iter__(self) -> Iterable[int]:
+            return iter((self.start_pc, self.line))
+
 
 class LocalVariableTable(AttributeInfo):
     """
@@ -942,6 +950,9 @@ class LocalVariableTable(AttributeInfo):
                 self.index == other.index
             )
 
+        def __iter__(self) -> Iterable[int | ConstInfo]:
+            return iter((self.start_pc, self.length, self.name, self.descriptor, self.index))
+
 
 class LocalVariableTypeTable(AttributeInfo):
     """
@@ -1060,6 +1071,9 @@ class LocalVariableTypeTable(AttributeInfo):
                 self.signature == other.signature and
                 self.index == other.index
             )
+
+        def __iter__(self) -> Iterable[int | ConstInfo]:
+            return iter((self.start_pc, self.length, self.name, self.signature, self.index))
 
 
 class AnnotationDefault(AttributeInfo):

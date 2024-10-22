@@ -24,10 +24,10 @@ if sys.version_info >= (3, 11):
 else:
     from typing_extensions import Self
 
+from .constants import ConstInfo
 from .._struct import *
 
 if typing.TYPE_CHECKING:
-    from .constants import ConstInfo
     from .pool import ConstPool
 
 
@@ -178,7 +178,7 @@ class Annotation:
             elements.append(Annotation.NamedElement(pool[name_index], value))
         return cls(pool[type_index], elements)
 
-    def __init__(self, type_: "ConstInfo", elements: Iterable["Annotation.NamedElement"] | None = None) -> None:
+    def __init__(self, type_: ConstInfo, elements: Iterable["Annotation.NamedElement"] | None = None) -> None:
         self.type = type_
         self.elements: list[Annotation.NamedElement] = []
 
@@ -228,7 +228,7 @@ class Annotation:
             stream.write(pack_H(pool.add(element.name)))
             element.value.write(stream, pool)
 
-    class NamedElement:  # TODO: Generics for the inner value.
+    class NamedElement:
         """
         An element name and value pair.
 
@@ -242,7 +242,7 @@ class Annotation:
 
         __slots__ = ("name", "value")
 
-        def __init__(self, name: "ConstInfo", value: ElementValue) -> None:
+        def __init__(self, name: ConstInfo, value: ElementValue) -> None:
             self.name = name
             self.value = value
 
@@ -254,6 +254,9 @@ class Annotation:
 
         def __eq__(self, other: object) -> bool:
             return isinstance(other, Annotation.NamedElement) and self.name == other.name and self.value == other.value
+
+        def __iter__(self) -> Iterable[ConstInfo | ElementValue]:
+            return iter((self.name, self.value))
 
 
 class ParameterAnnotations:
@@ -694,6 +697,9 @@ class TypePath:
         def __eq__(self, other: object) -> bool:
             return isinstance(other, TypePath.Segment) and self.kind == other.kind and self.index == other.index
 
+        def __iter__(self) -> Iterable[int]:
+            return iter((self.kind, self.index))
+
 
 class TypeAnnotation(Annotation):
     """
@@ -727,7 +733,7 @@ class TypeAnnotation(Annotation):
         return cls(pool[type_index], info, path, elements)
 
     def __init__(
-            self, type_: "ConstInfo", info: TargetInfo, path: TypePath,
+            self, type_: ConstInfo, info: TargetInfo, path: TypePath,
             elements: Iterable["Annotation.NamedElement"] | None = None,
     ) -> None:
         super().__init__(type_, elements)
@@ -821,7 +827,7 @@ class ConstValue(ElementValue):
         index, = unpack_H(stream.read(2))
         return cls(kind, pool[index])
 
-    def __init__(self, kind: int, value: "ConstInfo") -> None:
+    def __init__(self, kind: int, value: ConstInfo) -> None:
         # if not kind in ConstValue.tags:
         #     raise ValueError(f"invalid kind {kind} for {type(self)!r}")
         super().__init__(kind)
@@ -862,7 +868,7 @@ class EnumConstValue(ElementValue):
         type_index, name_index = unpack_HH(stream.read(4))
         return cls(pool[type_index], pool[name_index])
 
-    def __init__(self, type_: "ConstInfo", name: "ConstInfo") -> None:
+    def __init__(self, type_: ConstInfo, name: ConstInfo) -> None:
         super().__init__(EnumConstValue.tags[0])
         self.type = type_
         self.name = name
@@ -875,6 +881,9 @@ class EnumConstValue(ElementValue):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, EnumConstValue) and self.type == other.type and self.name == other.name
+
+    # def __iter__(self) -> Iterable[ConstInfo]:
+    #     return iter((self.type, self.name))
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(EnumConstValue.tags[0], pool.add(self.type), pool.add(self.name)))
@@ -901,7 +910,7 @@ class ClassValue(ElementValue):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, type_: "ConstInfo") -> None:
+    def __init__(self, type_: ConstInfo) -> None:
         super().__init__(ClassValue.tags[0])
         self.type = type_
 
@@ -1364,6 +1373,9 @@ class LocalVarTarget(TargetInfo):
                 self.length == other.length and
                 self.index == other.index
             )
+
+        def __iter__(self) -> Iterable[int]:
+            return iter((self.start_pc, self.length, self.index))
 
 
 class CatchTarget(TargetInfo):

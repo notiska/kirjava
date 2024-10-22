@@ -22,7 +22,7 @@ from . import Value
 from ..types import (
     byte_t, char_t, class_t, double_t, float_t, int_t, long_t, method_handle_t, method_type_t, null_t, short_t,
     string_t,
-    Array, Primitive, Reference, Type,
+    Array, Class as ClassType, Primitive, Reference, Type,
 )
 from ...backend import f32, f64, i32, i64
 
@@ -240,9 +240,11 @@ class Class(Constant):
     def array(self) -> bool:
         return isinstance(self._ref_type, Array)
 
-    def __init__(self, ref_type: Reference) -> None:
-        self._ref_type = ref_type
-        self._hash = hash(ref_type)
+    def __init__(self, name_or_ref_type: str | Reference) -> None:
+        if isinstance(name_or_ref_type, str):
+            name_or_ref_type = ClassType(name_or_ref_type)
+        self._ref_type = name_or_ref_type
+        self._hash = hash(name_or_ref_type)
 
     def __repr__(self) -> str:
         return f"<Class(name={self._ref_type.name!r})>"

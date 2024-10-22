@@ -4,6 +4,7 @@ from __future__ import annotations
 
 __all__ = (
     "dump", "dumps", "load", "loads",
+    "disassemble",
 )
 
 """
@@ -15,7 +16,8 @@ from io import BytesIO
 from os import PathLike
 from typing import IO
 
-from .fmt import ClassFile
+from .fmt import ClassFile, MethodInfo
+from .graph import Graph
 
 
 def dump(cf: ClassFile, file_or_stream: str | PathLike[str] | IO[bytes]) -> None:
@@ -61,3 +63,11 @@ def loads(data: bytes) -> ClassFile:
     """
 
     return ClassFile.read(BytesIO(data)).unwrap()
+
+
+def disassemble(method: MethodInfo, cf: ClassFile | None = None) -> Graph:
+    """
+    Disassembles the provided method.
+    """
+
+    return Graph.disassemble(method, cf).unwrap()

@@ -525,6 +525,9 @@ class BootstrapMethods(AttributeInfo):
                 self.args == other.args
             )
 
+        def __iter__(self) -> Iterable[ConstInfo | list[ConstInfo]]:
+            return iter((self.ref, self.args))
+
 
 class NestHost(AttributeInfo):
     """

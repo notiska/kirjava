@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 __all__ = (
-    "arithmetic", "array", "cast", "field", "flow", "invoke", "local", "misc", "stack",
+    "arithmetic", "array", "cast", "debug", "field", "flow", "invoke", "local", "misc", "stack",
 
     "INSTRUCTIONS",
 
@@ -338,6 +338,7 @@ class CodeIOWrapper(BytesIO):  # Extended only for type hinting, BufferedIOBase 
         return self.delegate.write(data)
 
 
+from . import arithmetic, array, cast, debug, field, flow, invoke, local, misc, stack  # noqa E402
 from .arithmetic import *  # noqa E402
 from .array import *       # noqa E402
 from .cast import *        # noqa E402
