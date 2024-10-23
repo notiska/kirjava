@@ -62,6 +62,7 @@ class Class:
     """
 
     __slots__ = (
+        "__weakref__",
         "name",
         "is_public", "is_final", "is_super", "is_interface", "is_abstract",
         "is_synthetic", "is_annotation", "is_enum", "is_module",

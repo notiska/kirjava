@@ -7,20 +7,15 @@ __all__ = (
     "InvokeVirtual", "InvokeSpecial", "InvokeStatic", "InvokeInterface", "InvokeDynamic",
 )
 
-import sys
 import typing
 from copy import deepcopy
 from typing import IO
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
 
 from . import Instruction
 # from .stack import New
 # from .._desc import parse_method_descriptor
 from .._struct import *
+from ..._compat import Self
 from ...model.types import error_t, throwable_t
 # from ...model.types import *
 # from ...model.values.constants import Null
@@ -61,14 +56,14 @@ class InvokeVirtual(Instruction):
         self.methodref = methodref
 
     def __copy__(self) -> "InvokeVirtual":
-        copy = invokevirtual(self.methodref)
-        copy.offset = self.offset
-        return copy
+        copied = invokevirtual(self.methodref)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InvokeVirtual":
-        copy = invokevirtual(deepcopy(self.methodref, memo))
-        copy.offset = self.offset
-        return copy
+        copied = invokevirtual(deepcopy(self.methodref, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -161,14 +156,14 @@ class InvokeSpecial(Instruction):
         self.methodref = methodref
 
     def __copy__(self) -> "InvokeSpecial":
-        copy = invokespecial(self.methodref)
-        copy.offset = self.offset
-        return copy
+        copied = invokespecial(self.methodref)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InvokeSpecial":
-        copy = invokespecial(deepcopy(self.methodref, memo))
-        copy.offset = self.offset
-        return copy
+        copied = invokespecial(deepcopy(self.methodref, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -277,14 +272,14 @@ class InvokeStatic(Instruction):
         self.methodref = methodref
 
     def __copy__(self) -> "InvokeStatic":
-        copy = invokestatic(self.methodref)
-        copy.offset = self.offset
-        return copy
+        copied = invokestatic(self.methodref)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InvokeStatic":
-        copy = invokestatic(deepcopy(self.methodref, memo))
-        copy.offset = self.offset
-        return copy
+        copied = invokestatic(deepcopy(self.methodref, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -374,14 +369,14 @@ class InvokeInterface(Instruction):
         self.reserved = reserved
 
     def __copy__(self) -> "InvokeInterface":
-        copy = invokeinterface(self.methodref, self.count, self.reserved)
-        copy.offset = self.offset
-        return copy
+        copied = invokeinterface(self.methodref, self.count, self.reserved)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InvokeInterface":
-        copy = invokeinterface(deepcopy(self.methodref, memo), self.count, self.reserved)
-        copy.offset = self.offset
-        return copy
+        copied = invokeinterface(deepcopy(self.methodref, memo), self.count, self.reserved)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -493,14 +488,14 @@ class InvokeDynamic(Instruction):
         self.reserved = reserved
 
     def __copy__(self) -> "InvokeDynamic":
-        copy = invokedynamic(self.indyref, self.reserved)
-        copy.offset = self.offset
-        return copy
+        copied = invokedynamic(self.indyref, self.reserved)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InvokeDynamic":
-        copy = invokedynamic(deepcopy(self.indyref, memo), self.reserved)
-        copy.offset = self.offset
-        return copy
+        copied = invokedynamic(deepcopy(self.indyref, memo), self.reserved)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:

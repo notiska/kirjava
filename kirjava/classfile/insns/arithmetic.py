@@ -19,16 +19,11 @@ __all__ = (
     "IntegralCompare", "FloatLCompare", "FloatGCompare",
 )
 
-import sys
 import typing
 from typing import IO
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
-
 from . import Instruction
+from ..._compat import Self
 from ...model.types import *
 # from ...model.values import Value
 # from ...model.values.constants import Integer

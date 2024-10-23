@@ -13,19 +13,14 @@ __all__ = (
     "ModuleInfo", "PackageInfo",
 )
 
-import sys
 import typing
-from copy import deepcopy
-from typing import Any, IO, Iterable
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from copy import copy, deepcopy
+from typing import Any, IO, Iterator
 
 from .._desc import *
 from .._struct import *
 from ..version import *
+from ..._compat import Self
 from ...backend import *
 from ...model.values.constants import *
 
@@ -62,12 +57,14 @@ class ConstInfo:
     lookup(tag: int) -> type[ConstInfo] | None
         Looks up a constant info type by tag.
 
+    copy(self, deep: bool = True) -> ConstInfo
+        Creates a copy of this constant.
     deref(self, pool: ConstPool) -> None
         Dereferences any indices in this constant.
+    link(self) -> Result[Any]
+        Creates a linked version of this constant.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes the constant info to a binary stream.
-    unwrap(self) -> Result[Any]
-        Unwraps this constant info.
     """
 
     __slots__ = ("index",)
@@ -189,6 +186,20 @@ class ConstInfo:
     def __eq__(self, other: object) -> bool:
         raise NotImplementedError(f"== is not implemented for {type(self)!r}")
 
+    def copy(self, deep: bool = False) -> "ConstInfo":
+        """
+        Creates a copy of this constant.
+
+        Parameters
+        ----------
+        deep: bool
+            Whether to also copy any constants referenced by this constant.
+        """
+
+        if not deep:
+            return copy(self)
+        return deepcopy(self)
+
     def deref(self, pool: "ConstPool") -> None:
         """
         Dereferences any indices in this constant.
@@ -200,6 +211,13 @@ class ConstInfo:
         """
 
         raise NotImplementedError(f"deref() is not implemented for {type(self)!r}")
+
+    def link(self) -> Result[Any]:
+        """
+        Creates a linked version of this constant.
+        """
+
+        return Err(ValueError(f"cannot link constant {self!r}"))
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
@@ -214,13 +232,6 @@ class ConstInfo:
         """
 
         raise NotImplementedError(f"write() is not implemented for {type(self)!r}")
-
-    def unwrap(self) -> Result[Any]:
-        """
-        Unwraps this constant info.
-        """
-
-        return Err(ValueError(f"cannot unwrap constant {self!r}"))
 
 
 class ConstIndex(ConstInfo):
@@ -301,9 +312,9 @@ class UTF8Info(ConstInfo):
         self.value = value
 
     def __copy__(self) -> "UTF8Info":
-        copy = UTF8Info(self.value)
-        copy.index = self.index
-        return copy
+        copied = UTF8Info(self.value)
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -362,9 +373,9 @@ class IntegerInfo(ConstInfo):
         self.value = value
 
     def __copy__(self) -> "IntegerInfo":
-        copy = IntegerInfo(self.value)
-        copy.index = self.index
-        return copy
+        copied = IntegerInfo(self.value)
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -382,12 +393,12 @@ class IntegerInfo(ConstInfo):
     def deref(self, pool: "ConstPool") -> None:
         ...
 
+    def link(self) -> Result[Integer]:
+        return Ok(Integer(self.value))
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((IntegerInfo.tag,)))
         stream.write(pack_i32(self.value))
-
-    def unwrap(self) -> Result[Integer]:
-        return Ok(Integer(self.value))
 
 
 class FloatInfo(ConstInfo):
@@ -418,9 +429,9 @@ class FloatInfo(ConstInfo):
         self.value = value
 
     def __copy__(self) -> "FloatInfo":
-        copy = FloatInfo(self.value)
-        copy.index = self.index
-        return copy
+        copied = FloatInfo(self.value)
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -445,12 +456,12 @@ class FloatInfo(ConstInfo):
     def deref(self, pool: "ConstPool") -> None:
         ...
 
+    def link(self) -> Result[Float]:
+        return Ok(Float(self.value))
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((FloatInfo.tag,)))
         stream.write(pack_f32(self.value))
-
-    def unwrap(self) -> Result[Float]:
-        return Ok(Float(self.value))
 
 
 class LongInfo(ConstInfo):
@@ -481,9 +492,9 @@ class LongInfo(ConstInfo):
         self.value = value
 
     def __copy__(self) -> "LongInfo":
-        copy = LongInfo(self.value)
-        copy.index = self.index
-        return copy
+        copied = LongInfo(self.value)
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -501,12 +512,12 @@ class LongInfo(ConstInfo):
     def deref(self, pool: "ConstPool") -> None:
         ...
 
+    def link(self) -> Result[Long]:
+        return Ok(Long(self.value))
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((LongInfo.tag,)))
         stream.write(pack_i64(self.value))
-
-    def unwrap(self) -> Result[Long]:
-        return Ok(Long(self.value))
 
 
 class DoubleInfo(ConstInfo):
@@ -537,9 +548,9 @@ class DoubleInfo(ConstInfo):
         self.value = value
 
     def __copy__(self) -> "DoubleInfo":
-        copy = DoubleInfo(self.value)
-        copy.index = self.index
-        return copy
+        copied = DoubleInfo(self.value)
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -563,12 +574,12 @@ class DoubleInfo(ConstInfo):
     def deref(self, pool: "ConstPool") -> None:
         ...
 
+    def link(self) -> Result[Double]:
+        return Ok(Double(self.value))
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((DoubleInfo.tag,)))
         stream.write(pack_f64(self.value))
-
-    def unwrap(self) -> Result[Double]:
-        return Ok(Double(self.value))
 
 
 class ClassInfo(ConstInfo):
@@ -600,14 +611,14 @@ class ClassInfo(ConstInfo):
         self.name = name
 
     def __copy__(self) -> "ClassInfo":
-        copy = ClassInfo(self.name)
-        copy.index = self.index
-        return copy
+        copied = ClassInfo(self.name)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "ClassInfo":
-        copy = ClassInfo(deepcopy(self.name, memo))
-        copy.index = self.index
-        return copy
+        copied = ClassInfo(deepcopy(self.name, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -627,16 +638,16 @@ class ClassInfo(ConstInfo):
         if isinstance(self.name, ConstIndex):
             self.name = pool[self.name.index]
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(ClassInfo.tag, pool.add(self.name)))
-
-    def unwrap(self) -> Result[Class]:
+    def link(self) -> Result[Class]:
         with Result[Class]() as result:
             if not isinstance(self.name, UTF8Info):
                 return result.err(TypeError(f"name {self.name!s} is not a UTF8 constant"))
             # https://github.com/ItzSomebody/stopdecompilingmyjava/blob/master/decompiler-tool-bugs/entry-007/entry.md
             return result.ok(Class(parse_reference(self.name.decode())))
         return result
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BH(ClassInfo.tag, pool.add(self.name)))
 
 
 class StringInfo(ConstInfo):
@@ -668,14 +679,14 @@ class StringInfo(ConstInfo):
         self.value = value
 
     def __copy__(self) -> "StringInfo":
-        copy = StringInfo(self.value)
-        copy.index = self.index
-        return copy
+        copied = StringInfo(self.value)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "StringInfo":
-        copy = StringInfo(deepcopy(self.value, memo))
-        copy.index = self.index
-        return copy
+        copied = StringInfo(deepcopy(self.value, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -694,15 +705,15 @@ class StringInfo(ConstInfo):
         if isinstance(self.value, ConstIndex):
             self.value = pool[self.value.index]
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(StringInfo.tag, pool.add(self.value)))
-
-    def unwrap(self) -> Result[String]:
+    def link(self) -> Result[String]:
         with Result[String]() as result:
             if not isinstance(self.value, UTF8Info):
                 return result.err(TypeError(f"value {self.value!s} is not a UTF8 constant"))
             return result.ok(String(self.value.decode()))
         return result
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BH(StringInfo.tag, pool.add(self.value)))
 
 
 class FieldrefInfo(ConstInfo):
@@ -738,14 +749,14 @@ class FieldrefInfo(ConstInfo):
         self.name_and_type = name_and_type
 
     def __copy__(self) -> "FieldrefInfo":
-        copy = FieldrefInfo(self.class_, self.name_and_type)
-        copy.index = self.index
-        return copy
+        copied = FieldrefInfo(self.class_, self.name_and_type)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "FieldrefInfo":
-        copy = FieldrefInfo(deepcopy(self.class_, memo), deepcopy(self.name_and_type, memo))
-        copy.index = self.index
-        return copy
+        copied = FieldrefInfo(deepcopy(self.class_, memo), deepcopy(self.name_and_type, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -764,7 +775,7 @@ class FieldrefInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def __iter__(self) -> Iterable[ConstInfo]:
+    def __iter__(self) -> Iterator[ConstInfo]:
         return iter((self.class_, self.name_and_type))
 
     def deref(self, pool: "ConstPool") -> None:
@@ -810,14 +821,14 @@ class MethodrefInfo(ConstInfo):
         self.name_and_type = name_and_type
 
     def __copy__(self) -> "MethodrefInfo":
-        copy = MethodrefInfo(self.class_, self.name_and_type)
-        copy.index = self.index
-        return copy
+        copied = MethodrefInfo(self.class_, self.name_and_type)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "MethodrefInfo":
-        copy = MethodrefInfo(deepcopy(self.class_, memo), deepcopy(self.name_and_type, memo))
-        copy.index = self.index
-        return copy
+        copied = MethodrefInfo(deepcopy(self.class_, memo), deepcopy(self.name_and_type, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -836,7 +847,7 @@ class MethodrefInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def __iter__(self) -> Iterable[ConstInfo]:
+    def __iter__(self) -> Iterator[ConstInfo]:
         return iter((self.class_, self.name_and_type))
 
     def deref(self, pool: "ConstPool") -> None:
@@ -882,14 +893,14 @@ class InterfaceMethodrefInfo(ConstInfo):
         self.name_and_type = name_and_type
 
     def __copy__(self) -> "InterfaceMethodrefInfo":
-        copy = InterfaceMethodrefInfo(self.class_, self.name_and_type)
-        copy.index = self.index
-        return copy
+        copied = InterfaceMethodrefInfo(self.class_, self.name_and_type)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InterfaceMethodrefInfo":
-        copy = InterfaceMethodrefInfo(deepcopy(self.class_, memo), deepcopy(self.name_and_type, memo))
-        copy.index = self.index
-        return copy
+        copied = InterfaceMethodrefInfo(deepcopy(self.class_, memo), deepcopy(self.name_and_type, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -911,7 +922,7 @@ class InterfaceMethodrefInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def __iter__(self) -> Iterable[ConstInfo]:
+    def __iter__(self) -> Iterator[ConstInfo]:
         return iter((self.class_, self.name_and_type))
 
     def deref(self, pool: "ConstPool") -> None:
@@ -956,14 +967,14 @@ class NameAndTypeInfo(ConstInfo):
         self.descriptor = descriptor
 
     def __copy__(self) -> "NameAndTypeInfo":
-        copy = NameAndTypeInfo(self.name, self.descriptor)
-        copy.index = self.index
-        return copy
+        copied = NameAndTypeInfo(self.name, self.descriptor)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "NameAndTypeInfo":
-        copy = NameAndTypeInfo(deepcopy(self.name, memo), deepcopy(self.descriptor, memo))
-        copy.index = self.index
-        return copy
+        copied = NameAndTypeInfo(deepcopy(self.name, memo), deepcopy(self.descriptor, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -978,7 +989,7 @@ class NameAndTypeInfo(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NameAndTypeInfo) and self.name == other.name and self.descriptor == other.descriptor
 
-    def __iter__(self) -> Iterable[ConstInfo]:
+    def __iter__(self) -> Iterator[ConstInfo]:
         return iter((self.name, self.descriptor))
 
     def deref(self, pool: "ConstPool") -> None:
@@ -1074,14 +1085,14 @@ class MethodHandleInfo(ConstInfo):
         self.ref = ref
 
     def __copy__(self) -> "MethodHandleInfo":
-        copy = MethodHandleInfo(self.kind, self.ref)
-        copy.index = self.index
-        return copy
+        copied = MethodHandleInfo(self.kind, self.ref)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "MethodHandleInfo":
-        copy = MethodHandleInfo(self.kind, deepcopy(self.ref, memo))
-        copy.index = self.index
-        return copy
+        copied = MethodHandleInfo(self.kind, deepcopy(self.ref, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         kind_str = MethodHandleInfo._KINDS.get(self.kind) or str(self.kind)
@@ -1098,17 +1109,14 @@ class MethodHandleInfo(ConstInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MethodHandleInfo) and self.kind == other.kind and self.ref == other.ref
 
-    def __iter__(self) -> Iterable[int | ConstInfo]:
+    def __iter__(self) -> Iterator[int | ConstInfo]:
         return iter((self.kind, self.ref))
 
     def deref(self, pool: "ConstPool") -> None:
         if isinstance(self.ref, ConstIndex):
             self.ref = pool[self.ref.index]
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BBH(MethodHandleInfo.tag, self.kind, pool.add(self.ref)))
-
-    def unwrap(self) -> Result[MethodHandle]:
+    def link(self) -> Result[MethodHandle]:
         with Result[MethodHandle]() as result:
             field = False
 
@@ -1155,9 +1163,12 @@ class MethodHandleInfo(ConstInfo):
                 ret_type = parse_field_descriptor(descriptor.decode())
 
             return result.ok(MethodHandle(
-                MethodHandle.Kind(self.kind), class_.unwrap().unwrap_into(result), name.decode(), arg_types, ret_type,
+                MethodHandle.Kind(self.kind), class_.link().unwrap_into(result), name.decode(), arg_types, ret_type,
             ))
         return result
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BBH(MethodHandleInfo.tag, self.kind, pool.add(self.ref)))
 
 
 class MethodTypeInfo(ConstInfo):
@@ -1188,14 +1199,14 @@ class MethodTypeInfo(ConstInfo):
         self.descriptor = descriptor
 
     def __copy__(self) -> "MethodTypeInfo":
-        copy = MethodTypeInfo(self.descriptor)
-        copy.index = self.index
-        return copy
+        copied = MethodTypeInfo(self.descriptor)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "MethodTypeInfo":
-        copy = MethodTypeInfo(deepcopy(self.descriptor, memo))
-        copy.index = self.index
-        return copy
+        copied = MethodTypeInfo(deepcopy(self.descriptor, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -1214,15 +1225,15 @@ class MethodTypeInfo(ConstInfo):
         if isinstance(self.descriptor, ConstIndex):
             self.descriptor = pool[self.descriptor.index]
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
-        stream.write(pack_BH(MethodTypeInfo.tag, pool.add(self.descriptor)))
-
-    def unwrap(self) -> Result[MethodType]:
+    def link(self) -> Result[MethodType]:
         with Result[MethodType]() as result:
             if not isinstance(self.descriptor, UTF8Info):
                 return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))
             return result.ok(MethodType(*parse_method_descriptor(self.descriptor.decode())))
         return result
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        stream.write(pack_BH(MethodTypeInfo.tag, pool.add(self.descriptor)))
 
 
 class DynamicInfo(ConstInfo):
@@ -1258,14 +1269,14 @@ class DynamicInfo(ConstInfo):
         self.name_and_type = name_and_type
 
     def __copy__(self) -> "DynamicInfo":
-        copy = DynamicInfo(self.attr_index, self.name_and_type)
-        copy.index = self.index
-        return copy
+        copied = DynamicInfo(self.attr_index, self.name_and_type)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "DynamicInfo":
-        copy = DynamicInfo(self.attr_index, deepcopy(self.name_and_type, memo))
-        copy.index = self.index
-        return copy
+        copied = DynamicInfo(self.attr_index, deepcopy(self.name_and_type, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -1286,7 +1297,7 @@ class DynamicInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def __iter__(self) -> Iterable[int | ConstInfo]:
+    def __iter__(self) -> Iterator[int | ConstInfo]:
         return iter((self.attr_index, self.name_and_type))
 
     def deref(self, pool: "ConstPool") -> None:
@@ -1330,14 +1341,14 @@ class InvokeDynamicInfo(ConstInfo):
         self.name_and_type = name_and_type
 
     def __copy__(self) -> "InvokeDynamicInfo":
-        copy = InvokeDynamicInfo(self.attr_index, self.name_and_type)
-        copy.index = self.index
-        return copy
+        copied = InvokeDynamicInfo(self.attr_index, self.name_and_type)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InvokeDynamicInfo":
-        copy = InvokeDynamicInfo(self.attr_index, deepcopy(self.name_and_type, memo))
-        copy.index = self.index
-        return copy
+        copied = InvokeDynamicInfo(self.attr_index, deepcopy(self.name_and_type, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -1359,7 +1370,7 @@ class InvokeDynamicInfo(ConstInfo):
             self.name_and_type == other.name_and_type
         )
 
-    def __iter__(self) -> Iterable[int | ConstInfo]:
+    def __iter__(self) -> Iterator[int | ConstInfo]:
         return iter((self.attr_index, self.name_and_type))
 
     def deref(self, pool: "ConstPool") -> None:
@@ -1397,14 +1408,14 @@ class ModuleInfo(ConstInfo):
         self.name = name
 
     def __copy__(self) -> "ModuleInfo":
-        copy = ModuleInfo(self.name)
-        copy.index = self.index
-        return copy
+        copied = ModuleInfo(self.name)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "ModuleInfo":
-        copy = ModuleInfo(deepcopy(self.name, memo))
-        copy.index = self.index
-        return copy
+        copied = ModuleInfo(deepcopy(self.name, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:
@@ -1454,14 +1465,14 @@ class PackageInfo(ConstInfo):
         self.name = name
 
     def __copy__(self) -> "PackageInfo":
-        copy = PackageInfo(self.name)
-        copy.index = self.index
-        return copy
+        copied = PackageInfo(self.name)
+        copied.index = self.index
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "PackageInfo":
-        copy = PackageInfo(deepcopy(self.name, memo))
-        copy.index = self.index
-        return copy
+        copied = PackageInfo(deepcopy(self.name, memo))
+        copied.index = self.index
+        return copied
 
     def __repr__(self) -> str:
         if self.index is not None:

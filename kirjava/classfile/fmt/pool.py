@@ -6,17 +6,13 @@ __all__ = (
     "ConstPool",
 )
 
-import sys
+from copy import copy, deepcopy
 from os import SEEK_SET
-from typing import IO, Iterable, Union
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from typing import IO, Iterable, Iterator, Union
 
 from .constants import ConstIndex, ConstInfo
 from .._struct import *
+from ..._compat import Self
 
 
 class ConstPool:
@@ -37,6 +33,8 @@ class ConstPool:
     read(stream: IO[bytes]) -> Self
         Reads a constant pool from a binary stream.
 
+    copy(self, deep: bool = False) -> ConstPool
+        Creates a copy of this constant pool.
     write(self, stream: IO[bytes]) -> None
         Writes this constant pool to the binary stream.
     add(self, info: ConstInfo, low: bool = False) -> int
@@ -75,7 +73,6 @@ class ConstPool:
         while self._index < count:
             info = ConstInfo.read(stream, self)
             self[self._index] = info
-
         for entry in self._contiguous[1:]:
             entry.deref(self)
 
@@ -95,8 +92,27 @@ class ConstPool:
         if infos is not None:
             self.extend(infos)
 
+    def __copy__(self) -> "ConstPool":
+        copied = ConstPool()
+        copied._contiguous.extend(self._contiguous[1:])
+        copied._non_contiguous.update(self._non_contiguous)
+        copied._low.extend(self._low)
+        copied._index = self._index
+        return copied
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "ConstPool":
+        copied = ConstPool()
+        copied._contiguous.extend(deepcopy(entry, memo) for entry in self._contiguous[1:])
+        copied._non_contiguous.update({index: deepcopy(entry, memo) for (index, entry) in self._non_contiguous.items()})
+        copied._low.extend(deepcopy(entry, memo) for entry in self._low)
+        copied._index = self._index
+        return copied
+
     def __repr__(self) -> str:
         return f"<ConstPool(entries={self.entries!r})>"
+
+    def __iter__(self) -> Iterator[ConstInfo]:
+        return iter(self._contiguous)
 
     def __getitem__(self, index: int) -> ConstInfo:
         if index < 0 or index > 65535:
@@ -105,16 +121,16 @@ class ConstPool:
             return self._non_contiguous.get(index) or ConstIndex(index)
         return self._contiguous[index]
 
-    def __setitem__(self, index: int, info: ConstInfo | None) -> None:
+    def __setitem__(self, index: int, value: ConstInfo | None) -> None:
         if index < 1 or index > self._index:
             raise IndexError(f"provided index {index} is out of valid constant pool bounds")
         elif index == self._index:
-            if info is None:
+            if value is None:
                 return
-            self._contiguous.append(info)
+            self._contiguous.append(value)
             self._non_contiguous.pop(index, None)
             self._index += 1
-            if info.wide:
+            if value.wide:
                 self._contiguous.append(ConstIndex(self._index))
                 self._non_contiguous.pop(index + 1, None)
                 self._index += 1
@@ -126,11 +142,11 @@ class ConstPool:
         elif current.wide:
             self._contiguous.pop(index + 1)
 
-        if info is None:
+        if value is None:
             self._contiguous.pop(index)
         else:
-            self._contiguous[index] = info
-            if info.wide:
+            self._contiguous[index] = value
+            if value.wide:
                 self._contiguous.insert(index + 1, ConstIndex(index + 1))
 
         # We may need to update any indices if we have shifted the contiguous entries at all.
@@ -145,6 +161,20 @@ class ConstPool:
 
     def __len__(self) -> int:
         return self._index
+
+    def copy(self, deep: bool = False) -> "ConstPool":
+        """
+        Creates a copy of this constant pool.
+
+        Parameters
+        ----------
+        deep: bool
+            Whether to copy the entries contained within this pool.
+        """
+
+        if not deep:
+            return copy(self)
+        return deepcopy(self)
 
     def write(self, stream: IO[bytes]) -> None:
         """

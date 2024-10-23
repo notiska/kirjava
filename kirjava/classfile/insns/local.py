@@ -23,18 +23,13 @@ __all__ = (
     "LoadLocalAtWide", "StoreLocalAtWide", "IIncWide",
 )
 
-import sys
 import typing
 from typing import IO
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
 
 from . import Instruction
 from .misc import wide
 from .._struct import *
+from ..._compat import Self
 from ...model.types import *
 # from ...model.values.constants import *
 
@@ -160,9 +155,9 @@ class LoadLocalAt(LoadLocal):
         self.index = index
 
     def __copy__(self) -> "LoadLocalAt":
-        copy = type(self)(self.index)
-        copy.offset = self.offset
-        return copy
+        copied = type(self)(self.index)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -204,9 +199,9 @@ class StoreLocalAt(StoreLocal):
         self.index = index
 
     def __copy__(self) -> "StoreLocalAt":
-        copy = type(self)(self.index)
-        copy.offset = self.offset
-        return copy
+        copied = type(self)(self.index)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -260,9 +255,9 @@ class IInc(Instruction):
         self.value = value
 
     def __copy__(self) -> "IInc":
-        copy = iinc(self.index, self.value)
-        copy.offset = self.offset
-        return copy
+        copied = iinc(self.index, self.value)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -379,9 +374,9 @@ class IIncWide(IInc):
         return cls(index, value)
 
     def __copy__(self) -> "IIncWide":
-        copy = iinc_w(self.index, self.value)
-        copy.offset = self.offset
-        return copy
+        copied = iinc_w(self.index, self.value)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:

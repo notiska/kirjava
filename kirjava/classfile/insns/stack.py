@@ -124,9 +124,9 @@ class BIPush(PushConstant):
         self.value = value
 
     def __copy__(self) -> "BIPush":
-        copy = bipush(self.value)
-        copy.offset = self.offset
-        return copy
+        copied = bipush(self.value)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -181,9 +181,9 @@ class SIPush(PushConstant):
         self.value = value
 
     def __copy__(self) -> "SIPush":
-        copy = sipush(self.value)
-        copy.offset = self.offset
-        return copy
+        copied = sipush(self.value)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -233,14 +233,14 @@ class LoadConstant(Instruction):
         self.info = info
 
     def __copy__(self) -> "LoadConstant":
-        copy = type(self)(self.info)
-        copy.offset = self.offset
-        return copy
+        copied = type(self)(self.info)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "LoadConstant":
-        copy = type(self)(deepcopy(self.info, memo))
-        copy.offset = self.offset
-        return copy
+        copied = type(self)(deepcopy(self.info, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -358,14 +358,14 @@ class New(Instruction):
         self.classref = classref
 
     def __copy__(self) -> "New":
-        copy = new(self.classref)
-        copy.offset = self.offset
-        return copy
+        copied = new(self.classref)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "New":
-        copy = new(deepcopy(self.classref, memo))
-        copy.offset = self.offset
-        return copy
+        copied = new(deepcopy(self.classref, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:

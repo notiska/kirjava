@@ -9,17 +9,12 @@ __all__ = (
     "Nop", "Wide", "MonitorEnter", "MonitorExit", "Internal", "Unknown",
 )
 
-import sys
 import typing
 from os import SEEK_CUR
 from typing import IO
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
-
 from . import Instruction
+from ..._compat import Self
 from ...model.types import Class
 # from ...model.types import *
 # from ...model.values.constants import Null
@@ -239,9 +234,9 @@ class Unknown(Instruction):
         self.opcode = opcode
 
     def __copy__(self) -> "Unknown":
-        copy = type(self)(self.opcode)
-        copy.offset = self.offset
-        return copy
+        copied = type(self)(self.opcode)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:

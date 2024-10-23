@@ -18,17 +18,12 @@ __all__ = (
 JVM class file stack map frame and verification type structs.
 """
 
-import sys
 import typing
 from typing import IO, Iterable
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
-
-from .constants import ClassInfo, ConstInfo
+from .constants import ConstInfo
 from .._struct import *
+from ..._compat import Self
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool

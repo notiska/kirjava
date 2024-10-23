@@ -14,15 +14,9 @@ __all__ = (
 JVM class file method info struct and attributes.
 """
 
-import sys
 import typing
 from os import SEEK_CUR, SEEK_SET
-from typing import IO, Iterable, Union
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from typing import IO, Iterable, Iterator, Union
 
 from .annotation import ElementValue, ParameterAnnotations
 from .attribute import AttributeInfo
@@ -32,6 +26,7 @@ from .._desc import parse_method_descriptor
 from .._struct import *
 from ..insns import CodeIOWrapper, Instruction
 from ..version import *
+from ..._compat import Self
 from ...backend import Result
 from ...model.class_.method import Method
 
@@ -122,12 +117,12 @@ class MethodInfo:
     read(stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]
         Reads a method from a binary stream.
 
-    write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
-        Writes this method to a binary stream.
     visit(self, visitor: MethodInfoVisitor) -> None
         Calls a visitor on this method.
-    unwrap(self) -> Method
-        Unwraps this method info.
+    link(self) -> Result[Method]
+        Creates a linked method from this method info.
+    write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
+        Writes this method to a binary stream.
     """
 
     __slots__ = ("access", "name", "descriptor", "attributes")
@@ -319,6 +314,44 @@ class MethodInfo:
     def __str__(self) -> str:
         return f"method_info(0x{self.access:04x},{self.name!s}:{self.descriptor!s})"
 
+    def visit(self, visitor: "MethodInfoVisitor") -> None:
+        """
+        Calls a visitor on this method.
+        """
+
+        visitor.visit_start(self)
+        for attribute in self.attributes:
+            visitor.visit_attribute(attribute)
+        visitor.visit_end(self)
+
+    def link(self) -> Result[Method]:
+        """
+        Creates a linked method from this method info.
+        """
+
+        with Result[Method]() as result:
+            if not isinstance(self.name, UTF8Info):
+                return result.err(TypeError(f"name {self.name!s} is not a UTF8 constant"))
+            if not isinstance(self.descriptor, UTF8Info):
+                return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))
+
+            return result.ok(Method(
+                self.name.decode(), *parse_method_descriptor(self.descriptor.decode()),
+                is_public=self.is_public,
+                is_private=self.is_private,
+                is_protected=self.is_protected,
+                is_static=self.is_static,
+                is_final=self.is_final,
+                is_synchronized=self.is_synchronized,
+                is_bridge=self.is_bridge,
+                is_varargs=self.is_varargs,
+                is_native=self.is_native,
+                is_abstract=self.is_abstract,
+                is_strictfp=self.is_strict,
+                is_synthetic=self.is_synthetic,
+            ))
+        return result
+
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         """
         Writes this method to the binary stream.
@@ -341,47 +374,6 @@ class MethodInfo:
         stream.write(pack_HHHH(self.access, pool.add(self.name), pool.add(self.descriptor), len(self.attributes)))
         for attribute in self.attributes:
             attribute.write(stream, version, pool)
-
-    def visit(self, visitor: "MethodInfoVisitor") -> None:
-        """
-        Calls a visitor on this method.
-        """
-
-        visitor.visit_start(self)
-        for attribute in self.attributes:
-            visitor.visit_attribute(attribute)
-        visitor.visit_end(self)
-
-    def unwrap(self) -> Method:
-        """
-        Unwraps this method info.
-
-        Returns
-        -------
-        Method
-            The unwrapped `Method`.
-        """
-
-        if not isinstance(self.name, UTF8Info):
-            raise ValueError("name is not a UTF8 constant")
-        if not isinstance(self.descriptor, UTF8Info):
-            raise ValueError("descriptor is not a UTF8 constant")
-
-        return Method(
-            self.name.decode(), *parse_method_descriptor(self.descriptor.decode()),
-            is_public=self.is_public,
-            is_private=self.is_private,
-            is_protected=self.is_protected,
-            is_static=self.is_static,
-            is_final=self.is_final,
-            is_synchronized=self.is_synchronized,
-            is_bridge=self.is_bridge,
-            is_varargs=self.is_varargs,
-            is_native=self.is_native,
-            is_abstract=self.is_abstract,
-            is_strictfp=self.is_strict,
-            is_synthetic=self.is_synthetic,
-        )
 
 
 # ---------------------------------------- Attributes ---------------------------------------- #
@@ -587,8 +579,8 @@ class Code(AttributeInfo):
                 self.class_ == other.class_
             )
 
-        # Yeah this might be pushing it a little on what I allow to be unpackable in the API...
-        def __iter__(self) -> Iterable[int | ConstInfo | None]:
+        # Yeah, this might be pushing it a little on what I allow to be unpackable in the API...
+        def __iter__(self) -> Iterator[int | ConstInfo | None]:
             return iter((self.start_pc, self.end_pc, self.handler_pc, self.class_))
 
 
@@ -633,6 +625,9 @@ class StackMapTable(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, StackMapTable) and self.frames == other.frames
+
+    def __iter__(self) -> Iterator[StackMapFrame]:
+        return iter(self.frames)
 
     def __getitem__(self, index: int) -> StackMapFrame:
         return self.frames[index]
@@ -700,6 +695,9 @@ class Exceptions(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Exceptions) and self.exceptions == other.exceptions
+
+    def __iter__(self) -> Iterator[ConstInfo]:
+        return iter(self.exceptions)
 
     def __getitem__(self, index: int) -> ConstInfo:
         return self.exceptions[index]
@@ -773,6 +771,9 @@ class LineNumberTable(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LineNumberTable) and self.lines == other.lines
 
+    def __iter__(self) -> Iterator["LineNumberTable.LineNumber"]:
+        return iter(self.lines)
+
     def __getitem__(self, index: int) -> "LineNumberTable.LineNumber":
         return self.lines[index]
 
@@ -827,7 +828,7 @@ class LineNumberTable(AttributeInfo):
                 self.line == other.line
             )
 
-        def __iter__(self) -> Iterable[int]:
+        def __iter__(self) -> Iterator[int]:
             return iter((self.start_pc, self.line))
 
 
@@ -858,13 +859,13 @@ class LocalVariableTable(AttributeInfo):
             locals_ = []
             for _ in range(count):
                 start_pc, length, name_index, desc_index, index = unpack_HHHHH(stream.read(10))
-                locals_.append(cls.LocalVariable(start_pc, length, pool[name_index], pool[desc_index], index))
+                locals_.append(cls.LocalVar(start_pc, length, pool[name_index], pool[desc_index], index))
             return result.ok(cls(locals_))
         return result
 
-    def __init__(self, locals_: Iterable["LocalVariableTable.LocalVariable"] | None = None) -> None:
+    def __init__(self, locals_: Iterable["LocalVariableTable.LocalVar"] | None = None) -> None:
         super().__init__()
-        self.locals: list[LocalVariableTable.LocalVariable] = []
+        self.locals: list[LocalVariableTable.LocalVar] = []
         if locals_ is not None:
             self.locals.extend(locals_)
 
@@ -878,13 +879,16 @@ class LocalVariableTable(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVariableTable) and self.locals == other.locals
 
-    def __getitem__(self, index: int) -> "LocalVariableTable.LocalVariable":
+    def __iter__(self) -> Iterator["LocalVariableTable.LocalVar"]:
+        return iter(self.locals)
+
+    def __getitem__(self, index: int) -> "LocalVariableTable.LocalVar":
         return self.locals[index]
 
-    def __setitem__(self, index: int, value: "LocalVariableTable.LocalVariable") -> None:
+    def __setitem__(self, index: int, value: "LocalVariableTable.LocalVar") -> None:
         self.locals[index] = value
 
-    def __delitem__(self, key: Union[int, "LocalVariableTable.LocalVariable"]) -> None:
+    def __delitem__(self, key: Union[int, "LocalVariableTable.LocalVar"]) -> None:
         if isinstance(key, int):
             del self.locals[key]
         else:
@@ -903,7 +907,7 @@ class LocalVariableTable(AttributeInfo):
             ))
         stream.write(self.extra)
 
-    class LocalVariable:
+    class LocalVar:
         """
         A local variable table entry.
 
@@ -933,16 +937,16 @@ class LocalVariableTable(AttributeInfo):
 
         def __repr__(self) -> str:
             return (
-                f"<LocalVariableTable.LocalVariable(start_pc={self.start_pc}, length={self.length}, name={self.name!s}, "
+                f"<LocalVariableTable.LocalVar(start_pc={self.start_pc}, length={self.length}, name={self.name!s}, "
                 f"descriptor={self.descriptor!s}, index={self.index})>"
             )
 
         def __str__(self) -> str:
-            return f"local_variable({self.start_pc}+{self.length},{self.name!s},{self.descriptor!s},{self.index})"
+            return f"localvar({self.start_pc}+{self.length},{self.name!s},{self.descriptor!s},{self.index})"
 
         def __eq__(self, other: object) -> bool:
             return (
-                isinstance(other, LocalVariableTable.LocalVariable) and
+                isinstance(other, LocalVariableTable.LocalVar) and
                 self.start_pc == other.start_pc and
                 self.length == other.length and
                 self.name == other.name and
@@ -950,7 +954,7 @@ class LocalVariableTable(AttributeInfo):
                 self.index == other.index
             )
 
-        def __iter__(self) -> Iterable[int | ConstInfo]:
+        def __iter__(self) -> Iterator[int | ConstInfo]:
             return iter((self.start_pc, self.length, self.name, self.descriptor, self.index))
 
 
@@ -964,7 +968,7 @@ class LocalVariableTypeTable(AttributeInfo):
 
     Attributes
     ----------
-    locals: list[LocalVariableTypeTable.LocalVariable]
+    locals: list[LocalVariableTypeTable.LocalVar]
         A list of local variable information entries.
     """
 
@@ -981,13 +985,13 @@ class LocalVariableTypeTable(AttributeInfo):
             locals_ = []
             for _ in range(count):
                 start_pc, length, name_index, sig_index, index = unpack_HHHHH(stream.read(10))
-                locals_.append(cls.LocalVariable(start_pc, length, pool[name_index], pool[sig_index], index))
+                locals_.append(cls.LocalVar(start_pc, length, pool[name_index], pool[sig_index], index))
             return result.ok(cls(locals_))
         return result
 
-    def __init__(self, locals_: Iterable["LocalVariableTypeTable.LocalVariable"] | None = None) -> None:
+    def __init__(self, locals_: Iterable["LocalVariableTypeTable.LocalVar"] | None = None) -> None:
         super().__init__()
-        self.locals: list[LocalVariableTypeTable.LocalVariable] = []
+        self.locals: list[LocalVariableTypeTable.LocalVar] = []
         if locals_ is not None:
             self.locals.extend(locals_)
 
@@ -1001,13 +1005,16 @@ class LocalVariableTypeTable(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVariableTypeTable) and self.locals == other.locals
 
-    def __getitem__(self, index: int) -> "LocalVariableTypeTable.LocalVariable":
+    def __iter__(self) -> Iterator["LocalVariableTypeTable.LocalVar"]:
+        return iter(self.locals)
+
+    def __getitem__(self, index: int) -> "LocalVariableTypeTable.LocalVar":
         return self.locals[index]
 
-    def __setitem__(self, index: int, value: "LocalVariableTypeTable.LocalVariable") -> None:
+    def __setitem__(self, index: int, value: "LocalVariableTypeTable.LocalVar") -> None:
         self.locals[index] = value
 
-    def __delitem__(self, key: Union[int, "LocalVariableTypeTable.LocalVariable"]) -> None:
+    def __delitem__(self, key: Union[int, "LocalVariableTypeTable.LocalVar"]) -> None:
         if isinstance(key, int):
             del self.locals[key]
         else:
@@ -1026,7 +1033,7 @@ class LocalVariableTypeTable(AttributeInfo):
             ))
         stream.write(self.extra)
 
-    class LocalVariable:
+    class LocalVar:
         """
         A local variable type table entry.
 
@@ -1055,16 +1062,16 @@ class LocalVariableTypeTable(AttributeInfo):
 
         def __repr__(self) -> str:
             return (
-                f"<LocalVariableTypeTable.LocalVariable(start_pc={self.start_pc}, length={self.length}, "
+                f"<LocalVariableTypeTable.LocalVar(start_pc={self.start_pc}, length={self.length}, "
                 f"name={self.name!s}, signature={self.signature!s}, index={self.index})>"
             )
 
         def __str__(self) -> str:
-            return f"local_variable({self.start_pc}+{self.length},{self.name!s},{self.signature!s},{self.index})"
+            return f"localvar({self.start_pc}+{self.length},{self.name!s},{self.signature!s},{self.index})"
 
         def __eq__(self, other: object) -> bool:
             return (
-                isinstance(other, LocalVariableTypeTable.LocalVariable) and
+                isinstance(other, LocalVariableTypeTable.LocalVar) and
                 self.start_pc == other.start_pc and
                 self.length == other.length and
                 self.name == other.name and
@@ -1072,7 +1079,7 @@ class LocalVariableTypeTable(AttributeInfo):
                 self.index == other.index
             )
 
-        def __iter__(self) -> Iterable[int | ConstInfo]:
+        def __iter__(self) -> Iterator[int | ConstInfo]:
             return iter((self.start_pc, self.length, self.name, self.signature, self.index))
 
 
@@ -1163,6 +1170,9 @@ class MethodParameters(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MethodParameters) and self.params == other.params
+
+    def __iter__(self) -> Iterator["MethodParameters.Parameter"]:
+        return iter(self.params)
 
     def __getitem__(self, index: int) -> "MethodParameters.Parameter":
         return self.params[index]
@@ -1307,6 +1317,9 @@ class RuntimeVisibleParameterAnnotations(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeVisibleParameterAnnotations) and self.annotations == other.annotations
 
+    def __iter__(self) -> Iterator[ParameterAnnotations]:
+        return iter(self.annotations)
+
     def __getitem__(self, index: int) -> ParameterAnnotations:
         return self.annotations[index]
 
@@ -1371,6 +1384,9 @@ class RuntimeInvisibleParameterAnnotations(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeInvisibleParameterAnnotations) and self.annotations == other.annotations
+
+    def __iter__(self) -> Iterator[ParameterAnnotations]:
+        return iter(self.annotations)
 
     def __getitem__(self, index: int) -> ParameterAnnotations:
         return self.annotations[index]

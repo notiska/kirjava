@@ -283,7 +283,7 @@ class Result(Generic[T]):
 
         Parameters
         ----------
-        parent: Result[object]
+        parent: Result[Any]
             The parent result to add any metadata to.
         default: T | None
             The default value to use if not value is present.

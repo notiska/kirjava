@@ -9,18 +9,13 @@ __all__ = (
     "CheckCast", "InstanceOf",  # "CheckCastLinked", "InstanceOfLinked",
 )
 
-import sys
 import typing
 from copy import deepcopy
 from typing import IO
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
-
 from . import Instruction
 from .._struct import *
+from ..._compat import Self
 from ...model.types import *
 # from ...model.values.constants import *
 
@@ -126,14 +121,14 @@ class CheckCast(Instruction):
         self.classref = classref
 
     def __copy__(self) -> "CheckCast":
-        copy = checkcast(self.classref)
-        copy.offset = self.offset
-        return copy
+        copied = checkcast(self.classref)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "CheckCast":
-        copy = checkcast(deepcopy(self.classref, memo))
-        copy.offset = self.offset
-        return copy
+        copied = checkcast(deepcopy(self.classref, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -196,14 +191,14 @@ class InstanceOf(Instruction):
         self.classref = classref
 
     def __copy__(self) -> "InstanceOf":
-        copy = instanceof(self.classref)
-        copy.offset = self.offset
-        return copy
+        copied = instanceof(self.classref)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "InstanceOf":
-        copy = instanceof(deepcopy(self.classref, memo))
-        copy.offset = self.offset
-        return copy
+        copied = instanceof(deepcopy(self.classref, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:

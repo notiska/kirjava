@@ -12,18 +12,13 @@ __all__ = (
     "ArrayLength",
 )
 
-import sys
 import typing
 from copy import deepcopy
 from typing import IO
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
-
 from . import Instruction
 from .._struct import *
+from ..._compat import Self
 from ...model.types import *
 # from ...model.values.constants import Integer, Null
 # from ...model.values.objects import Array as ArrayValue
@@ -227,9 +222,9 @@ class NewArray(Instruction):
         self.tag = tag
 
     def __copy__(self) -> "NewArray":
-        copy = newarray(self.tag)
-        copy.offset = self.offset
-        return copy
+        copied = newarray(self.tag)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         tag_str = NewArray._TAGS.get(self.tag) or str(self.tag)
@@ -306,14 +301,14 @@ class ANewArray(Instruction):
         self.classref = classref
 
     def __copy__(self) -> "ANewArray":
-        copy = anewarray(self.classref)
-        copy.offset = self.offset
-        return copy
+        copied = anewarray(self.classref)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "ANewArray":
-        copy = anewarray(deepcopy(self.classref, memo))
-        copy.offset = self.offset
-        return copy
+        copied = anewarray(deepcopy(self.classref, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -390,14 +385,14 @@ class MultiANewArray(Instruction):
         self.dimensions = dimensions
 
     def __copy__(self) -> "MultiANewArray":
-        copy = multianewarray(self.classref, self.dimensions)
-        copy.offset = self.offset
-        return copy
+        copied = multianewarray(self.classref, self.dimensions)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "MultiANewArray":
-        copy = multianewarray(deepcopy(self.classref, memo), self.dimensions)
-        copy.offset = self.offset
-        return copy
+        copied = multianewarray(deepcopy(self.classref, memo), self.dimensions)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:

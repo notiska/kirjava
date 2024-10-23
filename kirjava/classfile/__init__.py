@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "fmt", "graph", "insns", "version",
+    "fmt", "graph", "insns", "loaders", "version",
     "INSTRUCTIONS",
 
     "dump", "dumps", "load", "loads",
@@ -28,7 +28,7 @@ __all__ = (
 Everything related to JVM class files.
 """
 
-from . import fmt, graph, insns, version
+from . import fmt, graph, insns, loaders, version
 from ._api import *
 from .fmt import *
 from .graph import Block, Edge, Graph

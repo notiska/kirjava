@@ -63,17 +63,14 @@ __all__ = (
     "CodeIOWrapper",
 )
 
-import sys
 import typing
+from copy import copy, deepcopy
 from io import BytesIO
 from os import SEEK_SET
 from typing import IO
 from typing_extensions import Buffer
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from ..._compat import Self
 
 if typing.TYPE_CHECKING:
     from ..fmt import ConstPool
@@ -112,12 +109,12 @@ class Instruction:
     read(stream: IO[bytes], pool: ConstPool) -> Instruction
         Reads an instruction from a binary stream.
 
-    write(self, stream: IO[bytes], pool: ConstPool) -> None
-        Writes this instruction to the binary stream.
+    copy(self) -> Instruction
+        Creates a copy of this instruction.
     link(self) -> Instruction
         Creates a linked version of this instruction.
-    verify(self, verifier: Verifier) -> None
-        Verifies that this instruction is valid.
+    write(self, stream: IO[bytes], pool: ConstPool) -> None
+        Writes this instruction to the binary stream.
     """
 
     # trace(self, frame: Frame, state: State) -> None
@@ -237,9 +234,9 @@ class Instruction:
         self.offset: int | None = None
 
     def __copy__(self) -> "Instruction":
-        copy = type(self)()
-        copy.offset = self.offset
-        return copy
+        copied = type(self)()
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         # return "<Instruction(offset=%s, opcode=0x%x, mnemonic=%r)>" % (self.offset, self.opcode, self.mnemonic)
@@ -253,19 +250,19 @@ class Instruction:
     def __eq__(self, other: object) -> bool:
         raise NotImplementedError(f"== is not implemented for {type(self)!r}")
 
-    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+    def copy(self, deep: bool = False) -> "Instruction":
         """
-        Writes this instruction to a binary stream.
+        Creates a copy of this instruction.
 
         Parameters
         ----------
-        stream: IO[bytes]
-            The binary stream to write to.
-        pool: ConstPool
-            The class file constant pool.
+        deep: bool
+            Whether to also copy any constants referenced by this instruction.
         """
 
-        raise NotImplementedError(f"write() is not implemented for {type(self)!r}")
+        if not deep:
+            return copy(self)
+        return deepcopy(self)
 
     def link(self) -> "Instruction":  # TODO: This.
         """
@@ -280,6 +277,20 @@ class Instruction:
         # if self.linked
         #     return self
         raise NotImplementedError(f"link() is not implemented for {type(self)!r}")
+
+    def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+        """
+        Writes this instruction to a binary stream.
+
+        Parameters
+        ----------
+        stream: IO[bytes]
+            The binary stream to write to.
+        pool: ConstPool
+            The class file constant pool.
+        """
+
+        raise NotImplementedError(f"write() is not implemented for {type(self)!r}")
 
     # def trace(self, frame: "Frame", state: "State") -> Optional["State.Step"]:
     #     """

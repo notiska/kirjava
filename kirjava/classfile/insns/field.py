@@ -7,19 +7,14 @@ __all__ = (
     "GetStatic", "PutStatic", "GetField", "PutField",
 )
 
-import sys
 import typing
 from copy import deepcopy
 from typing import IO
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
-
 from . import Instruction
 # from .._desc import parse_field_descriptor
 from .._struct import *
+from ..._compat import Self
 from ...model.types import error_t, Class
 # from ...model.types import *
 # from ...model.values.constants import Null
@@ -60,14 +55,14 @@ class GetStatic(Instruction):
         self.fieldref = fieldref
 
     def __copy__(self) -> "GetStatic":
-        copy = getstatic(self.fieldref)
-        copy.offset = self.offset
-        return copy
+        copied = getstatic(self.fieldref)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "GetStatic":
-        copy = getstatic(deepcopy(self.fieldref, memo))
-        copy.offset = self.offset
-        return copy
+        copied = getstatic(deepcopy(self.fieldref, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -139,14 +134,14 @@ class PutStatic(Instruction):
         self.fieldref = fieldref
 
     def __copy__(self) -> "PutStatic":
-        copy = putstatic(self.fieldref)
-        copy.offset = self.offset
-        return copy
+        copied = putstatic(self.fieldref)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "PutStatic":
-        copy = putstatic(deepcopy(self.fieldref, memo))
-        copy.offset = self.offset
-        return copy
+        copied = putstatic(deepcopy(self.fieldref, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -216,14 +211,14 @@ class GetField(Instruction):
         self.fieldref = fieldref
 
     def __copy__(self) -> "GetField":
-        copy = getfield(self.fieldref)
-        copy.offset = self.offset
-        return copy
+        copied = getfield(self.fieldref)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "GetField":
-        copy = getfield(deepcopy(self.fieldref, memo))
-        copy.offset = self.offset
-        return copy
+        copied = getfield(deepcopy(self.fieldref, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -303,14 +298,14 @@ class PutField(Instruction):
         self.fieldref = fieldref
 
     def __copy__(self) -> "PutField":
-        copy = putfield(self.fieldref)
-        copy.offset = self.offset
-        return copy
+        copied = putfield(self.fieldref)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "PutField":
-        copy = putfield(deepcopy(self.fieldref, memo))
-        copy.offset = self.offset
-        return copy
+        copied = putfield(deepcopy(self.fieldref, memo))
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:

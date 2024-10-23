@@ -18,19 +18,14 @@ __all__ = (
     "Return", "AThrow",
 )
 
-import sys
 import typing
 from enum import Enum
-from typing import IO, Mapping
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from typing import IO, Iterator, Mapping
 
 from . import Instruction
 from .misc import wide
 from .._struct import *
+from ..._compat import Self
 from ...model.types import *
 # from ...model.values.constants import *
 
@@ -71,9 +66,9 @@ class Jump(Instruction):
         self.delta = delta
 
     def __copy__(self) -> "Jump":
-        copy = type(self)(self.delta)
-        copy.offset = self.offset
-        return copy
+        copied = type(self)(self.delta)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -432,9 +427,9 @@ class Ret(Jump):
         self.index = index
 
     def __copy__(self) -> "Ret":
-        copy = type(self)(self.index)
-        copy.offset = self.offset
-        return copy
+        copied = type(self)(self.index)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -535,11 +530,14 @@ class Switch(Instruction):
         if offsets is not None:
             self.offsets.update(offsets)
 
+    def __iter__(self) -> Iterator[tuple[int, int]]:
+        return iter(self.offsets.items())
+
     def __getitem__(self, key: int) -> int:
         return self.offsets[key]
 
-    def __setitem__(self, key: int, branch: int) -> None:
-        self.offsets[key] = branch
+    def __setitem__(self, key: int, value: int) -> None:
+        self.offsets[key] = value
 
     def __delitem__(self, key: int) -> None:
         del self.offsets[key]
@@ -593,9 +591,9 @@ class TableSwitch(Switch):
         self.high = high
 
     def __copy__(self) -> "TableSwitch":
-        copy = tableswitch(self.default, self.low, self.high, self.offsets)
-        copy.offset = self.offset
-        return copy
+        copied = tableswitch(self.default, self.low, self.high, self.offsets)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -671,9 +669,9 @@ class LookupSwitch(Switch):
         return cls(default, offsets)
 
     def __copy__(self) -> "LookupSwitch":
-        copy = lookupswitch(self.default, self.offsets)
-        copy.offset = self.offset
-        return copy
+        copied = lookupswitch(self.default, self.offsets)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -743,9 +741,9 @@ class Return(Jump):
         super().__init__(None)
 
     def __copy__(self) -> "Return":
-        copy = type(self)()
-        copy.offset = self.offset
-        return copy
+        copied = type(self)()
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -796,9 +794,9 @@ class AThrow(Jump):
         super().__init__(None)
 
     def __copy__(self) -> "AThrow":
-        copy = athrow()
-        copy.offset = self.offset
-        return copy
+        copied = athrow()
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:

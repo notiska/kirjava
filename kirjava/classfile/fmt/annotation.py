@@ -15,17 +15,12 @@ __all__ = (
 JVM class file annotation structs found in annotation attributes.
 """
 
-import sys
 import typing
-from typing import IO, Iterable, Union
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from typing import IO, Iterable, Iterator, Union
 
 from .constants import ConstInfo
 from .._struct import *
+from ..._compat import Self
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
@@ -196,6 +191,9 @@ class Annotation:
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Annotation) and self.type == other.type and self.elements == other.elements
 
+    def __iter__(self) -> Iterator["Annotation.NamedElement"]:
+        return iter(self.elements)
+
     def __getitem__(self, index: int) -> "Annotation.NamedElement":
         return self.elements[index]
 
@@ -255,7 +253,7 @@ class Annotation:
         def __eq__(self, other: object) -> bool:
             return isinstance(other, Annotation.NamedElement) and self.name == other.name and self.value == other.value
 
-        def __iter__(self) -> Iterable[ConstInfo | ElementValue]:
+        def __iter__(self) -> Iterator[ConstInfo | ElementValue]:
             return iter((self.name, self.value))
 
 
@@ -310,6 +308,9 @@ class ParameterAnnotations:
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ParameterAnnotations) and self.annotations == other.annotations
+
+    def __iter__(self) -> Iterator[Annotation]:
+        return iter(self.annotations)
 
     def __getitem__(self, index: int) -> Annotation:
         return self.annotations[index]
@@ -616,6 +617,9 @@ class TypePath:
     def __eq__(self, other: object) -> bool:
         return isinstance(other, TypePath) and self.path == other.path
 
+    def __iter__(self) -> Iterator["TypePath.Segment"]:
+        return iter(self.path)
+
     def __getitem__(self, index: int) -> "TypePath.Segment":
         return self.path[index]
 
@@ -697,7 +701,7 @@ class TypePath:
         def __eq__(self, other: object) -> bool:
             return isinstance(other, TypePath.Segment) and self.kind == other.kind and self.index == other.index
 
-        def __iter__(self) -> Iterable[int]:
+        def __iter__(self) -> Iterator[int]:
             return iter((self.kind, self.index))
 
 
@@ -882,7 +886,7 @@ class EnumConstValue(ElementValue):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, EnumConstValue) and self.type == other.type and self.name == other.name
 
-    # def __iter__(self) -> Iterable[ConstInfo]:
+    # def __iter__(self) -> Iterator[ConstInfo]:
     #     return iter((self.type, self.name))
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -997,6 +1001,9 @@ class ArrayValue(ElementValue):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ArrayValue) and self.values == other.values
+
+    def __iter__(self) -> Iterator[ElementValue]:
+        return iter(self.values)
 
     def __getitem__(self, index: int) -> ElementValue:
         return self.values[index]
@@ -1319,6 +1326,9 @@ class LocalVarTarget(TargetInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalVarTarget) and self.kind == other.kind and self.ranges == other.ranges
 
+    def __iter__(self) -> Iterator["LocalVarTarget.LocalVar"]:
+        return iter(self.ranges)
+
     def __getitem__(self, index: int) -> "LocalVarTarget.LocalVar":
         return self.ranges[index]
 
@@ -1374,7 +1384,7 @@ class LocalVarTarget(TargetInfo):
                 self.index == other.index
             )
 
-        def __iter__(self) -> Iterable[int]:
+        def __iter__(self) -> Iterator[int]:
             return iter((self.start_pc, self.length, self.index))
 
 

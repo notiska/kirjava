@@ -9,15 +9,9 @@ __all__ = (
     "SourceDebugExtension", "Module", "ModulePackages", "ModuleMainClass",
 )
 
-import sys
 import typing
 from os import SEEK_CUR
-from typing import IO, Iterable, Union
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from typing import IO, Iterable, Iterator, Union
 
 from .attribute import AttributeInfo
 from .constants import *
@@ -26,6 +20,7 @@ from .method import MethodInfo
 from .pool import ConstPool
 from .._struct import *
 from ..version import *
+from ..._compat import Self
 from ...backend import Result
 from ...model import Class, Linker
 
@@ -109,12 +104,12 @@ class ClassFile:
     read(stream: IO[bytes], reader: Reader) -> Result[Self]
         Reads a class file from a binary stream.
 
-    write(self, stream: IO[bytes]) -> None
-        Writes this class file to a binary stream.
     visit(self, visitor: ClassFileVisitor) -> None
         Calls a visitor on this class file.
-    unwrap(self, linker: Linker) -> Result[Class]
-        Unwraps this class file.
+    link(self, linker: Linker) -> Result[Class]
+        Creates a linked class from this class file.
+    write(self, stream: IO[bytes]) -> None
+        Writes this class file to a binary stream.
     """
 
     __slots__ = (
@@ -313,6 +308,66 @@ class ClassFile:
         super_str = str(self.super) if self.super is not None else "[none]"
         return f"ClassFile({self.version!s},0x{self.access:04x},{self.this!s},{super_str})"
 
+    def visit(self, visitor: "ClassFileVisitor") -> None:
+        """
+        Calls a visitor on this class file.
+        """
+
+        visitor.visit_start(self)
+        visitor.visit_pool(self.pool)
+        for field in self.fields:
+            visitor.visit_field(field)
+        for method in self.methods:
+            visitor.visit_method(method)
+        for attribute in self.attributes:
+            visitor.visit_attribute(attribute)
+        visitor.visit_end(self)
+
+    def link(self, linker: Linker) -> Result[Class]:
+        """
+        Creates a linked class from this classfile.
+
+        Parameters
+        ----------
+        linker: Linker
+            The linker to use to resolve references.
+        """
+
+        with Result[Class].meta(__name__, self) as result:
+            if not isinstance(self.this, ClassInfo):
+                return result.err(TypeError(f"this class {self.this!s} is not a class constant"))
+            this = self.this.link().unwrap_into(result, reraise=True)
+
+            super_ = None
+            if self.super is not None:
+                if not isinstance(self.super, ClassInfo):
+                    return result.err(TypeError(f"super class {self.super!s} is not a class constant"))
+                super_ = self.super.link().unwrap_into(result, reraise=True)
+
+            interfaces = []
+            for interface in self.interfaces:
+                if not isinstance(interface, ClassInfo):
+                    return result.err(TypeError(f"interface {interface!s} is not a class constant"))
+                interfaces.append(interface.link().unwrap_into(result, reraise=True))
+
+            return result.ok(Class(
+                this.name,
+                linker.find_class(super_.name).unwrap_into(result, reraise=True) if super_ is not None else None,
+                [linker.find_class(interface.name).unwrap_into(result, reraise=True) for interface in interfaces],
+                [field.link().unwrap_into(result, reraise=True) for field in self.fields],
+                [method.link().unwrap_into(result, reraise=True) for method in self.methods],
+                is_public=self.is_public,
+                is_final=self.is_final,
+                is_super=self.is_super,
+                is_interface=self.is_interface,
+                is_abstract=self.is_abstract,
+                is_synthetic=self.is_synthetic,
+                is_annotation=self.is_annotation,
+                is_enum=self.is_enum,
+                is_module=self.is_module,
+            ))
+        return result
+
     def write(self, stream: IO[bytes]) -> None:
         """
         Writes this class file to a binary stream.
@@ -351,69 +406,6 @@ class ClassFile:
         stream.write(pack_H(len(self.attributes)))
         for attribute in self.attributes:
             attribute.write(stream, self.version, self.pool)
-
-    def visit(self, visitor: "ClassFileVisitor") -> None:
-        """
-        Calls a visitor on this class file.
-        """
-
-        visitor.visit_start(self)
-        visitor.visit_pool(self.pool)
-        for field in self.fields:
-            visitor.visit_field(field)
-        for method in self.methods:
-            visitor.visit_method(method)
-        for attribute in self.attributes:
-            visitor.visit_attribute(attribute)
-        visitor.visit_end(self)
-
-    def unwrap(self, linker: Linker) -> Result[Class]:
-        """
-        Unwraps this class file.
-
-        Parameters
-        ----------
-        linker: Linker
-            The linker to use to resolve references.
-        """
-
-        with Result[Class].meta(__name__, self) as result:
-            if not isinstance(self.this, ClassInfo):
-                return result.err(TypeError(f"this class {self.this!s} is not a class constant"))
-
-            # FIXME: This is actually quite lenient as we assume that this is a UTF8 constant, more thorough type checking
-            #        should be required.
-            name = str(self.this.name)
-            super_ = None
-            interfaces: list[Class] = []
-
-            if self.super is not None:
-                if not isinstance(self.super, ClassInfo):
-                    return result.err(TypeError(f"super class {self.super!s} is not a class constant"))
-                super_ = linker.find_class(str(self.super.name))
-
-            for interface in self.interfaces:
-                if not isinstance(interface, ClassInfo):
-                    return result.err(TypeError(f"interface {interface!s} is not a class constant"))
-                linker.find_class(str(interface.name))
-                # interfaces.append()
-
-            return result.ok(Class(
-                str(self.this.name),
-                super_, interfaces,
-                [field.unwrap() for field in self.fields],
-                [method.unwrap() for method in self.methods],
-                is_public=self.is_public,
-                is_final=self.is_final,
-                is_super=self.is_super,
-                is_interface=self.is_interface,
-                is_abstract=self.is_abstract,
-                is_synthetic=self.is_synthetic,
-                is_annotation=self.is_annotation,
-                is_enum=self.is_enum,
-                is_module=self.is_module,
-            ))
-        return result
 
 
 # ---------------------------------------- Attributes ---------------------------------------- #
@@ -467,6 +459,9 @@ class BootstrapMethods(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, BootstrapMethods) and self.methods == other.methods
+
+    def __iter__(self) -> Iterator["BootstrapMethods.BootstrapMethod"]:
+        return iter(self.methods)
 
     def __getitem__(self, index: int) -> "BootstrapMethods.BootstrapMethod":
         return self.methods[index]
@@ -525,7 +520,7 @@ class BootstrapMethods(AttributeInfo):
                 self.args == other.args
             )
 
-        def __iter__(self) -> Iterable[ConstInfo | list[ConstInfo]]:
+        def __iter__(self) -> Iterator[ConstInfo | list[ConstInfo]]:
             return iter((self.ref, self.args))
 
 
@@ -621,6 +616,9 @@ class NestMembers(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NestMembers) and self.classes == other.classes
 
+    def __iter__(self) -> Iterator[ConstInfo]:
+        return iter(self.classes)
+
     def __getitem__(self, index: int) -> ConstInfo:
         return self.classes[index]
 
@@ -690,6 +688,9 @@ class PermittedSubclasses(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PermittedSubclasses) and self.classes == other.classes
+
+    def __iter__(self) -> Iterator[ConstInfo]:
+        return iter(self.classes)
 
     def __getitem__(self, index: int) -> ConstInfo:
         return self.classes[index]
@@ -765,6 +766,9 @@ class InnerClasses(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InnerClasses) and self.classes == other.classes
+
+    def __iter__(self) -> Iterator["InnerClasses.InnerClass"]:
+        return iter(self.classes)
 
     def __getitem__(self, index: int) -> "InnerClasses.InnerClass":
         return self.classes[index]
@@ -1111,6 +1115,9 @@ class Record(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Record) and self.components == other.components
+
+    def __iter__(self) -> Iterator["Record.ComponentInfo"]:
+        return iter(self.components)
 
     def __getitem__(self, index: int) -> "Record.ComponentInfo":
         return self.components[index]
@@ -1749,6 +1756,9 @@ class ModulePackages(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ModulePackages) and self.packages == other.packages
+
+    def __iter__(self) -> Iterator[ConstInfo]:
+        return iter(self.packages)
 
     def __getitem__(self, index: int) -> ConstInfo:
         return self.packages[index]

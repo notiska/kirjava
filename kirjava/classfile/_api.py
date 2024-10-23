@@ -4,7 +4,7 @@ from __future__ import annotations
 
 __all__ = (
     "dump", "dumps", "load", "loads",
-    "disassemble",
+    "dis", "disassemble",
 )
 
 """
@@ -63,6 +63,14 @@ def loads(data: bytes) -> ClassFile:
     """
 
     return ClassFile.read(BytesIO(data)).unwrap()
+
+
+def dis(method: MethodInfo, cf: ClassFile | None = None) -> Graph:
+    """
+    Disassembles the provided method.
+    """
+
+    return Graph.disassemble(method, cf).unwrap()
 
 
 def disassemble(method: MethodInfo, cf: ClassFile | None = None) -> Graph:

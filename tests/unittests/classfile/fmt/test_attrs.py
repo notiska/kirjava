@@ -243,12 +243,12 @@ class TestAttributes(unittest.TestCase):
             LineNumberTable.LineNumber(10, 35), LineNumberTable.LineNumber(13, 36), LineNumberTable.LineNumber(16, 37),
         ],),
         LocalVariableTable: ([
-            LocalVariableTable.LocalVariable(0, 30, UTF8Info(b"test"), UTF8Info(b"D"), 1),
-            LocalVariableTable.LocalVariable(5, 25, UTF8Info(b"test2"), UTF8Info(b"Z"), 2),
+            LocalVariableTable.LocalVar(0, 30, UTF8Info(b"test"), UTF8Info(b"D"), 1),
+            LocalVariableTable.LocalVar(5, 25, UTF8Info(b"test2"), UTF8Info(b"Z"), 2),
         ],),
         LocalVariableTypeTable: ([  # Yep, I'm this lazy.
-            LocalVariableTypeTable.LocalVariable(0, 30, UTF8Info(b"test"), UTF8Info(b"D"), 1),
-            LocalVariableTypeTable.LocalVariable(5, 25, UTF8Info(b"test2"), UTF8Info(b"Z"), 2),
+            LocalVariableTypeTable.LocalVar(0, 30, UTF8Info(b"test"), UTF8Info(b"D"), 1),
+            LocalVariableTypeTable.LocalVar(5, 25, UTF8Info(b"test2"), UTF8Info(b"Z"), 2),
         ],),
         AnnotationDefault: (
             ArrayValue([

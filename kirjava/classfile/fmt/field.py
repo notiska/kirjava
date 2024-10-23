@@ -11,20 +11,15 @@ __all__ = (
 JVM class file field info struct and attributes.
 """
 
-import sys
 import typing
 from typing import IO, Iterable
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
 
 from .attribute import AttributeInfo
 from .constants import *
 from .._desc import parse_field_descriptor
 from .._struct import *
 from ..version import JAVA_1_0, Version
+from ..._compat import Self
 from ...backend import Result
 from ...model.class_.field import Field
 
@@ -100,12 +95,12 @@ class FieldInfo:
     read(stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]
         Reads a field from the binary stream.
 
-    write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
-        Writes this field to the binary stream.
     visit(self, visitor: FieldInfoVisitor) -> None
         Calls a visitor on this field.
-    unwrap(self) -> Field
-        Unwraps this field info.
+    link(self) -> Field
+        Creates a linked field from this field info.
+    write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
+        Writes this field to the binary stream.
     """
 
     __slots__ = ("access", "name", "descriptor", "attributes")
@@ -261,6 +256,41 @@ class FieldInfo:
     def __str__(self) -> str:
         return f"field_info(0x{self.access:04x},{self.name!s}:{self.descriptor!s})"
 
+    def visit(self, visitor: "FieldInfoVisitor") -> None:
+        """
+        Calls a visitor on this field.
+        """
+
+        visitor.visit_start(self)
+        for attribute in self.attributes:
+            visitor.visit_attribute(attribute)
+        visitor.visit_end(self)
+
+    def link(self) -> Result[Field]:
+        """
+        Creates a linked field from this field info.
+        """
+
+        with Result[Field]() as result:
+            if not isinstance(self.name, UTF8Info):
+                return result.err(TypeError(f"name {self.name!s} is not a UTF8 constant"))
+            if not isinstance(self.descriptor, UTF8Info):
+                return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))
+
+            return result.ok(Field(
+                self.name.decode(), parse_field_descriptor(self.descriptor.decode()),
+                is_public=self.is_public,
+                is_private=self.is_private,
+                is_protected=self.is_protected,
+                is_static=self.is_static,
+                is_final=self.is_final,
+                is_volatile=self.is_volatile,
+                is_transient=self.is_transient,
+                is_synthetic=self.is_synthetic,
+                is_enum=self.is_enum,
+            ))
+        return result
+
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         """
         Writes this field to the binary stream.
@@ -278,44 +308,6 @@ class FieldInfo:
         stream.write(pack_HHHH(self.access, pool.add(self.name), pool.add(self.descriptor), len(self.attributes)))
         for attribute in self.attributes:
             attribute.write(stream, version, pool)
-
-    def visit(self, visitor: "FieldInfoVisitor") -> None:
-        """
-        Calls a visitor on this field.
-        """
-
-        visitor.visit_start(self)
-        for attribute in self.attributes:
-            visitor.visit_attribute(attribute)
-        visitor.visit_end(self)
-
-    def unwrap(self) -> Field:
-        """
-        Unwraps this field info.
-
-        Returns
-        -------
-        Field
-            The unwrapped `Field`.
-        """
-
-        if not isinstance(self.name, UTF8Info):
-            raise ValueError("name is not a UTF8 constant")
-        if not isinstance(self.descriptor, UTF8Info):
-            raise ValueError("descriptor is not a UTF8 constant")
-
-        return Field(
-            self.name.decode(), parse_field_descriptor(self.descriptor.decode()),
-            is_public=self.is_public,
-            is_private=self.is_private,
-            is_protected=self.is_protected,
-            is_static=self.is_static,
-            is_final=self.is_final,
-            is_volatile=self.is_volatile,
-            is_transient=self.is_transient,
-            is_synthetic=self.is_synthetic,
-            is_enum=self.is_enum,
-        )
 
 
 # ---------------------------------------- Attributes ---------------------------------------- #

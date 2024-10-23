@@ -13,20 +13,15 @@ __all__ = (
 JVM class file shared attributes.
 """
 
-import sys
 import typing
 from os import SEEK_CUR, SEEK_SET
-from typing import IO, Iterable
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from typing import IO, Iterable, Iterator
 
 from .annotation import Annotation, TypeAnnotation
 from .constants import ConstInfo, UTF8Info
 from .._struct import *
 from ..version import *
+from ..._compat import Self
 from ...backend import Err, Ok, Result
 
 if typing.TYPE_CHECKING:
@@ -483,6 +478,9 @@ class RuntimeVisibleAnnotations(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeVisibleAnnotations) and self.annotations == other.annotations
 
+    def __iter__(self) -> Iterator[Annotation]:
+        return iter(self.annotations)
+
     def __getitem__(self, index: int) -> Annotation:
         return self.annotations[index]
 
@@ -547,6 +545,9 @@ class RuntimeInvisibleAnnotations(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeInvisibleAnnotations) and self.annotations == other.annotations
+
+    def __iter__(self) -> Iterator[Annotation]:
+        return iter(self.annotations)
 
     def __getitem__(self, index: int) -> Annotation:
         return self.annotations[index]
@@ -617,6 +618,9 @@ class RuntimeVisibleTypeAnnotations(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeVisibleTypeAnnotations) and self.annotations == other.annotations
 
+    def __iter__(self) -> Iterator[TypeAnnotation]:
+        return iter(self.annotations)
+
     def __getitem__(self, index: int) -> TypeAnnotation:
         return self.annotations[index]
 
@@ -685,6 +689,9 @@ class RuntimeInvisibleTypeAnnotations(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RuntimeInvisibleTypeAnnotations) and self.annotations == other.annotations
+
+    def __iter__(self) -> Iterator[TypeAnnotation]:
+        return iter(self.annotations)
 
     def __getitem__(self, index: int) -> TypeAnnotation:
         return self.annotations[index]

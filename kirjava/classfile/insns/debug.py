@@ -7,18 +7,13 @@ __all__ = (
     "LineNumber", "LocalStart", "LocalEnd",
 )
 
-import sys
 import typing
 from copy import deepcopy
 from typing import IO, Optional
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
-
 from . import Instruction
 from ..version import JAVA_MIN
+from ..._compat import Self
 
 if typing.TYPE_CHECKING:
     from ..fmt import ConstInfo, ConstPool
@@ -67,9 +62,9 @@ class LineNumber(Debug):
         self.line = line
 
     def __copy__(self) -> "LineNumber":
-        copy = LineNumber(self.line)
-        copy.offset = self.offset
-        return copy
+        copied = LineNumber(self.line)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -124,18 +119,18 @@ class LocalStart(Debug):
         self.signature = signature
 
     def __copy__(self) -> "LocalStart":
-        copy = LocalStart(self.index, self.name, self.descriptor, self.signature)
-        copy.offset = self.offset
-        return copy
+        copied = LocalStart(self.index, self.name, self.descriptor, self.signature)
+        copied.offset = self.offset
+        return copied
 
     def __deepcopy__(self, memo: dict[int, object]) -> "LocalStart":
-        copy = LocalStart(
+        copied = LocalStart(
             self.index, deepcopy(self.name, memo),
             deepcopy(self.descriptor, memo) if self.descriptor is not None else None,
             deepcopy(self.signature, memo) if self.signature is not None else None,
         )
-        copy.offset = self.offset
-        return copy
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:
@@ -187,9 +182,9 @@ class LocalEnd(Debug):
         self.index = index
 
     def __copy__(self) -> "LocalEnd":
-        copy = LocalEnd(self.index)
-        copy.offset = self.offset
-        return copy
+        copied = LocalEnd(self.index)
+        copied.offset = self.offset
+        return copied
 
     def __repr__(self) -> str:
         if self.offset is not None:

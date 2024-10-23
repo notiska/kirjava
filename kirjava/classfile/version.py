@@ -21,7 +21,7 @@ Java versions (specifically for the Java Virtual Machine).
 """
 
 
-class Version:  # FIXME: Class restructuring required.
+class Version:
     """
     Java Virtual Machine version.
 

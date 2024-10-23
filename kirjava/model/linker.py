@@ -7,9 +7,11 @@ __all__ = (
 )
 
 import typing
+from typing import Iterable, Iterator
 from weakref import WeakValueDictionary
 
 from .class_ import Class, Field, Method
+from ..backend import Err, Ok, Result
 
 if typing.TYPE_CHECKING:
     from .types import Type
@@ -23,32 +25,33 @@ class Loader:  # TODO: Default loaders as well, i.e. jar, zip, dir, etc...
 
     Methods
     -------
-    owns_class(self, class_: Class) -> bool
-        Checks if the loader owns a class, AKA it was resolved by this loader.
-    find_class(self, name: str) -> Class | None
+    find_class(self, name: str, linker: Linker) -> Result[Class]
         Finds a class given its name.
-    find_resource(self, name: str) -> bytes
+    find_resource(self, name: str) -> Result[bytes]
         Finds a resource given its name.
     """
 
-    def owns_class(self, class_: Class) -> bool:
-        """
-        Checks if the loader owns a class, AKA it was resolved by this loader.
+    # owns_class(self, class_: Class) -> bool
+    #     Checks if the loader owns a class, AKA it was resolved by this loader.
 
-        Parameters
-        ----------
-        class_: Class
-            The class to check.
+    # def owns_class(self, class_: Class) -> bool:
+    #     """
+    #     Checks if the loader owns a class, AKA it was resolved by this loader.
 
-        Returns
-        -------
-        bool
-            Whether this loader owns the class.
-        """
+    #     Parameters
+    #     ----------
+    #     class_: Class
+    #         The class to check.
 
-        raise NotImplementedError(f"owns_class() not implemented for {type(self)!r}")
+    #     Returns
+    #     -------
+    #     bool
+    #         Whether this loader owns the class.
+    #     """
 
-    def find_class(self, name: str) -> Class | None:
+    #     raise NotImplementedError(f"owns_class() not implemented for {type(self)!r}")
+
+    def find_class(self, name: str, linker: "Linker") -> Result[Class]:
         """
         Finds a class given its name.
 
@@ -56,16 +59,13 @@ class Loader:  # TODO: Default loaders as well, i.e. jar, zip, dir, etc...
         ----------
         name: str
             The unqualified name of the class.
-
-        Returns
-        -------
-        Class | None
-            The class, or `None` if not found.
+        linker: Linker
+            The linker to use to resolve further references.
         """
 
         raise NotImplementedError(f"find_class() not implemented for {type(self)!r}")
 
-    def find_resource(self, name: str) -> bytes:
+    def find_resource(self, name: str) -> Result[bytes]:
         """
         Finds a resource given its name.
 
@@ -73,11 +73,6 @@ class Loader:  # TODO: Default loaders as well, i.e. jar, zip, dir, etc...
         ----------
         name: str
             The name of the resource.
-
-        Returns
-        -------
-        bytes
-            The resource data.
         """
 
         raise NotImplementedError(f"find_resource() not implemented for {type(self)!r}")
@@ -104,7 +99,7 @@ class Linker:
 
     Methods
     -------
-    append(self, loader: Loader) -> None
+    add(self, loader: Loader) -> None
         Appends a class loader to the linker.
     insert(self, index: int, loader: Loader) -> None
         Inserts a class loader at a specific index.
@@ -112,7 +107,7 @@ class Linker:
         Removes a class loader from the linker.
     clear(self) -> None
         Clears all class loaders from the linker.
-    find_class(self, name: str) -> Class | None
+    find_class(self, name: str) -> Result[Class]
     find_field(self, name: str, type_: Type) -> Field | None
     find_method(self, name: str, arg_types: tuple[Type, ...], ret_type: Type) -> Method | None
     """
@@ -129,20 +124,23 @@ class Linker:
     def cached(self) -> int:
         return len(self._cached)
 
-    def __init__(self) -> None:
+    def __init__(self, loaders: Iterable[Loader] | None = None) -> None:
         self._loaders: list[Loader] = []
         self._cached: WeakValueDictionary[str, Class] = WeakValueDictionary()
+
+        if loaders is not None:
+            self._loaders.extend(loaders)
 
     def __repr__(self) -> str:
         return f"<Linker(loaders={self.loaders!r}, cached={self.cached})>"
 
-    def __getitem__(self, item: int | str) -> Loader | Class:
-        if isinstance(item, int):
-            return self._loaders[item]
-        class_ = self.find_class(item)
-        if class_ is None:
-            raise KeyError(f"no class with name {item!r}")
-        return class_
+    def __iter__(self) -> Iterator[Loader]:
+        return iter(self._loaders)
+
+    def __getitem__(self, key: int | str) -> Loader | Class:
+        if isinstance(key, int):
+            return self._loaders[key]
+        return self.find_class(key).unwrap()
 
     def __setitem__(self, index: int, value: Loader) -> None:
         self._loaders[index] = value
@@ -157,9 +155,9 @@ class Linker:
 
     # ------------------------------ Loader API ------------------------------ #
 
-    def append(self, loader: Loader) -> None:
+    def add(self, loader: Loader) -> None:
         """
-        Appends a class loader to the linker.
+        Adds a class loader to the linker.
 
         Duplicates are not allowed.
 
@@ -228,30 +226,27 @@ class Linker:
 
     # ------------------------------ Resolution API ------------------------------ #
 
-    def find_class(self, name: str) -> Class | None:
+    def find_class(self, name: str) -> Result[Class]:
         """
         Finds a class given its name.
-
-        Returns
-        -------
-        Class | None
-            The resolved class, or `None` if not found.
         """
 
         cached = self._cached.get(name)
         if cached is not None:
-            return cached
+            return Ok(cached)
+
         for loader in self.loaders:
-            class_ = loader.find_class(name)
+            class_ = loader.find_class(name, self).value  # TODO: Unwrap into a parent result to get full info.
             if class_ is not None:
                 self._cached[name] = class_
-                return class_
-        return None
+                return Ok(class_)
+
+        return Err(KeyError(name))
 
     # FIXME: Static lookups needed too.
 
-    def find_field(self, name: str, type_: "Type") -> Field | None:
-        ...
+    def find_field(self, name: str, type_: "Type") -> Result[Field]:
+        raise NotImplementedError()
 
-    def find_method(self, name: str, arg_types: tuple["Type", ...], ret_type: "Type") -> Method | None:
-        ...
+    def find_method(self, name: str, arg_types: tuple["Type", ...], ret_type: "Type") -> Result[Method]:
+        raise NotImplementedError()
