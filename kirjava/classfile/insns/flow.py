@@ -26,12 +26,12 @@ from . import Instruction
 from .misc import wide
 from .._struct import *
 from ..._compat import Self
+from ...backend import Ok, Result
 from ...model.types import *
 # from ...model.values.constants import *
 
 if typing.TYPE_CHECKING:
-    # from ..analyse.frame import Frame
-    # from ..analyse.state import State
+    from ..analysis import Frame
     from ..fmt import ConstPool
     # from ...model.values import Value
 
@@ -86,6 +86,12 @@ class Jump(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Jump) and self.opcode == other.opcode and self.delta == other.delta
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_Bh(self.opcode, self.delta))
@@ -159,7 +165,7 @@ class Compare(Jump):
 
     # Mypy bug? CLI mypy says not defined but Sublime says it's fine.
     comparison: "Compare.Type"  # type: ignore[name-defined,unused-ignore]
-    type: Type
+    type: Verification
 
     delta: int
 
@@ -170,6 +176,17 @@ class Compare(Jump):
                 f"delta={self.delta})>"
             )
         return f"<Compare(comparison={self.comparison!s}, type={self.type!s}, delta={self.delta})>"
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type).into(result)
+            frame.pop(self.type).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(self.type)
+        frame.push(self.type)
+        return Ok(frame)
 
     # def evaluate(self, left: "Value", right: "Value") -> Jump.Metadata:
     #     """
@@ -281,6 +298,15 @@ class CompareToZero(Compare):
             return f"<CompareToZero(offset={self.offset}, comparison={self.comparison!s}, delta={self.delta})>"
         return f"<CompareToZero(comparison={self.comparison!s}, delta={self.delta})>"
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(int_t).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(int_t)
+        return Ok(frame)
+
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     value = frame.pop(int_t, self)
     #     metadata = None
@@ -290,7 +316,7 @@ class CompareToZero(Compare):
     #     return state.step(self, (value,), None, metadata)
 
 
-class IfEq(CompareToZero):
+class IfEq(CompareToZero):  # FIXME: Extra functionality for allowing reference types in older versions.
     """
     An `ifeq` instruction.
 
@@ -338,6 +364,15 @@ class CompareToNull(Compare):
             return f"<CompareToNull(offset={self.offset}, comparison={self.comparison!s}, delta={self.delta})>"
         return f"<CompareToNull(comparison={self.comparison!s}, delta={self.delta})>"
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(reference_t).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(reference_t)
+        return Ok(frame)
+
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     value = frame.pop(reference_t, self)
     #     metadata = None
@@ -369,6 +404,15 @@ class Jsr(Jump):
         if self.offset is not None:
             return f"{self.offset}:jsr({self.delta:+},{self.delta + self.offset})"
         return f"jsr({self.delta:+})"
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(ReturnAddress(self))
+        return Ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(ReturnAddress(self)).into(result)
+        return result.ok(frame)
 
     # def trace(self, frame: "Frame", state: "State.Step") -> "State.Step":
     #     return state.step(self, (), frame.push(ReturnAddress(self)))
@@ -440,6 +484,15 @@ class Ret(Jump):
         if self.offset is not None:
             return f"{self.offset}:ret({self.index})"
         return f"ret({self.index})"
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.get(self.index, return_address_t).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        frame.rget(self.index, return_address_t)
+        return Ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
@@ -544,6 +597,15 @@ class Switch(Instruction):
 
     def __len__(self) -> int:
         return len(self.offsets)
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(int_t).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(int_t)
+        return Ok(frame)
 
     # class Metadata(Source.Metadata):
     #
@@ -731,7 +793,7 @@ class Return(Jump):
 
     rt_throws = frozenset({Class("java/lang/IllegalMonitorStateException")})
 
-    type: Type
+    type: Verification
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
@@ -757,6 +819,17 @@ class Return(Jump):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Return) and self.opcode == other.opcode
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if self.type is not void_t:
+                frame.pop(self.type).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        if self.type is not void_t:
+            frame.push(self.type)
+        return Ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -810,6 +883,15 @@ class AThrow(Jump):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, AThrow)
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(reference_t).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(reference_t)
+        return Ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

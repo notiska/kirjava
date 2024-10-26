@@ -18,15 +18,16 @@ from typing import IO
 
 from . import Instruction
 from .._struct import *
+from ..fmt.constants import ClassInfo, ConstInfo
 from ..._compat import Self
+from ...backend import Result
 from ...model.types import *
 # from ...model.values.constants import Integer, Null
 # from ...model.values.objects import Array as ArrayValue
 
 if typing.TYPE_CHECKING:
-    # from ..analyse.frame import Frame
-    # from ..analyse.state import State
-    from ..fmt import ConstInfo, ConstPool
+    from ..analysis import Frame
+    from ..fmt import ConstPool
 
 
 class ArrayLoad(Instruction):
@@ -37,7 +38,7 @@ class ArrayLoad(Instruction):
 
     Attributes
     ----------
-    type: Type
+    type: Verification
         The type of array element to load.
     """
 
@@ -47,7 +48,7 @@ class ArrayLoad(Instruction):
     rt_throws = frozenset({Class("java/lang/ArrayIndexOutOfBoundsException"), Class("java/lang/NullPointerException")})
     linked = True
 
-    type: Type
+    type: Verification
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
@@ -60,6 +61,20 @@ class ArrayLoad(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ArrayLoad) and self.opcode == other.opcode
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(int_t).into(result)
+            frame.pop(Array(self.type)).into(result)
+            frame.push(self.type)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type).into(result)
+            frame.push(Array(self.type))
+            frame.push(int_t)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -104,7 +119,7 @@ class ArrayStore(Instruction):
 
     Attributes
     ----------
-    type: Type
+    type: Verification
         The type of array element to store.
     """
 
@@ -114,7 +129,7 @@ class ArrayStore(Instruction):
     rt_throws = frozenset({Class("java/lang/ArrayIndexOutOfBoundsException"), Class("java/lang/NullPointerException")})
     linked = True
 
-    type: Type
+    type: Verification
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
@@ -127,6 +142,20 @@ class ArrayStore(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ArrayStore) and self.opcode == other.opcode
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type).into(result)
+            frame.pop(int_t).into(result)
+            frame.pop(Array(self.type)).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.push(Array(self.type))
+            frame.push(int_t)
+            frame.push(self.type)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -183,6 +212,8 @@ class NewArray(Instruction):
         Indicates that the array is of type `int`.
     LONG: int
         Indicates that the array is of type `long`.
+    type: Type
+        The type of the array.
     tag: int
         A byte tag indicating the type of the array to create.
     """
@@ -217,6 +248,24 @@ class NewArray(Instruction):
         tag, = stream.read(1)
         return cls(tag)
 
+    @property
+    def type(self) -> Type:
+        if self.tag == NewArray.BOOLEAN:
+            return boolean_t
+        elif self.tag == NewArray.CHAR:
+            return char_t
+        elif self.tag == NewArray.FLOAT:
+            return float_t
+        elif self.tag == NewArray.DOUBLE:
+            return double_t
+        elif self.tag == NewArray.SHORT:
+            return short_t
+        elif self.tag == NewArray.INT:
+            return int_t
+        elif self.tag == NewArray.LONG:
+            return long_t
+        return primitive_t
+
     def __init__(self, tag: int) -> None:
         super().__init__()
         self.tag = tag
@@ -240,6 +289,19 @@ class NewArray(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, NewArray) and self.tag == other.tag
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(int_t).into(result)
+            # TODO: Report error on invalid tag.
+            frame.push(Array(self.type))
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(Array(self.type)).into(result)
+            frame.push(int_t)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.tag)))
@@ -296,7 +358,7 @@ class ANewArray(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, classref: "ConstInfo") -> None:
+    def __init__(self, classref: ConstInfo) -> None:
         super().__init__()
         self.classref = classref
 
@@ -322,6 +384,26 @@ class ANewArray(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ANewArray) and self.classref == other.classref
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(int_t).into(result)
+            if not isinstance(self.classref, ClassInfo):
+                result.err(TypeError(f"class ref {self.classref!s} is not a class constant"))
+                frame.push(Array(reference_t))
+            else:
+                frame.push(Array(self.classref.get_type().unwrap_into(result, reference_t)))
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.classref, ClassInfo):
+                result.err(TypeError(f"class ref {self.classref!s} is not a class constant"))
+                frame.pop(Array(reference_t)).into(result)
+            else:
+                frame.pop(Array(self.classref.get_type().unwrap_into(result, reference_t)))
+            frame.push(int_t)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.classref)))
@@ -379,7 +461,7 @@ class MultiANewArray(Instruction):
         index, dimensions = unpack_HB(stream.read(3))
         return cls(pool[index], dimensions)
 
-    def __init__(self, classref: "ConstInfo", dimensions: int) -> None:
+    def __init__(self, classref: ConstInfo, dimensions: int) -> None:
         super().__init__()
         self.classref = classref
         self.dimensions = dimensions
@@ -410,6 +492,40 @@ class MultiANewArray(Instruction):
             self.classref == other.classref and
             self.dimensions == other.dimensions
         )
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            for _ in range(self.dimensions):
+                frame.pop(int_t).into(result)
+
+            item = None
+            if not isinstance(self.classref, ClassInfo):
+                result.err(TypeError(f"class ref {self.classref!s} is not a class constant"))
+            else:
+                item = self.classref.get_type().into(result).value
+            if item is None or not isinstance(item, Array):
+                # At the very least, we can assume that this array has `self.dimensions` number of dimensions.
+                # TODO: ^^ verify JVM behaviour when there are more dimensions than the type can provide.
+                item = Array.nested(top_t, self.dimensions)
+            frame.push(item)
+
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            item = None
+            if not isinstance(self.classref, ClassInfo):
+                result.err(TypeError(f"class ref {self.classref!s} is not a class constant"))
+            else:
+                item = self.classref.get_type().into(result).value
+            if item is None or not isinstance(item, Array):
+                item = Array.nested(top_t, self.dimensions)
+            frame.pop(item).into(result)
+
+            for _ in range(self.dimensions):
+                frame.push(int_t)
+
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHB(self.opcode, pool.add(self.classref), self.dimensions))
@@ -493,6 +609,18 @@ class ArrayLength(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ArrayLength)
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(array_t).into(result)
+            frame.push(int_t)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(int_t).into(result)
+            frame.push(array_t)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

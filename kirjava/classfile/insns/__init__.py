@@ -65,14 +65,16 @@ __all__ = (
 
 import typing
 from copy import copy, deepcopy
-from io import BytesIO
 from os import SEEK_SET
-from typing import IO
+from types import TracebackType
+from typing import IO, Iterable
 from typing_extensions import Buffer
 
 from ..._compat import Self
+from ...backend import Result
 
 if typing.TYPE_CHECKING:
+    from ..analysis import Frame
     from ..fmt import ConstPool
     from ..version import Version
     from ...model.types import Class
@@ -113,12 +115,16 @@ class Instruction:
         Creates a copy of this instruction.
     link(self) -> Instruction
         Creates a linked version of this instruction.
+    step(self, frame: Frame) -> Result[Frame]
+        Steps through how this instruction would change the given stack frame.
+    rstep(self, frame: Frame) -> Result[Frame]
+        Reverse steps through how this instruction would change the given stack
+        frame.
+    trace(self, state: State) -> Result[State.Step]
+        Traces how this instruction would affect an execution state.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes this instruction to the binary stream.
     """
-
-    # trace(self, frame: Frame, state: State) -> None
-    #     Traces how this instruction would execute in a given frame.
 
     __slots__ = ("offset",)
 
@@ -278,6 +284,21 @@ class Instruction:
         #     return self
         raise NotImplementedError(f"link() is not implemented for {type(self)!r}")
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        """
+        Steps through how this instruction would change a stack frame.
+        """
+
+        raise NotImplementedError(f"step() is not implemented for {type(self)!r}")
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        """
+        Reverse steps through how this instruction would change the given stack
+        frame.
+        """
+
+        raise NotImplementedError(f"rstep() is not implemented for {type(self)!r}")
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
         Writes this instruction to a binary stream.
@@ -312,7 +333,7 @@ class Instruction:
     #     ...  # raise NotImplementedError("trace() is not implemented for %r" % self)
 
 
-class CodeIOWrapper(BytesIO):  # Extended only for type hinting, BufferedIOBase doesn't seem to work.
+class CodeIOWrapper(IO[bytes]):
     """
     A stream wrapper for code in a method, so that the offset is correct as per the
     base of the code, rather than the base of the class file.
@@ -325,28 +346,91 @@ class CodeIOWrapper(BytesIO):  # Extended only for type hinting, BufferedIOBase 
         The base offset of the code.
     """
 
-    # __slots__ = ("delegate", "base")  # No slots on BytesIO, unfortunately.
+    __slots__ = ("delegate", "base")
+
+    @property
+    def mode(self) -> str:
+        return self.delegate.mode
+
+    @property
+    def name(self) -> str:
+        return self.delegate.name
+
+    @property
+    def closed(self) -> bool:
+        return self.delegate.closed
 
     def __init__(self, delegate: IO[bytes], base: int | None) -> None:
         super().__init__()
         self.delegate = delegate
         self.base = base if base is not None else delegate.tell()  # base or delegate.tell()
 
-    def read(self, size: int | None = -1) -> bytes:
-        if size is None:
-            size = -1
+    def __repr__(self) -> str:
+        return f"<CodeIOWrapper(delegate={self.delegate!r}, base={self.base})>"
+
+    def __iter__(self) -> Self:
+        return self
+
+    def __next__(self) -> bytes:
+        return next(self.delegate)
+
+    def __enter__(self) -> Self:
+        self.delegate.__enter__()
+        return self
+
+    def __exit__(
+            self, exc_type: type[BaseException] | None,
+            exc_value: BaseException | None,
+            traceback: TracebackType | None,
+    ) -> None:
+        self.delegate.__exit__(exc_type, exc_value, traceback)
+
+    def close(self) -> None:
+        self.delegate.close()
+
+    def fileno(self) -> int:
+        return self.delegate.fileno()
+
+    def flush(self) -> None:
+        self.delegate.flush()
+
+    def isatty(self) -> bool:
+        return self.delegate.isatty()
+
+    def read(self, size: int = -1) -> bytes:
         return self.delegate.read(size)
 
-    def tell(self) -> int:
-        return self.delegate.tell() - self.base
+    def readable(self) -> bool:
+        return self.delegate.readable()
+
+    def readline(self, limit: int = -1) -> bytes:
+        return self.delegate.readline(limit)
+
+    def readlines(self, hint: int = -1) -> list[bytes]:
+        return self.delegate.readlines(hint)
 
     def seek(self, offset: int, whence: int = SEEK_SET) -> int:
         if whence == SEEK_SET:
             offset += self.base
         return self.delegate.seek(offset, whence)
 
+    def seekable(self) -> bool:
+        return self.delegate.seekable()
+
+    def tell(self) -> int:
+        return self.delegate.tell() - self.base
+
+    def truncate(self, size: int | None = None) -> int:
+        return self.delegate.truncate(size)
+
+    def writable(self) -> bool:
+        return self.delegate.writable()
+
     def write(self, data: Buffer) -> int:
         return self.delegate.write(data)
+
+    def writelines(self, lines: Iterable[Buffer]) -> None:
+        self.delegate.writelines(lines)
 
 
 from . import arithmetic, array, cast, debug, field, flow, invoke, local, misc, stack  # noqa E402

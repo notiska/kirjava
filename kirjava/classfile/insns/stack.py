@@ -24,14 +24,13 @@ from typing import IO
 
 from . import Instruction
 from .._struct import *
-from ...backend import f32, f64, i32, i64
-from ...model.types import error_t, Class
 from ..._compat import Self
+from ...backend import f32, f64, i32, i64, Ok, Result
+from ...model.types import error_t, int_t, top_t, Class, Uninitialized
 from ...model.values.constants import Constant, Double, Float, Integer, Long, Null
 
 if typing.TYPE_CHECKING:
-    # from ..analyse.frame import Frame
-    # from ..analyse.state import State
+    from ..analysis import Frame
     from ..fmt import ConstInfo, ConstPool
 
 
@@ -71,6 +70,21 @@ class PushConstant(Instruction):
     #     copy = type(self)(self.constant)
     #     copy.offset = self.offset
     #     return copy
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.push(self.constant.type.verification())
+            return result.ok(frame)
+        frame.push(top_t)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.constant.type.verification()).into(result)
+            return result.ok(frame)
+        with result:
+            frame.pop(top_t).into(result)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -136,6 +150,15 @@ class BIPush(PushConstant):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, BIPush) and self.value == other.value
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(int_t)
+        return Ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(int_t).into(result)
+        return result.ok(frame)
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.value)))
 
@@ -193,6 +216,15 @@ class SIPush(PushConstant):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SIPush) and self.value == other.value
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(int_t)
+        return Ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(int_t).into(result)
+        return result.ok(frame)
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, self.value))
 
@@ -249,6 +281,21 @@ class LoadConstant(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LoadConstant) and self.opcode == other.opcode and self.info == other.info
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.push(self.info.lift().unwrap_into(result).type.verification())
+            return result.ok(frame)
+        frame.push(top_t)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.info.lift().unwrap_into(result).type.verification()).into(result)
+            return result.ok(frame)
+        with result:
+            frame.pop(top_t).into(result)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, pool.add(self.info))))
@@ -375,6 +422,15 @@ class New(Instruction):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, New) and self.classref == other.classref
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(Uninitialized(self))
+        return Ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(Uninitialized(self)).into(result)
+        return result.ok(frame)
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.classref)))
 
@@ -426,6 +482,15 @@ class Pop(Instruction):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Pop)
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(top_t).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(top_t)
+        return Ok(frame)
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
 
@@ -465,6 +530,17 @@ class Pop2(Instruction):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Pop2)
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(top_t).into(result)
+            frame.pop(top_t).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(top_t)
+        frame.push(top_t)
+        return Ok(frame)
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
 
@@ -502,6 +578,12 @@ class Dup(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Dup)
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return frame.dup()
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return frame.rdup()
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -541,6 +623,12 @@ class DupX1(Instruction):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, DupX1)
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return frame.dup_x1()
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return frame.rdup_x1()
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
 
@@ -579,6 +667,12 @@ class DupX2(Instruction):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, DupX2)
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return frame.dup_x2()
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return frame.rdup_x2()
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
 
@@ -616,6 +710,12 @@ class Dup2(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Dup2)
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return frame.dup2()
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return frame.rdup2()
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -661,6 +761,12 @@ class Dup2X1(Instruction):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Dup2X1)
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return frame.dup2_x1()
+
+    def rstep(Self, frame: "Frame") -> Result["Frame"]:
+        return frame.rdup2_x1()
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
 
@@ -694,6 +800,12 @@ class Dup2X2(Instruction):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Dup2X2)
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return frame.dup2_x2()
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return frame.rdup2_x2()
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
 
@@ -726,6 +838,12 @@ class Swap(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Swap)
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return frame.swap()
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return frame.swap()
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

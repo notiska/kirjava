@@ -12,17 +12,18 @@ from copy import deepcopy
 from typing import IO
 
 from . import Instruction
-# from .._desc import parse_field_descriptor
+from .._desc import parse_field_descriptor
 from .._struct import *
+from ..fmt.constants import ConstInfo, FieldrefInfo, NameAndTypeInfo, UTF8Info
 from ..._compat import Self
-from ...model.types import error_t, Class
+from ...backend import Result
+from ...model.types import error_t, object_t, top_t, Class, Verification
 # from ...model.types import *
 # from ...model.values.constants import Null
 
 if typing.TYPE_CHECKING:
-    # from ..analyse.frame import Frame
-    # from ..analyse.state import State
-    from ..fmt import ConstInfo, ConstPool
+    from ..analysis import Frame
+    from ..fmt import ConstPool
 
 
 class GetStatic(Instruction):
@@ -50,7 +51,7 @@ class GetStatic(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, fieldref: "ConstInfo") -> None:
+    def __init__(self, fieldref: ConstInfo) -> None:
         super().__init__()
         self.fieldref = fieldref
 
@@ -76,6 +77,24 @@ class GetStatic(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, GetStatic) and self.fieldref == other.fieldref
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                frame.push(top_t)
+            else:
+                frame.push(self.fieldref.get_type().unwrap_into(result, top_t).verification())
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                frame.pop(top_t).into(result)
+            else:
+                frame.pop(self.fieldref.get_type().unwrap_into(result, top_t).verification())
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
@@ -129,7 +148,7 @@ class PutStatic(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, fieldref: "ConstInfo") -> None:
+    def __init__(self, fieldref: ConstInfo) -> None:
         super().__init__()
         self.fieldref = fieldref
 
@@ -155,6 +174,24 @@ class PutStatic(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PutStatic) and self.fieldref == other.fieldref
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                frame.pop(top_t).into(result)
+            else:
+                frame.pop(self.fieldref.get_type().unwrap_into(result, top_t).verification())
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                frame.push(top_t)
+            else:
+                frame.push(self.fieldref.get_type().unwrap_into(result, top_t).verification())
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
@@ -206,7 +243,7 @@ class GetField(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, fieldref: "ConstInfo") -> None:
+    def __init__(self, fieldref: ConstInfo) -> None:
         super().__init__()
         self.fieldref = fieldref
 
@@ -232,6 +269,28 @@ class GetField(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, GetField) and self.fieldref == other.fieldref
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                frame.pop(object_t).into(result)  # TODO: Definitely can't get fields off arrays?
+                frame.push(top_t)
+            else:
+                frame.pop(self.fieldref.get_class().unwrap_into(result, object_t)).into(result)
+                frame.push(self.fieldref.get_type().unwrap_into(result, top_t).verification())
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                frame.pop(top_t).into(result)
+                frame.push(object_t)
+            else:
+                frame.pop(self.fieldref.get_type().unwrap_into(result, top_t).verification()).into(result)
+                frame.push(self.fieldref.get_class().unwrap_into(result, object_t))
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
@@ -293,7 +352,7 @@ class PutField(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, fieldref: "ConstInfo") -> None:
+    def __init__(self, fieldref: ConstInfo) -> None:
         super().__init__()
         self.fieldref = fieldref
 
@@ -319,6 +378,28 @@ class PutField(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, PutField) and self.fieldref == other.fieldref
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                frame.pop(object_t).into(result)
+                frame.pop(top_t).into(result)
+            else:
+                frame.pop(self.fieldref.get_class().unwrap_into(result, object_t)).into(result)
+                frame.pop(self.fieldref.get_type().unwrap_into(result, top_t).verification()).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                frame.push(top_t)
+                frame.push(object_t)
+            else:
+                frame.push(self.fieldref.get_type().unwrap_into(result, top_t).verification())
+                frame.push(self.fieldref.get_class().unwrap_into(result, object_t))
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))

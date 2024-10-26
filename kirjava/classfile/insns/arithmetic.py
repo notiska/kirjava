@@ -24,13 +24,13 @@ from typing import IO
 
 from . import Instruction
 from ..._compat import Self
+from ...backend import Result
 from ...model.types import *
 # from ...model.values import Value
 # from ...model.values.constants import Integer
 
 if typing.TYPE_CHECKING:
-    # from ..analyse.frame import Frame
-    # from ..analyse.state import State
+    from ..analysis import Frame
     from ..fmt import ConstPool
 
 
@@ -39,6 +39,11 @@ class BinOp(Instruction):
     A binary operation instruction.
 
     Performs a arithmetic operation on two stack values.
+
+    Attributes
+    ----------
+    type: Verification
+        The type of value the operation is performed on.
     """
 
     __slots__ = ()
@@ -47,11 +52,25 @@ class BinOp(Instruction):
     rt_throws = frozenset()
     linked = True
 
-    type: Type
+    type: Verification
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         return cls()
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type).into(result)
+            frame.pop(self.type).into(result)
+            frame.push(self.type)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type).into(result)
+            frame.push(self.type)
+            frame.push(self.type)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -118,6 +137,20 @@ class Shift(BinOp):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Shift) and self.opcode == other.opcode
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(int_t).into(result)
+            frame.pop(self.type).into(result)
+            frame.push(self.type)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type).into(result)
+            frame.push(self.type)
+            frame.push(int_t)
+        return result.ok(frame)
+
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     right = frame.pop(int_t, self)
     #     left = frame.pop(self.type, self)
@@ -146,6 +179,20 @@ class Comparison(BinOp):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Comparison) and self.opcode == other.opcode
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type).into(result)
+            frame.pop(self.type).into(result)
+            frame.push(int_t)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(int_t).into(result)
+            frame.push(self.type)
+            frame.push(self.type)
+        return result.ok(frame)
 
     # def trace(self, frame: "Frame", state: "State") -> "State.Step":
     #     right = frame.pop(self.type, self)
@@ -352,6 +399,11 @@ class Negate(Instruction):
     A negation instruction.
 
     Negates a numeric stack value.
+
+    Attributes
+    ----------
+    type: Verification
+        The type of value the negation is applied to.
     """
 
     __slots__ = ()
@@ -360,7 +412,7 @@ class Negate(Instruction):
     rt_throws = frozenset()
     linked = True
 
-    type: Type
+    type: Verification
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
@@ -373,6 +425,18 @@ class Negate(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Negate) and self.opcode == other.opcode
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type).into(result)
+            frame.push(self.type)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type).into(result)
+            frame.push(self.type)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

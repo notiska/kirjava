@@ -14,8 +14,10 @@ from typing import IO, Optional
 from . import Instruction
 from ..version import JAVA_MIN
 from ..._compat import Self
+from ...backend import Ok, Result
 
 if typing.TYPE_CHECKING:
+    from ..analysis import Frame
     from ..fmt import ConstInfo, ConstPool
 
 
@@ -34,6 +36,12 @@ class Debug(Instruction):
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         raise ValueError("cannot read debug instruction")
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         ...

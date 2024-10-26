@@ -30,14 +30,13 @@ from . import Instruction
 from .misc import wide
 from .._struct import *
 from ..._compat import Self
+from ...backend import Ok, Result
 from ...model.types import *
 # from ...model.values.constants import *
 
 if typing.TYPE_CHECKING:
-    # from ..analyse.frame import Frame
-    # from ..analyse.state import State
+    from ..analysis import Frame
     from ..fmt import ConstPool
-    # from ..verify import Verifier
 
 
 class LoadLocal(Instruction):
@@ -48,7 +47,7 @@ class LoadLocal(Instruction):
 
     Attributes
     ----------
-    type: Type
+    type: Verification
         The expected type of the local variable.
     index: int
         The local variable array index to load from.
@@ -60,7 +59,7 @@ class LoadLocal(Instruction):
     rt_throws = frozenset()
     linked = True
 
-    type: Type
+    type: Verification
     index: int
 
     @classmethod
@@ -74,6 +73,18 @@ class LoadLocal(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LoadLocal) and self.opcode == other.opcode
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.get(self.index, self.type).into(result)
+            frame.push(self.type)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type).into(result)
+            frame.rget(self.index, self.type)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -91,7 +102,7 @@ class StoreLocal(Instruction):
 
     Attributes
     ----------
-    type: Type
+    type: Verification
         The type of value to store.
     index: int
         The local variable array index to store to.
@@ -103,7 +114,7 @@ class StoreLocal(Instruction):
     rt_throws = frozenset()
     linked = True
 
-    type: Type
+    type: Verification
     index: int
 
     @classmethod
@@ -117,6 +128,19 @@ class StoreLocal(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, StoreLocal) and self.opcode == other.opcode
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            # FIXME: Return addresses.
+            frame.pop(self.type).into(result)
+            frame.set(self.index, self.type)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.rset(self.index, self.type)
+            frame.push(self.type)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -142,8 +166,6 @@ class LoadLocalAt(LoadLocal):
     """
 
     __slots__ = ("index",)
-
-    type: Type
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
@@ -186,8 +208,6 @@ class StoreLocalAt(StoreLocal):
     """
 
     __slots__ = ("index",)
-
-    type: Type
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
@@ -271,6 +291,18 @@ class IInc(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, IInc) and self.index == other.index and self.value == other.value
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.get(self.index, int_t).into(result)
+            frame.set(self.index, int_t)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.rset(self.index, int_t)  # These two operations in a row are sort of redundant, admittedly.
+            frame.rget(self.index, int_t)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBb(self.opcode, self.index, self.value))

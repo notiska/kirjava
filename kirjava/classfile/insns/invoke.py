@@ -13,21 +13,21 @@ from typing import IO
 
 from . import Instruction
 # from .stack import New
-# from .._desc import parse_method_descriptor
+from .._desc import parse_method_descriptor
 from .._struct import *
+from ..fmt.constants import (
+    ConstInfo, InterfaceMethodrefInfo, InvokeDynamicInfo, MethodrefInfo, NameAndTypeInfo, UTF8Info,
+)
 from ..._compat import Self
-from ...model.types import error_t, throwable_t
+from ...backend import Result
+from ...model.types import error_t, object_t, reference_t, throwable_t, void_t
 # from ...model.types import *
 # from ...model.values.constants import Null
 
 if typing.TYPE_CHECKING:
-    # from ..analyse.frame import Frame
-    # from ..analyse.state import State
-    from ..fmt import ConstInfo, ConstPool
-    # from ..verify import Verifier
+    from ..analysis import Frame
+    from ..fmt import ConstPool
 
-
-# TODO: Go easier on the assertions here. There's stuff that could be recorded in the metadata.
 
 class InvokeVirtual(Instruction):
     """
@@ -51,7 +51,7 @@ class InvokeVirtual(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, methodref: "ConstInfo") -> None:
+    def __init__(self, methodref: ConstInfo) -> None:
         super().__init__()
         self.methodref = methodref
 
@@ -77,6 +77,36 @@ class InvokeVirtual(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeVirtual) and self.methodref == other.methodref
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.methodref, MethodrefInfo):
+                # TODO: Some educated guesses, at the very least.
+                raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
+            # TODO: Early throw from inability to parse descriptor, etc. Could make another educated guess?
+            arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
+            for arg_type in arg_types:
+                # FIXME: If `.verification()` raises, we'll exit early with no result. Could just push top_t instead.
+                frame.pop(arg_type.verification()).into(result)
+            # TODO: Same as with fields - arrays, reference_t?
+            frame.pop(self.methodref.get_class().unwrap_into(result, object_t)).into(result)
+            if ret_type is not void_t:
+                frame.push(ret_type.verification())
+            return result.ok(frame)
+        return result
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.methodref, MethodrefInfo):
+                raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
+            arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
+            if ret_type is not void_t:
+                frame.pop(ret_type.verification()).into(result)
+            frame.push(self.methodref.get_class().unwrap_into(result, object_t))
+            for arg_type in reversed(arg_types):
+                frame.push(arg_type.verification())
+            return result.ok(frame)
+        return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.methodref)))
@@ -151,7 +181,7 @@ class InvokeSpecial(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, methodref: "ConstInfo") -> None:
+    def __init__(self, methodref: ConstInfo) -> None:
         super().__init__()
         self.methodref = methodref
 
@@ -177,6 +207,33 @@ class InvokeSpecial(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeSpecial) and self.methodref == other.methodref
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        # FIXME: <init> and stuff.
+        with Result["Frame"]() as result:
+            if not isinstance(self.methodref, MethodrefInfo):
+                raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
+            arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
+            for arg_type in arg_types:
+                frame.pop(arg_type.verification()).into(result)
+            frame.pop(self.methodref.get_class().unwrap_into(result, object_t)).into(result)
+            if ret_type is not void_t:
+                frame.push(ret_type.verification())
+            return result.ok(frame)
+        return result
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.methodref, MethodrefInfo):
+                raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
+            arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
+            if ret_type is not void_t:
+                frame.pop(ret_type.verification()).into(result)
+            frame.push(self.methodref.get_class().unwrap_into(result, object_t))
+            for arg_type in reversed(arg_types):
+                frame.push(arg_type.verification())
+            return result.ok(frame)
+        return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.methodref)))
@@ -267,7 +324,7 @@ class InvokeStatic(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, methodref: "ConstInfo") -> None:
+    def __init__(self, methodref: ConstInfo) -> None:
         super().__init__()
         self.methodref = methodref
 
@@ -293,6 +350,30 @@ class InvokeStatic(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeStatic) and self.methodref == other.methodref
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.methodref, MethodrefInfo):
+                raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
+            arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
+            for arg_type in arg_types:
+                frame.pop(arg_type.verification()).into(result)
+            if ret_type is not void_t:
+                frame.push(ret_type.verification())
+            return result.ok(frame)
+        return result
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.methodref, MethodrefInfo):
+                raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
+            arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
+            if ret_type is not void_t:
+                frame.pop(ret_type.verification()).into(result)
+            for arg_type in reversed(arg_types):
+                frame.push(arg_type.verification())
+            return result.ok(frame)
+        return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.methodref)))
@@ -362,7 +443,7 @@ class InvokeInterface(Instruction):
         index, count, reserved = unpack_HBB(stream.read(4))
         return cls(pool[index], count, reserved)
 
-    def __init__(self, methodref: "ConstInfo", count: int, reserved: int) -> None:
+    def __init__(self, methodref: ConstInfo, count: int, reserved: int) -> None:
         super().__init__()
         self.methodref = methodref
         self.count = count
@@ -395,6 +476,34 @@ class InvokeInterface(Instruction):
             self.count == other.count and
             self.reserved == other.reserved
         )
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.methodref, MethodrefInfo):
+                raise TypeError(f"method ref {self.methodref!s} is not an interface method ref constant")
+            # TODO: On failure, could use count to work out arg count? Also all of the above todos.
+            arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
+            for arg_type in arg_types:
+                frame.pop(arg_type.verification()).into(result)
+            # TODO: `.interface()` call on class type, or generify to object by default.
+            frame.pop(self.methodref.get_class().unwrap_into(result, object_t)).into(result)
+            if ret_type is not void_t:
+                frame.push(ret_type.verification())
+            return result.ok(frame)
+        return result
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.methodref, MethodrefInfo):
+                raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
+            arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
+            if ret_type is not void_t:
+                frame.pop(ret_type.verification()).into(result)
+            frame.push(self.methodref.get_class().unwrap_into(result, object_t))
+            for arg_type in reversed(arg_types):
+                frame.push(arg_type.verification())
+            return result.ok(frame)
+        return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHBB(self.opcode, pool.add(self.methodref), self.count, self.reserved))
@@ -482,7 +591,7 @@ class InvokeDynamic(Instruction):
         index, reserved = unpack_HH(stream.read(4))
         return cls(pool[index], reserved)
 
-    def __init__(self, indyref: "ConstInfo", reserved: int) -> None:
+    def __init__(self, indyref: ConstInfo, reserved: int) -> None:
         super().__init__()
         self.indyref = indyref
         self.reserved = reserved
@@ -509,6 +618,30 @@ class InvokeDynamic(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InvokeDynamic) and self.indyref == other.indyref and self.reserved == other.reserved
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.indyref, InvokeDynamicInfo):
+                raise TypeError(f"indy ref {self.indyref!s} is not an invoke dynamic constant")
+            arg_types, ret_type = self.indyref.get_types().unwrap_into(result)
+            for arg_type in arg_types:
+                frame.pop(arg_type.verification()).into(result)
+            if ret_type is not void_t:
+                frame.push(ret_type.verification())
+            return result.ok(frame)
+        return result
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            if not isinstance(self.indyref, InvokeDynamicInfo):
+                raise TypeError(f"method ref {self.indyref!s} is not an invoke dynamic constant")
+            arg_types, ret_type = self.indyref.get_types().unwrap_into(result)
+            if ret_type is not void_t:
+                frame.pop(ret_type.verification()).into(result)
+            for arg_type in reversed(arg_types):
+                frame.push(arg_type.verification())
+            return result.ok(frame)
+        return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(self.opcode, pool.add(self.indyref), self.reserved))

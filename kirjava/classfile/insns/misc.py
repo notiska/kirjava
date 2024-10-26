@@ -15,13 +15,12 @@ from typing import IO
 
 from . import Instruction
 from ..._compat import Self
-from ...model.types import Class
-# from ...model.types import *
+from ...backend import Ok, Result
+from ...model.types import reference_t, Class
 # from ...model.values.constants import Null
 
 if typing.TYPE_CHECKING:
-    # from ..analyse.frame import Frame
-    # from ..analyse.state import State
+    from ..analysis import Frame
     from ..fmt import ConstPool
 
 
@@ -49,6 +48,12 @@ class Nop(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Nop)
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -97,6 +102,12 @@ class Wide(Instruction):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Wide)
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)  # Again, technically should cause the JVM to hang but yeah...
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
 
@@ -128,6 +139,16 @@ class MonitorEnter(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MonitorEnter)
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            # FIXME: Can we enter an object monitor with an array? Can we narrow it down to object_t?
+            frame.pop(reference_t).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(reference_t)
+        return Ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -168,6 +189,15 @@ class MonitorExit(Instruction):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, MonitorExit)
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(reference_t).into(result)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        frame.push(reference_t)
+        return Ok(frame)
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
 
@@ -204,6 +234,12 @@ class Internal(Instruction):  # FIXME: Too broad.
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Internal) and self.opcode == other.opcode
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -250,6 +286,12 @@ class Unknown(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Unknown) and self.opcode == other.opcode
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)  # FIXME: Error?
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        return Ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

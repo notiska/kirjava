@@ -15,14 +15,15 @@ from typing import IO
 
 from . import Instruction
 from .._struct import *
+from ..fmt.constants import ClassInfo, ConstInfo
 from ..._compat import Self
+from ...backend import Result
 from ...model.types import *
 # from ...model.values.constants import *
 
 if typing.TYPE_CHECKING:
-    # from ..analyse.frame import Frame
-    # from ..analyse.state import State
-    from ..fmt import ConstInfo, ConstPool
+    from ..analysis import Frame
+    from ..fmt import ConstPool
 
 
 class ValueCast(Instruction):
@@ -38,8 +39,8 @@ class ValueCast(Instruction):
     lt_throws = frozenset()
     linked = True
 
-    type_in:  Primitive
-    type_out: Primitive
+    type_in: Verification
+    type_out: Verification
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
@@ -52,6 +53,18 @@ class ValueCast(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ValueCast) and self.opcode == other.opcode
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type_in).into(result)
+            frame.push(self.type_out)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(self.type_out).into(result)
+            frame.push(self.type_in)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -116,7 +129,7 @@ class CheckCast(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, classref: "ConstInfo") -> None:
+    def __init__(self, classref: ConstInfo) -> None:
         super().__init__()
         self.classref = classref
 
@@ -142,6 +155,32 @@ class CheckCast(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, CheckCast) and self.classref == other.classref
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(reference_t).into(result)
+            item = None
+            if not isinstance(self.classref, ClassInfo):
+                result.err(TypeError(f"class ref {self.classref!s} is not a class constant"))
+            else:
+                item = self.classref.get_type().into(result).value
+            if item is None or not isinstance(item, Verification):
+                item = reference_t  # FIXME: object_t, is it possible to have an array type in checkcast?
+            frame.push(item)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            item = None
+            if not isinstance(self.classref, ClassInfo):
+                result.err(TypeError(f"class ref {self.classref!s} is not a class constant"))
+            else:
+                item = self.classref.get_type().into(result).value
+            if item is None or not isinstance(item, Verification):
+                item = reference_t
+            frame.pop(item).into(result)
+            frame.push(reference_t)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.classref)))
@@ -186,7 +225,7 @@ class InstanceOf(Instruction):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, classref: "ConstInfo") -> None:
+    def __init__(self, classref: ConstInfo) -> None:
         super().__init__()
         self.classref = classref
 
@@ -212,6 +251,18 @@ class InstanceOf(Instruction):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, InstanceOf) and self.classref == other.classref
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(reference_t).into(result)
+            frame.push(int_t)
+        return result.ok(frame)
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        with Result["Frame"]() as result:
+            frame.pop(int_t).into(result)
+            frame.push(reference_t)
+        return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.classref)))
