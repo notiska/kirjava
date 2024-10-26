@@ -7,10 +7,11 @@ __all__ = (
 )
 
 import typing
-from typing import Iterable
+from typing import Iterable, Optional
 
 if typing.TYPE_CHECKING:
     from ..types import Type
+    from ...classfile import MethodInfo
 
 
 class Method:
@@ -21,6 +22,8 @@ class Method:
     ----------
     access: str
         A pretty access flag string.
+    info: MethodInfo | None
+        The method info that this method was generated from.
     name: str
         The name of the method.
     arg_types: tuple[Type, ...]
@@ -51,12 +54,16 @@ class Method:
         If the method is strictfp.
     is_synthetic: bool
         If the method is synthetic.
+    documentation: bytes | None
+        Any associated documentation for this method.
     """
 
     __slots__ = (
+        "info",
         "name", "arg_types", "ret_type",
         "is_public", "is_private", "is_protected", "is_static", "is_final", "is_synchronized",
         "is_bridge", "is_varargs", "is_native", "is_abstract", "is_strictfp", "is_synthetic",
+        "documentation",
     )
 
     @property
@@ -94,6 +101,8 @@ class Method:
             is_strictfp:     bool = False,
             is_synthetic:    bool = False,
     ) -> None:
+        self.info: Optional["MethodInfo"] = None
+
         self.name = name
         self.arg_types = tuple(arg_types)
         self.ret_type = ret_type
@@ -110,6 +119,8 @@ class Method:
         self.is_abstract = is_abstract
         self.is_strictfp = is_strictfp
         self.is_synthetic = is_synthetic
+
+        self.documentation: bytes | None = None
 
     def __repr__(self) -> str:
         arg_types_str = ", ".join(map(str, self.arg_types))

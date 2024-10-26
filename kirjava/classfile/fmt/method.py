@@ -15,6 +15,7 @@ JVM class file method info struct and attributes.
 """
 
 import typing
+from io import BytesIO
 from os import SEEK_CUR, SEEK_SET
 from typing import IO, Iterable, Iterator, Union
 
@@ -24,7 +25,7 @@ from .constants import *
 from .stackmap import StackMapFrame
 from .._desc import parse_method_descriptor
 from .._struct import *
-from ..insns import CodeIOWrapper, Instruction
+from ..insns import Instruction
 from ..version import *
 from ..._compat import Self
 from ...backend import Result
@@ -119,8 +120,8 @@ class MethodInfo:
 
     visit(self, visitor: MethodInfoVisitor) -> None
         Calls a visitor on this method.
-    link(self) -> Result[Method]
-        Creates a linked method from this method info.
+    lift(self) -> Result[Method]
+        Creates a lifted method from this method info.
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
         Writes this method to a binary stream.
     """
@@ -324,9 +325,9 @@ class MethodInfo:
             visitor.visit_attribute(attribute)
         visitor.visit_end(self)
 
-    def link(self) -> Result[Method]:
+    def lift(self) -> Result[Method]:
         """
-        Creates a linked method from this method info.
+        Creates a lifted method from this method info.
         """
 
         with Result[Method]() as result:
@@ -423,18 +424,16 @@ class Code(AttributeInfo):
             # disassembler.disassemble_pure_code(stream, class_file, code_length)
 
             base = stream.tell()
+            wrapper = BytesIO(stream.read(size))  # CodeIOWrapper(stream, base)
+
             insns = []
-
-            # TODO: Read all into BytesIO instead of using CodeIOWrapper, could be faster?
-            wrapper = CodeIOWrapper(stream, base)
             while wrapper.tell() < size:
-                instruction = Instruction.read(wrapper, pool)
-                insns.append(instruction)
+                insns.append(Instruction.read(wrapper, pool))
 
-            delta = stream.tell() - (base + size)
-            if delta:
-                result.warn("Code instructions overread by %i byte(s).", delta)
-                stream.seek(-delta, SEEK_CUR)
+            # delta = stream.tell() - (base + size)
+            # if delta:
+            #     result.warn("Code instructions overread by %i byte(s).", delta)
+            #     stream.seek(-delta, SEEK_CUR)
 
             # TODO: Version checking instructions?
 
@@ -501,30 +500,33 @@ class Code(AttributeInfo):
         )
 
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
-        if version < JAVA_1_1:
-            stream.write(bytes((self.max_stack, self.max_locals)))
-            start = stream.tell()
-            stream.write(pack_H(0))
-        else:
-            stream.write(pack_HH(self.max_stack, self.max_locals))
-            start = stream.tell()
-            stream.write(pack_I(0))
+        # if version < JAVA_1_1:
+        #     stream.write(bytes((self.max_stack, self.max_locals)))
+        #     start = stream.tell()
+        #     stream.write(pack_H(0))
+        # else:
+        #     stream.write(pack_HH(self.max_stack, self.max_locals))
+        #     start = stream.tell()
+        #     stream.write(pack_I(0))
 
-        base = stream.tell()
-        wrapper = CodeIOWrapper(stream, base)
+        # base = stream.tell()
+        wrapper = BytesIO()  # CodeIOWrapper(stream, base)
 
         for instruction in self.insns:
             # print(instruction.offset + base, instruction)
             instruction.write(wrapper, pool)
 
         size = wrapper.tell()
-        end = stream.tell()
-        stream.seek(start, SEEK_SET)
+        # end = stream.tell()
+        # stream.seek(start, SEEK_SET)
+
         if version < JAVA_1_1:
-            stream.write(pack_H(size))
+            stream.write(pack_BBH(self.max_stack, self.max_locals, size))
         else:
-            stream.write(pack_I(size))
-        stream.seek(end, SEEK_SET)
+            stream.write(pack_HHI(self.max_stack, self.max_locals, size))
+
+        stream.write(wrapper.getvalue())
+        # stream.seek(end, SEEK_SET)
 
         stream.write(pack_H(len(self.handlers)))
         for handler in self.handlers:

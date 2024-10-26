@@ -18,20 +18,15 @@ __all__ = (
     "Pop", "Pop2", "Dup", "DupX1", "DupX2", "Dup2", "Dup2X1", "Dup2X2", "Swap",
 )
 
-import sys
 import typing
 from copy import deepcopy
 from typing import IO
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
 
 from . import Instruction
 from .._struct import *
 from ...backend import f32, f64, i32, i64
 from ...model.types import error_t, Class
+from ..._compat import Self
 from ...model.values.constants import Constant, Double, Float, Integer, Long, Null
 
 if typing.TYPE_CHECKING:

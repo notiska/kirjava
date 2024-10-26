@@ -24,7 +24,7 @@ if typing.TYPE_CHECKING:
 
 class DirLoader(Loader):
     """
-    Loads classes from a directory containing classfiles.
+    Loads classes from a directory containing class files.
 
     Attributes
     ----------
@@ -50,8 +50,8 @@ class DirLoader(Loader):
         with Result["Class"]() as result:
             path = (name + ".class").split("/")
             with open(os.path.join(self._path, *path), "rb") as stream:
-                cf = ClassFile.read(stream).unwrap_into(result, reraise=True)
-            return result.ok(cf.link(linker).unwrap_into(result, reraise=True))
+                cf = ClassFile.read(stream).unwrap_into(result)
+            return result.ok(cf.lift(linker).unwrap_into(result))
         return result
 
     def find_resource(self, name: str) -> Result[bytes]:

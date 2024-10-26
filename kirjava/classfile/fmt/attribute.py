@@ -158,7 +158,7 @@ class AttributeInfo:
             start = stream.tell()
             # print(subclass, start, "-", start + length)
             try:
-                self = subclass._read(stream, version, pool).unwrap_into(result, reraise=True)
+                self = subclass._read(stream, version, pool).unwrap_into(result)
                 self.name = name
 
                 if bad_version:

@@ -31,6 +31,8 @@ class Loader:  # TODO: Default loaders as well, i.e. jar, zip, dir, etc...
         Finds a resource given its name.
     """
 
+    __slots__ = ()
+
     # owns_class(self, class_: Class) -> bool
     #     Checks if the loader owns a class, AKA it was resolved by this loader.
 
@@ -112,9 +114,7 @@ class Linker:
     find_method(self, name: str, arg_types: tuple[Type, ...], ret_type: Type) -> Method | None
     """
 
-    __slots__ = (
-        "_loaders", "_cached",
-    )
+    __slots__ = ("_loaders", "_cached")
 
     @property
     def loaders(self) -> tuple[Loader, ...]:
@@ -235,13 +235,14 @@ class Linker:
         if cached is not None:
             return Ok(cached)
 
-        for loader in self.loaders:
-            class_ = loader.find_class(name, self).value  # TODO: Unwrap into a parent result to get full info.
-            if class_ is not None:
-                self._cached[name] = class_
-                return Ok(class_)
-
-        return Err(KeyError(name))
+        with Result[Class]() as result:
+            for loader in self.loaders:
+                class_ = loader.find_class(name, self).into(result).value
+                if class_ is not None:
+                    self._cached[name] = class_
+                    return result.ok(class_)
+            return result.err(KeyError(name))
+        return result
 
     # FIXME: Static lookups needed too.
 

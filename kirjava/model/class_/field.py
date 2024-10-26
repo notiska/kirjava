@@ -7,9 +7,12 @@ __all__ = (
 )
 
 import typing
+from typing import Optional
 
 if typing.TYPE_CHECKING:
+    from ..values import Constant
     from ..types import Type
+    from ...classfile import FieldInfo
 
 
 class Field:
@@ -20,6 +23,8 @@ class Field:
     ----------
     access: str
         A pretty access flag string.
+    info: FieldInfo | None
+        The field info that this field was generated from.
     name: str
         The name of the field.
     type: Type
@@ -42,12 +47,18 @@ class Field:
         If the field is synthetic.
     is_enum: bool
         If the field is an enum.
+    documentation: bytes | None
+        Any associated documentation for this field.
+    value: Constant | None
+        If applicable, a constant value. Only stored with `static final` fields.
     """
 
     __slots__ = (
+        "info",
         "name", "type",
         "is_public", "is_private", "is_protected", "is_static", "is_final",
         "is_volatile", "is_transient", "is_synthetic", "is_enum",
+        "documentation", "value",
     )
 
     @property
@@ -79,6 +90,8 @@ class Field:
             is_synthetic: bool = False,
             is_enum:      bool = False,
     ) -> None:
+        self.info: Optional["FieldInfo"] = None
+
         self.name = name
         self.type = type_
 
@@ -91,6 +104,9 @@ class Field:
         self.is_transient = is_transient
         self.is_synthetic = is_synthetic
         self.is_enum = is_enum
+
+        self.documentation: bytes | None = None
+        self.value: Optional["Constant"] = None
 
     def __repr__(self) -> str:
         return f"<Field(name={self.name!r}, type={self.type!s})>"

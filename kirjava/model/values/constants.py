@@ -14,8 +14,9 @@ __all__ = (
 Models for constant values.
 """
 
+import typing
 from enum import Enum
-from typing import Iterable
+from typing import Iterable, Optional
 
 from . import Value
 # Mypy gets confused if we do import * because `Class` is also defined in types, so yea...
@@ -26,13 +27,27 @@ from ..types import (
 )
 from ...backend import f32, f64, i32, i64
 
+if typing.TYPE_CHECKING:
+    from ...classfile.fmt import (
+        ClassInfo, ConstInfo, DoubleInfo, FloatInfo, IntegerInfo, LongInfo, MethodHandleInfo, MethodTypeInfo,
+        StringInfo,
+    )
+
 
 class Constant(Value):
     """
     A constant value.
+
+    Attributes
+    ----------
+    info: ConstInfo | None
+        The constant info that this constant was generated from.
     """
 
-    __slots__ = ()
+    __slots__ = ("info",)
+
+    def __init__(self) -> None:
+        self.info: Optional["ConstInfo"] = None
 
     def __hash__(self) -> int:
         raise NotImplementedError(f"hash() is not implemented for {type(self)!r}")
@@ -79,12 +94,17 @@ class Integer(Constant):
         return self._value
 
     def __init__(self, value: int | i32) -> None:
+        super().__init__()
+        self.info: Optional["IntegerInfo"]
+
         if isinstance(value, int):
             value = i32(value)
         self._value = value
         self._hash = hash(value)
 
     def __repr__(self) -> str:
+        if self.info is not None:
+            return f"<Integer(info={self.info!s}, value={self._value!r})>"
         return f"<Integer(value={self._value!r})>"
 
     def __str__(self) -> str:
@@ -116,12 +136,17 @@ class Float(Constant):
         return self._value
 
     def __init__(self, value: float | f32) -> None:
+        super().__init__()
+        self.info: Optional["FloatInfo"]
+
         if isinstance(value, float):
             value = f32(value)
         self._value = value
         self._hash = hash(value)
 
     def __repr__(self) -> str:
+        if self.info is not None:
+            return f"<Float(info={self.info!s}, value={self._value!r})>"
         return f"<Float(value={self._value!r})>"
 
     def __str__(self) -> str:
@@ -154,12 +179,17 @@ class Long(Constant):
         return self._value
 
     def __init__(self, value: int | i64) -> None:
+        super().__init__()
+        self.info: Optional["LongInfo"]
+
         if isinstance(value, int):
             value = i64(value)
         self._value = value
         self._hash = hash(value)
 
     def __repr__(self) -> str:
+        if self.info is not None:
+            return f"<Long(info={self.info!s}, value={self._value!r})>"
         return f"<Long(value={self._value!r})>"
 
     def __str__(self) -> str:
@@ -191,12 +221,17 @@ class Double(Constant):
         return self._value
 
     def __init__(self, value: float | f64) -> None:
+        super().__init__()
+        self.info: Optional["DoubleInfo"]
+
         if isinstance(value, float):
             value = f64(value)
         self._value = value
         self._hash = hash(value)
 
     def __repr__(self) -> str:
+        if self.info is not None:
+            return f"<Double(info={self.info!s}, value={self._value!r})>"
         return f"<Double(value={self._value!r})>"
 
     def __str__(self) -> str:
@@ -241,12 +276,17 @@ class Class(Constant):
         return isinstance(self._ref_type, Array)
 
     def __init__(self, name_or_ref_type: str | Reference) -> None:
+        super().__init__()
+        self.info: Optional["ClassInfo"]
+
         if isinstance(name_or_ref_type, str):
             name_or_ref_type = ClassType(name_or_ref_type)
         self._ref_type = name_or_ref_type
         self._hash = hash(name_or_ref_type)
 
     def __repr__(self) -> str:
+        if self.info is not None:
+            return f"<Class(info={self.info!s}, name={self._ref_type.name!r})>"
         return f"<Class(name={self._ref_type.name!r})>"
 
     def __str__(self) -> str:
@@ -278,10 +318,15 @@ class String(Constant):  # TODO: Note: string constants might escape the method,
         return self._value
 
     def __init__(self, value: str) -> None:
+        super().__init__()
+        self.info: Optional["StringInfo"]
+
         self._value = value
         self._hash = hash(value)
 
     def __repr__(self) -> str:
+        if self.info is not None:
+            return f"<String(info={self.info!s}, value={self._value!r})>"
         return f"<String(value={self._value!r})>"
 
     def __str__(self) -> str:
@@ -341,6 +386,9 @@ class MethodHandle(Constant):
     def __init__(
             self, kind: "MethodHandle.Kind", class_: Class, name: str, arg_types: Iterable[Type], ret_type: Type,
     ) -> None:
+        super().__init__()
+        self.info: Optional["MethodHandleInfo"]
+
         self._kind = kind
         self._class = class_
         self._name = name
@@ -350,6 +398,11 @@ class MethodHandle(Constant):
 
     def __repr__(self) -> str:
         arg_types_str = ", ".join(map(str, self._arg_types))
+        if self.info is not None:
+            return (
+                f"<MethodHandle(info={self.info!s}, kind={self._kind!s}, class_={self._class!s}, name={self._name!r}, "
+                f"arg_types=({arg_types_str}), ret_type={self._ret_type!s})>"
+            )
         return (
             f"<MethodHandle(kind={self._kind!s}, class_={self._class!s}, name={self._name!r}, "
             f"arg_types=({arg_types_str}), ret_type={self._ret_type!s})>"
@@ -415,12 +468,17 @@ class MethodType(Constant):
         return self._ret_type
 
     def __init__(self, arg_types: Iterable[Type], ret_type: Type) -> None:
+        super().__init__()
+        self.info: Optional["MethodTypeInfo"]
+
         self._arg_types = tuple(arg_types)
         self._ret_type = ret_type
         self._hash = hash((self._arg_types, ret_type))
 
     def __repr__(self) -> str:
         arg_types_str = ", ".join(map(str, self._arg_types))
+        if self.info is not None:
+            return f"<MethodType(info={self.info!s}, arg_types=({arg_types_str}), ret_type={self._ret_type!s})>"
         return f"<MethodType(arg_types=({arg_types_str}), ret_type={self._ret_type!s})>"
 
     def __str__(self) -> str:

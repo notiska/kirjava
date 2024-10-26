@@ -22,7 +22,10 @@ from .._struct import *
 from ..version import *
 from ..._compat import Self
 from ...backend import *
-from ...model.values.constants import *
+from ...model.types import Class as ClassType, Reference, Type
+from ...model.values.constants import (
+    Class as ClassConst, Double, Float, Integer, Long, MethodHandle, MethodType, String,
+)
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
@@ -61,8 +64,8 @@ class ConstInfo:
         Creates a copy of this constant.
     deref(self, pool: ConstPool) -> None
         Dereferences any indices in this constant.
-    link(self) -> Result[Any]
-        Creates a linked version of this constant.
+    lift(self) -> Result[Any]
+        Creates a lifted constant from this constant info.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes the constant info to a binary stream.
     """
@@ -212,12 +215,12 @@ class ConstInfo:
 
         raise NotImplementedError(f"deref() is not implemented for {type(self)!r}")
 
-    def link(self) -> Result[Any]:
+    def lift(self) -> Result[Any]:
         """
-        Creates a linked version of this constant.
+        Creates a lifted constant from this constant info.
         """
 
-        return Err(ValueError(f"cannot link constant {self!r}"))
+        return Err(ValueError(f"cannot lift constant {self!r}"))
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
@@ -393,8 +396,10 @@ class IntegerInfo(ConstInfo):
     def deref(self, pool: "ConstPool") -> None:
         ...
 
-    def link(self) -> Result[Integer]:
-        return Ok(Integer(self.value))
+    def lift(self) -> Result[Integer]:
+        lifted = Integer(self.value)
+        lifted.info = self
+        return Ok(lifted)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((IntegerInfo.tag,)))
@@ -456,8 +461,10 @@ class FloatInfo(ConstInfo):
     def deref(self, pool: "ConstPool") -> None:
         ...
 
-    def link(self) -> Result[Float]:
-        return Ok(Float(self.value))
+    def lift(self) -> Result[Float]:
+        lifted = Float(self.value)
+        lifted.info = self
+        return Ok(lifted)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((FloatInfo.tag,)))
@@ -512,8 +519,10 @@ class LongInfo(ConstInfo):
     def deref(self, pool: "ConstPool") -> None:
         ...
 
-    def link(self) -> Result[Long]:
-        return Ok(Long(self.value))
+    def lift(self) -> Result[Long]:
+        lifted = Long(self.value)
+        lifted.info = self
+        return Ok(lifted)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((LongInfo.tag,)))
@@ -574,8 +583,10 @@ class DoubleInfo(ConstInfo):
     def deref(self, pool: "ConstPool") -> None:
         ...
 
-    def link(self) -> Result[Double]:
-        return Ok(Double(self.value))
+    def lift(self) -> Result[Double]:
+        lifted = Double(self.value)
+        lifted.info = self
+        return Ok(lifted)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((DoubleInfo.tag,)))
@@ -592,6 +603,11 @@ class ClassInfo(ConstInfo):
     ----------
     name: ConstInfo
         A UTF8 constant, used as the name of the class.
+
+    Methods
+    -------
+    get_type(self) -> Result[Reference]
+        Returns the reference type represented by this class constant.
     """
 
     __slots__ = ("name",)
@@ -638,16 +654,27 @@ class ClassInfo(ConstInfo):
         if isinstance(self.name, ConstIndex):
             self.name = pool[self.name.index]
 
-    def link(self) -> Result[Class]:
-        with Result[Class]() as result:
-            if not isinstance(self.name, UTF8Info):
-                return result.err(TypeError(f"name {self.name!s} is not a UTF8 constant"))
-            # https://github.com/ItzSomebody/stopdecompilingmyjava/blob/master/decompiler-tool-bugs/entry-007/entry.md
-            return result.ok(Class(parse_reference(self.name.decode())))
+    def lift(self) -> Result[ClassConst]:
+        with Result[ClassConst]() as result:
+            lifted = ClassConst(self.get_type().unwrap_into(result))
+            lifted.info = self
+            return result.ok(lifted)
         return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(ClassInfo.tag, pool.add(self.name)))
+
+    def get_type(self) -> Result[Reference]:
+        """
+        Returns the reference type represented by this class constant.
+        """
+
+        with Result[Reference]() as result:
+            if not isinstance(self.name, UTF8Info):
+                return result.err(TypeError(f"name {self.name!s} is not a UTF8 constant"))
+            # https://github.com/ItzSomebody/stopdecompilingmyjava/blob/master/decompiler-tool-bugs/entry-007/entry.md
+            return result.ok(parse_reference(self.name.decode()))
+        return result
 
 
 class StringInfo(ConstInfo):
@@ -705,11 +732,13 @@ class StringInfo(ConstInfo):
         if isinstance(self.value, ConstIndex):
             self.value = pool[self.value.index]
 
-    def link(self) -> Result[String]:
+    def lift(self) -> Result[String]:
         with Result[String]() as result:
             if not isinstance(self.value, UTF8Info):
                 return result.err(TypeError(f"value {self.value!s} is not a UTF8 constant"))
-            return result.ok(String(self.value.decode()))
+            lifted = String(self.value.decode())
+            lifted.info = self
+            return result.ok(lifted)
         return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -729,6 +758,15 @@ class FieldrefInfo(ConstInfo):
     name_and_type: ConstInfo
         A name and type constant, used as the name of the field and the descriptor
         detailing the type of the field.
+
+    Methods
+    -------
+    get_class(self) -> Result[ClassType]
+        Returns the type of the class that this field belongs to.
+    get_name(self) -> Result[str]
+        Returns the name of this field.
+    get_type(self) -> Result[Type]
+        Returns the type of this field.
     """
 
     __slots__ = ("class_", "name_and_type")
@@ -787,6 +825,48 @@ class FieldrefInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(FieldrefInfo.tag, pool.add(self.class_), pool.add(self.name_and_type)))
 
+    def get_class(self) -> Result[ClassType]:
+        """
+        Returns the type of the class that this field belongs to.
+        """
+
+        with Result[ClassType]() as result:
+            if not isinstance(self.class_, ClassInfo):
+                return result.err(TypeError(f"class {self.class_!s} is not a class constant"))
+            ref_type = self.class_.get_type().unwrap_into(result)
+            if not isinstance(ref_type, ClassType):
+                return result.err(TypeError(f"reference type {ref_type!s} is not a class type"))
+            return result.ok(ref_type)
+        return result
+
+    def get_name(self) -> Result[str]:
+        """
+        Returns the name of this field.
+        """
+
+        with Result[str]() as result:
+            if not isinstance(self.name_and_type, NameAndTypeInfo):
+                return result.err(TypeError(f"name and type {self.name_and_type!s} is not a name and type constant"))
+            name = self.name_and_type.name
+            if not isinstance(name, UTF8Info):
+                return result.err(TypeError(f"name {name!s} is not a UTF8 constant"))
+            return result.ok(name.decode())
+        return result
+
+    def get_type(self) -> Result[Type]:
+        """
+        Returns the type of this field.
+        """
+
+        with Result[Type]() as result:
+            if not isinstance(self.name_and_type, NameAndTypeInfo):
+                return result.err(TypeError(f"name and type {self.name_and_type!s} is not a name and type constant"))
+            descriptor = self.name_and_type.descriptor
+            if not isinstance(descriptor, UTF8Info):
+                return result.err(TypeError(f"descriptor {descriptor!s} is not a UTF8 constant"))
+            return result.ok(parse_field_descriptor(descriptor.decode()))
+        return result
+
 
 class MethodrefInfo(ConstInfo):
     """
@@ -801,6 +881,15 @@ class MethodrefInfo(ConstInfo):
     name_and_type: ConstInfo
         A name and type constant, used as the name of the method and the descriptor
         detailing the argument and return types of the method.
+
+    Methods
+    -------
+    get_class(self) -> Result[ClassType]
+        Returns the type of the class that this method belongs to.
+    get_name(self) -> Result[str]
+        Returns the name of this method.
+    get_types(self) -> Result[tuple[tuple[Type, ...], Type]]
+        Returns the argument and return types of this method.
     """
 
     __slots__ = ("class_", "name_and_type")
@@ -859,6 +948,48 @@ class MethodrefInfo(ConstInfo):
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(MethodrefInfo.tag, pool.add(self.class_), pool.add(self.name_and_type)))
 
+    def get_class(self) -> Result[ClassType]:
+        """
+        Returns the type of the class that this method belongs to.
+        """
+
+        with Result[ClassType]() as result:
+            if not isinstance(self.class_, ClassInfo):
+                return result.err(TypeError(f"class {self.class_!s} is not a class constant"))
+            ref_type = self.class_.get_type().unwrap_into(result)
+            if not isinstance(ref_type, ClassType):
+                return result.err(TypeError(f"reference type {ref_type!s} is not a class type"))
+            return result.ok(ref_type)
+        return result
+
+    def get_name(self) -> Result[str]:
+        """
+        Returns the name of this method.
+        """
+
+        with Result[str]() as result:
+            if not isinstance(self.name_and_type, NameAndTypeInfo):
+                return result.err(TypeError(f"name and type {self.name_and_type!s} is not a name and type constant"))
+            name = self.name_and_type.name
+            if not isinstance(name, UTF8Info):
+                return result.err(TypeError(f"name {name!s} is not a UTF8 constant"))
+            return result.ok(name.decode())
+        return result
+
+    def get_types(self) -> Result[tuple[tuple[Type, ...], Type]]:
+        """
+        Returns the argument and return types of this method.
+        """
+
+        with Result[tuple[tuple[Type, ...], Type]]() as result:
+            if not isinstance(self.name_and_type, NameAndTypeInfo):
+                return result.err(TypeError(f"name and type {self.name_and_type!s} is not a name and type constant"))
+            descriptor = self.name_and_type.descriptor
+            if not isinstance(descriptor, UTF8Info):
+                return result.err(TypeError(f"descriptor {descriptor!s} is not a UTF8 constant"))
+            return result.ok(parse_method_descriptor(descriptor.decode()))
+        return result
+
 
 class InterfaceMethodrefInfo(ConstInfo):
     """
@@ -873,6 +1004,15 @@ class InterfaceMethodrefInfo(ConstInfo):
     name_and_type: ConstInfo
         A name and type constant, used as the name of the method and the descriptor
         detailing the argument and return types of the method.
+
+    Methods
+    -------
+    get_class(self) -> Result[ClassType]
+        Returns the type of the class that this method belongs to.
+    get_name(self) -> Result[str]
+        Returns the name of this method.
+    get_types(self) -> Result[tuple[tuple[Type, ...], Type]]
+        Returns the argument and return types of this method.
     """
 
     __slots__ = ("class_", "name_and_type")
@@ -933,6 +1073,48 @@ class InterfaceMethodrefInfo(ConstInfo):
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(InterfaceMethodrefInfo.tag, pool.add(self.class_), pool.add(self.name_and_type)))
+
+    def get_class(self) -> Result[ClassType]:
+        """
+        Returns the type of the class that this method belongs to.
+        """
+
+        with Result[ClassType]() as result:
+            if not isinstance(self.class_, ClassInfo):
+                return result.err(TypeError(f"class {self.class_!s} is not a class constant"))
+            ref_type = self.class_.get_type().unwrap_into(result)
+            if not isinstance(ref_type, ClassType):
+                return result.err(TypeError(f"reference type {ref_type!s} is not a class type"))
+            return result.ok(ref_type)
+        return result
+
+    def get_name(self) -> Result[str]:
+        """
+        Returns the name of this method.
+        """
+
+        with Result[str]() as result:
+            if not isinstance(self.name_and_type, NameAndTypeInfo):
+                return result.err(TypeError(f"name and type {self.name_and_type!s} is not a name and type constant"))
+            name = self.name_and_type.name
+            if not isinstance(name, UTF8Info):
+                return result.err(TypeError(f"name {name!s} is not a UTF8 constant"))
+            return result.ok(name.decode())
+        return result
+
+    def get_types(self) -> Result[tuple[tuple[Type, ...], Type]]:
+        """
+        Returns the argument and return types of this method.
+        """
+
+        with Result[tuple[tuple[Type, ...], Type]]() as result:
+            if not isinstance(self.name_and_type, NameAndTypeInfo):
+                return result.err(TypeError(f"name and type {self.name_and_type!s} is not a name and type constant"))
+            descriptor = self.name_and_type.descriptor
+            if not isinstance(descriptor, UTF8Info):
+                return result.err(TypeError(f"descriptor {descriptor!s} is not a UTF8 constant"))
+            return result.ok(parse_method_descriptor(descriptor.decode()))
+        return result
 
 
 class NameAndTypeInfo(ConstInfo):
@@ -1116,7 +1298,7 @@ class MethodHandleInfo(ConstInfo):
         if isinstance(self.ref, ConstIndex):
             self.ref = pool[self.ref.index]
 
-    def link(self) -> Result[MethodHandle]:
+    def lift(self) -> Result[MethodHandle]:
         with Result[MethodHandle]() as result:
             field = False
 
@@ -1162,9 +1344,11 @@ class MethodHandleInfo(ConstInfo):
                 arg_types = ()
                 ret_type = parse_field_descriptor(descriptor.decode())
 
-            return result.ok(MethodHandle(
-                MethodHandle.Kind(self.kind), class_.link().unwrap_into(result), name.decode(), arg_types, ret_type,
-            ))
+            lifted = MethodHandle(
+                MethodHandle.Kind(self.kind), class_.lift().unwrap_into(result), name.decode(), arg_types, ret_type,
+            )
+            lifted.info = self
+            return result.ok(lifted)
         return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -1225,18 +1409,20 @@ class MethodTypeInfo(ConstInfo):
         if isinstance(self.descriptor, ConstIndex):
             self.descriptor = pool[self.descriptor.index]
 
-    def link(self) -> Result[MethodType]:
+    def lift(self) -> Result[MethodType]:
         with Result[MethodType]() as result:
             if not isinstance(self.descriptor, UTF8Info):
                 return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))
-            return result.ok(MethodType(*parse_method_descriptor(self.descriptor.decode())))
+            lifted = MethodType(*parse_method_descriptor(self.descriptor.decode()))
+            lifted.info = self
+            return result.ok(lifted)
         return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(MethodTypeInfo.tag, pool.add(self.descriptor)))
 
 
-class DynamicInfo(ConstInfo):
+class DynamicInfo(ConstInfo):  # TODO: get_name() and get_types().
     """
     A CONSTANT_Dynamic_info struct.
 
@@ -1308,7 +1494,7 @@ class DynamicInfo(ConstInfo):
         stream.write(pack_BHH(DynamicInfo.tag, self.attr_index, pool.add(self.name_and_type)))
 
 
-class InvokeDynamicInfo(ConstInfo):
+class InvokeDynamicInfo(ConstInfo):  # FIXME: Documentation may need to be better? Not sure how correct it is.
     """
     A CONSTANT_InvokeDynamic_info struct.
 
@@ -1321,6 +1507,13 @@ class InvokeDynamicInfo(ConstInfo):
     name_and_type: ConstInfo
         A name and type constant, used as the name and descriptor of the method to
         be invoked at this call site.
+
+    Methods
+    -------
+    get_name(self) -> Result[str]
+        Returns the name of the call site method.
+    get_types(self) -> Result[tuple[tuple[Type, ...], Type]]
+        Returns the argument and return types of the call site method.
     """
 
     __slots__ = ("attr_index", "name_and_type")
@@ -1379,6 +1572,34 @@ class InvokeDynamicInfo(ConstInfo):
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(InvokeDynamicInfo.tag, self.attr_index, pool.add(self.name_and_type)))
+
+    def get_name(self) -> Result[str]:
+        """
+        Returns the name of the call site method.
+        """
+
+        with Result[str]() as result:
+            if not isinstance(self.name_and_type, NameAndTypeInfo):
+                return result.err(TypeError(f"name and type {self.name_and_type!s} is not a name and type constant"))
+            name = self.name_and_type.name
+            if not isinstance(name, UTF8Info):
+                return result.err(TypeError(f"name {name!s} is not a UTF8 constant"))
+            return result.ok(name.decode())
+        return result
+
+    def get_types(self) -> Result[tuple[tuple[Type, ...], Type]]:
+        """
+        Returns the argument and return types of the call site method.
+        """
+
+        with Result[tuple[tuple[Type, ...], Type]]() as result:
+            if not isinstance(self.name_and_type, NameAndTypeInfo):
+                return result.err(TypeError(f"name and type {self.name_and_type!s} is not a name and type constant"))
+            descriptor = self.name_and_type.descriptor
+            if not isinstance(descriptor, UTF8Info):
+                return result.err(TypeError(f"descriptor {descriptor!s} is not a UTF8 constant"))
+            return result.ok(parse_method_descriptor(descriptor.decode()))
+        return result
 
 
 class ModuleInfo(ConstInfo):

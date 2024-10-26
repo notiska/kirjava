@@ -5,7 +5,7 @@ __all__ = (
     "INSTRUCTIONS",
 
     "dump", "dumps", "load", "loads",
-    "disassemble",
+    "dis", "disassemble",
 
     "ClassFile", "FieldInfo",
     "MethodInfo", "Code",

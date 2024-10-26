@@ -13,16 +13,12 @@ Mainly for internal usage.
 """
 
 import logging
-import sys
 import weakref
 from logging import Filter, Logger, LogRecord
 from types import TracebackType
 from typing import Any, Generic, TypeVar
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from .._compat import Self
 
 T = TypeVar("T")
 
@@ -98,17 +94,19 @@ class Result(Generic[T]):
         Sets the value of this result.
     err(self, error: Exception, *, reraise: bool = False) -> Self
         Adds an error to this result.
-    debug(self, message: str, *args: object) -> None
+    debug(self, message: str, *args: object) -> Self
         Adds a debug message to this result.
-    info(self, message: str, *args: object) -> None
+    info(self, message: str, *args: object) -> Self
         Adds an info message to this result.
-    warn(self, message: str, *args: object) -> None
+    warn(self, message: str, *args: object) -> Self
         Adds a warning message to this result.
-    reraise(self) -> None
+    into(self, parent: Result[Any]) -> Self
+        Adds any errors and/or metadata to a parent result.
+    reraise(self) -> Self
         Re-raises the last error.
     unwrap(self) -> T
         Unwraps this result directly, raising an exception if not present.
-    unwrap_into(self, parent: Result[object], default: T | None = None, reraise: bool = False) -> T
+    unwrap_into(self, parent: Result[Any], default: T | None = None, reraise: bool = True) -> T
         Unwraps this result, adding any errors and/or metadata to a parent result.
     unwrap_or(self, default: T) -> T
         Unwraps this result directly, can raise an exception.
@@ -220,31 +218,49 @@ class Result(Generic[T]):
         return self
 
     # Wouldn't normally do "Any", but unfortunately it's required here.
-    def debug(self, text: str, *args: object, **kwargs: Any) -> None:
+    def debug(self, text: str, *args: object, **kwargs: Any) -> Self:
         """
         Adds a debug message to this result.
         """
 
         if self._logger is not None:
             self._logger.debug(text, *args, **kwargs)
+        return self
 
-    def info(self, text: str, *args: object, **kwargs: Any) -> None:
+    def info(self, text: str, *args: object, **kwargs: Any) -> Self:
         """
         Adds an info message to this result.
         """
 
         if self._logger is not None:
             self._logger.info(text, *args, **kwargs)
+        return self
 
-    def warn(self, text: str, *args: object, **kwargs: Any) -> None:
+    def warn(self, text: str, *args: object, **kwargs: Any) -> Self:
         """
         Adds a warning message to this result.
         """
 
         if self._logger is not None:
             self._logger.warning(text, *args, **kwargs)
+        return self
 
-    def reraise(self) -> None:
+    def into(self, parent: Result[Any]) -> Self:
+        """
+        Adds any errors and/or metadata to a parent result.
+
+        Parameters
+        ----------
+        parent: Result[Any]
+            The parent result to add any metadata to.
+        """
+
+        # FIXME: See below.
+        parent._errors.extend(self._errors)
+        parent._messages.extend(self._messages)
+        return self
+
+    def reraise(self) -> Self:
         """
         Re-raises the last error.
 
@@ -256,6 +272,7 @@ class Result(Generic[T]):
 
         if self._errors:
             raise self._errors[-1]
+        return self
 
     def unwrap(self) -> T:
         """
@@ -275,7 +292,7 @@ class Result(Generic[T]):
             raise self._errors[-1]
         raise ValueError("failed to unwrap result, no value present")
 
-    def unwrap_into(self, parent: Result[Any], default: T | None = None, *, reraise: bool = False) -> T:
+    def unwrap_into(self, parent: Result[Any], default: T | None = None, *, reraise: bool = True) -> T:
         """
         Unwraps this result, adding any errors and/or metadata to a parent result.
 
@@ -295,8 +312,6 @@ class Result(Generic[T]):
         ------
         Exception
             If `reraise=True` and there is an error present.
-        ValueError
-            If no value and no default are present.
         """
 
         # FIXME: Rather than this, add some kind of metadata object to the parent that includes the element, name and

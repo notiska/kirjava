@@ -30,6 +30,7 @@ __all__ = (
     "Type", "Invalid", "Verification",
     "Primitive", "Reference",
     "Top", "OneWord", "TwoWord",
+    "Integer",
     "ReturnAddress",
     "Uninitialized",
     "Array", "Class", "Interface",
@@ -158,7 +159,7 @@ class Verification(Type):
         return self
 
 
-class Primitive(Verification):
+class Primitive(Type):
     """
     A primitive type.
 
@@ -183,7 +184,7 @@ class Primitive(Verification):
         return f"<Primitive(name={self.name!r})>"
 
 
-class Reference(Verification):
+class Reference(Type):
     """
     A reference type.
     """
@@ -194,7 +195,7 @@ class Reference(Verification):
         return f"<Reference(name={self.name!r}>"
 
 
-class _Primitive(Primitive):
+class _Primitive(Primitive, Verification):
     """
     Primitive type for direct usage.
     """
@@ -224,7 +225,7 @@ class _Primitive(Primitive):
         return isinstance(other, Primitive)
 
 
-class _Reference(Reference):
+class _Reference(Reference, Verification):
     """
     Reference type for direct usage.
     """
@@ -406,21 +407,31 @@ class _Reserved(OneWord):
         return False
 
 
-class _Integer(Primitive, OneWord):
+class Integer(Primitive):
     """
     An integer type.
 
     This can represent 32-bit integers or any type that is actually an integer at the
     JVM level (i.e. byte, char...).
+
+    Attributes
+    ----------
+    width: int
+        The width of this integer type in bytes.
     """
 
     __slots__ = ("_name", "_width", "_hash")
 
+    wide = False
     abstract = False
 
     @property  # type: ignore[override]
     def name(self) -> str:
         return self._name
+
+    @property
+    def width(self) -> int:
+        return self._width
 
     def __init__(self, name: str, width: int, boxed: Type | None) -> None:
         super().__init__(boxed)
@@ -428,17 +439,17 @@ class _Integer(Primitive, OneWord):
         self._width = width
         self._hash = id(self)
 
-    # def __repr__(self) -> str:
-    #     return f"<Primitive(name={self.name!r})>"
+    def __repr__(self) -> str:
+        return f"<Integer(name={self._name!r}, boxed={self._boxed!s}, width={self._width})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, _Integer) and self._width == other._width
+        return isinstance(other, Integer) and self._width == other._width
 
     def __hash__(self) -> int:
         return self._hash
 
     def assignable(self, other: Type) -> bool:
-        if not isinstance(other, _Integer):
+        if not isinstance(other, Integer):
             return False
         elif other._width < 0:
             return False
@@ -446,6 +457,17 @@ class _Integer(Primitive, OneWord):
 
     def verification(self) -> "_Integer":
         return int_t
+
+
+class _Integer(Integer, OneWord):
+    """
+    Proper integer type.
+    """
+
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        super().__init__("int", 4, Class("java/lang/Integer"))
 
 
 class _Long(Primitive, TwoWord):
@@ -469,7 +491,7 @@ class _Long(Primitive, TwoWord):
         return self._hash
 
     def assignable(self, other: Type) -> bool:
-        if isinstance(other, _Integer):
+        if isinstance(other, Integer):
             return other._width > 0
         return other is self
 
@@ -495,7 +517,7 @@ class _Float(Primitive, OneWord):
         return self._hash
 
     def assignable(self, other: Type) -> bool:
-        if isinstance(other, _Integer):
+        if isinstance(other, Integer):
             return other._width > 0
         return other is self or isinstance(other, _Long)
 
@@ -521,7 +543,7 @@ class _Double(Primitive, TwoWord):
         return self._hash
 
     def assignable(self, other: Type) -> bool:
-        if isinstance(other, _Integer):
+        if isinstance(other, Integer):
             return other._width > 0
         return self == other or isinstance(other, (_Float, _Long))
 
@@ -771,9 +793,13 @@ class Array(_JavaReference):
         return self._hash
 
     def assignable(self, other: Type) -> bool:
-        if isinstance(other, Array):
-            return not isinstance(self._element, Primitive) and self._element.assignable(other._element)
-        return isinstance(other, _Null)
+        if not isinstance(other, Array):
+            return isinstance(other, _Null)
+        elif isinstance(self._element, Primitive):
+            return self._element == other._element
+        # We call `.verification()` on the other's element type because `top_t.assignable(char_t)`, for example, is
+        # false. This is simply a hacky fix to ensure that `array_t` can be assigned to all other array types.
+        return self._element.assignable(other._element.verification())  # FIXME: Any weird cases here?
 
 
 class Class(_JavaReference):
@@ -898,11 +924,12 @@ reserved_t = _Reserved()
 
 # Integer types.
 # Boolean width is -1 to ensure that it cannot be assigned to by any integer type.
-boolean_t = _Integer("boolean", -1, Class("java/lang/Boolean"))
-byte_t    = _Integer("byte",    1, Class("java/lang/Byte"))
-char_t    = _Integer("char",    2, Class("java/lang/Character"))
-short_t   = _Integer("short",   2, Class("java/lang/Short"))
-int_t     = _Integer("int",     4, Class("java/lang/Integer"))
+boolean_t = Integer("boolean", -1, Class("java/lang/Boolean"))
+byte_t    = Integer("byte",    1, Class("java/lang/Byte"))
+char_t    = Integer("char",    2, Class("java/lang/Character"))
+short_t   = Integer("short",   2, Class("java/lang/Short"))
+
+int_t = _Integer()
 
 long_t  = _Long()
 

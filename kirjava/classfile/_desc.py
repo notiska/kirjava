@@ -8,10 +8,10 @@ __all__ = (
 
 from ..model.types import (
     boolean_t, byte_t, char_t, double_t, float_t, int_t, long_t, short_t, void_t,
-    Array, Class, Invalid, Reference, Type,
+    Array, Class, Invalid, Primitive, Reference, Type,
 )
 
-_FORWARD_BASE_TYPES = {
+_STR_TO_TYPE: dict[str, Primitive] = {
     "B": byte_t,
     "S": short_t,
     "I": int_t,
@@ -22,7 +22,7 @@ _FORWARD_BASE_TYPES = {
     "Z": boolean_t,
     "V": void_t,
 }
-_BACKWARD_BASE_TYPES = {
+_TYPE_TO_STR: dict[Primitive, str] = {
     byte_t:    "B",
     short_t:   "S",
     int_t:     "I",
@@ -72,7 +72,7 @@ def _next_type(descriptor: str | None) -> tuple[Type, str]:
         element_type, descriptor = _next_type(descriptor[1:])
         return Array(element_type), descriptor
 
-    base_type = _FORWARD_BASE_TYPES.get(descriptor[0])
+    base_type = _STR_TO_TYPE.get(descriptor[0])
     if base_type is not None:
         return base_type, descriptor[1:]
     return Invalid(descriptor), ""
@@ -219,7 +219,7 @@ def to_descriptor(*types: tuple[Type, ...] | Type) -> str:
 
     for type_ in types:
         # This is done for performance, although mypy does complain. Might need a better solution in the future.
-        base = _BACKWARD_BASE_TYPES.get(type_)  # type: ignore[call-overload]
+        base = _TYPE_TO_STR.get(type_)  # type: ignore[call-overload]
         if base is not None:
             descriptor += base
         elif isinstance(type_, Class):

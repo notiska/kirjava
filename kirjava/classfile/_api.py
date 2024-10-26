@@ -28,7 +28,7 @@ def dump(cf: ClassFile, file_or_stream: str | PathLike[str] | IO[bytes]) -> None
     if isinstance(file_or_stream, PathLike):
         file_or_stream = os.fspath(file_or_stream)
     if isinstance(file_or_stream, str):
-        with open(file_or_stream, "rb") as stream:
+        with open(file_or_stream, "wb") as stream:
             cf.write(stream)
     else:
         cf.write(file_or_stream)

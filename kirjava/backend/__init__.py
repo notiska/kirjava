@@ -44,7 +44,7 @@ except Exception as error:
 if not USING_CYTHON:
     try:
         # This type ignore is probably one of the worst, but I'm not sure how to make this compatible.
-        from ._numpy import *  # type: ignore[assignment]
+        from ._numpy import *  # type: ignore[assignment,unused-ignore]
         USING_NUMPY = True
     except Exception as error:
         logger.debug("numpy backend not available: %s", error)

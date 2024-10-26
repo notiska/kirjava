@@ -106,8 +106,8 @@ class ClassFile:
 
     visit(self, visitor: ClassFileVisitor) -> None
         Calls a visitor on this class file.
-    link(self, linker: Linker) -> Result[Class]
-        Creates a linked class from this class file.
+    lift(self, linker: Linker) -> Result[Class]
+        Creates a lifted class from this class file.
     write(self, stream: IO[bytes]) -> None
         Writes this class file to a binary stream.
     """
@@ -323,9 +323,9 @@ class ClassFile:
             visitor.visit_attribute(attribute)
         visitor.visit_end(self)
 
-    def link(self, linker: Linker) -> Result[Class]:
+    def lift(self, linker: Linker) -> Result[Class]:
         """
-        Creates a linked class from this classfile.
+        Creates a lifted class from this class file.
 
         Parameters
         ----------
@@ -336,26 +336,26 @@ class ClassFile:
         with Result[Class].meta(__name__, self) as result:
             if not isinstance(self.this, ClassInfo):
                 return result.err(TypeError(f"this class {self.this!s} is not a class constant"))
-            this = self.this.link().unwrap_into(result, reraise=True)
+            this = self.this.lift().unwrap_into(result)
 
             super_ = None
             if self.super is not None:
                 if not isinstance(self.super, ClassInfo):
                     return result.err(TypeError(f"super class {self.super!s} is not a class constant"))
-                super_ = self.super.link().unwrap_into(result, reraise=True)
+                super_ = self.super.lift().unwrap_into(result)
 
             interfaces = []
             for interface in self.interfaces:
                 if not isinstance(interface, ClassInfo):
                     return result.err(TypeError(f"interface {interface!s} is not a class constant"))
-                interfaces.append(interface.link().unwrap_into(result, reraise=True))
+                interfaces.append(interface.lift().unwrap_into(result))
 
             return result.ok(Class(
                 this.name,
-                linker.find_class(super_.name).unwrap_into(result, reraise=True) if super_ is not None else None,
-                [linker.find_class(interface.name).unwrap_into(result, reraise=True) for interface in interfaces],
-                [field.link().unwrap_into(result, reraise=True) for field in self.fields],
-                [method.link().unwrap_into(result, reraise=True) for method in self.methods],
+                linker.find_class(super_.name).unwrap_into(result) if super_ is not None else None,
+                [linker.find_class(interface.name).unwrap_into(result) for interface in interfaces],
+                [field.lift().unwrap_into(result) for field in self.fields],
+                [method.lift().unwrap_into(result) for method in self.methods],
                 is_public=self.is_public,
                 is_final=self.is_final,
                 is_super=self.is_super,

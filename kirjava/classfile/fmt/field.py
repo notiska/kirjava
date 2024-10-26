@@ -14,7 +14,7 @@ JVM class file field info struct and attributes.
 import typing
 from typing import IO, Iterable
 
-from .attribute import AttributeInfo
+from .attribute import AttributeInfo, Documentation
 from .constants import *
 from .._desc import parse_field_descriptor
 from .._struct import *
@@ -97,8 +97,8 @@ class FieldInfo:
 
     visit(self, visitor: FieldInfoVisitor) -> None
         Calls a visitor on this field.
-    link(self) -> Field
-        Creates a linked field from this field info.
+    lift(self) -> Field
+        Creates a lifted field from this field info.
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
         Writes this field to the binary stream.
     """
@@ -266,9 +266,9 @@ class FieldInfo:
             visitor.visit_attribute(attribute)
         visitor.visit_end(self)
 
-    def link(self) -> Result[Field]:
+    def lift(self) -> Result[Field]:
         """
-        Creates a linked field from this field info.
+        Creates a lifted field from this field info.
         """
 
         with Result[Field]() as result:
@@ -277,7 +277,7 @@ class FieldInfo:
             if not isinstance(self.descriptor, UTF8Info):
                 return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))
 
-            return result.ok(Field(
+            field = Field(
                 self.name.decode(), parse_field_descriptor(self.descriptor.decode()),
                 is_public=self.is_public,
                 is_private=self.is_private,
@@ -288,7 +288,16 @@ class FieldInfo:
                 is_transient=self.is_transient,
                 is_synthetic=self.is_synthetic,
                 is_enum=self.is_enum,
-            ))
+            )
+
+            # FIXME: Link for individual attributes?
+            for attribute in self.attributes:
+                if isinstance(attribute, Documentation) and field.documentation is None:
+                    field.documentation = attribute.doc
+                elif isinstance(attribute, ConstantValue) and field.value is None:
+                    field.value = attribute.value.lift().into(result).value
+
+            return result.ok(field)
         return result
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
