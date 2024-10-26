@@ -6,15 +6,12 @@ __all__ = (
     "Edge", "Fallthrough", "Jump", "Ret", "Switch", "Catch",
 )
 
-import typing
-from typing import Optional
+from copy import deepcopy
 
+from .block import Block
+from ..fmt import ConstInfo
 from ..insns.flow import Jump as JumpInsn, Ret as RetInsn, Switch as SwitchInsn
-from ...model.types import Class, ReturnAddress
-
-if typing.TYPE_CHECKING:
-    from .block import Block
-    from ..fmt import ConstInfo
+from ..._compat import replace
 
 
 class Edge:
@@ -32,6 +29,11 @@ class Edge:
         The source block of this edge.
     target: Block
         The target block of this edge.
+
+    Methods
+    -------
+    replace(self, **changes: object) -> Edge
+        Creates a copy of this edge and replaces any specified attributes.
     """
 
     __slots__ = ("_source", "_target")
@@ -40,16 +42,19 @@ class Edge:
     symbolic: bool
 
     @property
-    def source(self) -> "Block":
+    def source(self) -> Block:
         return self._source
 
     @property
-    def target(self) -> "Block":
+    def target(self) -> Block:
         return self._target
 
-    def __init__(self, source: "Block", target: "Block") -> None:
+    def __init__(self, source: Block, target: Block) -> None:
         self._source = source
         self._target = target
+
+    def __replace__(self, **changes: object) -> "Edge":
+        raise NotImplementedError(f"copy.replace() is not implemented for {type(self)!r}")
 
     def __repr__(self) -> str:
         # return f"<Edge(source={self.source!s}, target={self.target!s})>"
@@ -63,6 +68,13 @@ class Edge:
 
     def __hash__(self) -> int:
         raise NotImplementedError(f"hash() is not implemented for {type(self)!r}")
+
+    def replace(self, **changes: object) -> "Edge":
+        """
+        Creates a copy of this edge and replaces any specified attributes.
+        """
+
+        return replace(self, **changes)
 
     # def trace(self, frame: "Frame", state: "State") -> Optional["State.Target"]:
     #     """
@@ -111,7 +123,7 @@ class Fallthrough(Edge):
     Attributes
     ----------
     insn: JumpInsn | None
-        The instruction that caused this fallthrough.
+        The instruction associated with this fallthrough edge.
     """
 
     __slots__ = ("_insn", "_symbolic", "_hash")
@@ -123,17 +135,39 @@ class Fallthrough(Edge):
         return self._symbolic
 
     @property
-    def insn(self) -> Optional["JumpInsn"]:
+    def insn(self) -> JumpInsn | None:
         return self._insn
 
-    def __init__(self, source: "Block", target: "Block", insn: Optional["JumpInsn"] = None) -> None:
+    def __init__(self, source: Block, target: Block, insn: JumpInsn | None = None) -> None:
         super().__init__(source, target)
         self._insn = insn
-        # We'll say this fallthrough is symbolic if the jump is not conditional (meaning that this fallthrough will never
-        # actually be taken).
+        # We'll say this fallthrough is symbolic if the jump is not conditional (meaning that this fallthrough will
+        # never actually be taken).
         # Only really for jsrs.
         self._symbolic = insn is not None and not insn.conditional
         self._hash = hash((source, target, insn.opcode if insn is not None else None))
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "Fallthrough":
+        if self._insn is None:
+            return self
+        return Fallthrough(self._source, self._target, deepcopy(self._insn, memo))
+
+    def __replace__(self, **changes: object) -> "Fallthrough":
+        source = changes.pop("source", self._source)
+        target = changes.pop("target", self._target)
+        insn = changes.pop("insn", self._insn)
+
+        if not isinstance(source, Block):
+            raise TypeError(f"source {source!r} is not a block")
+        if not isinstance(target, Block):
+            raise TypeError(f"target {target!r} is not a block")
+        if insn is not None and not isinstance(insn, JumpInsn):
+            raise TypeError(f"insn {insn!r} is not a jump instruction")
+
+        if changes:
+            raise TypeError(f"got unexpected attributes {list(changes)!r}")
+
+        return Fallthrough(source, target, insn)
 
     def __repr__(self) -> str:
         return f"<Fallthrough(source={self._source!s}, target={self._target!s}, insn={self._insn!s})>"
@@ -147,7 +181,7 @@ class Fallthrough(Edge):
         if not isinstance(other, Fallthrough) or self._source != other._source or self._target != other._target:
             return False
         elif self._insn is not None and other._insn is not None:
-            return self._insn.opcode == other._insn.opcode
+            return self._insn == other._insn
         return self._insn is None and other._insn is None
 
     def __hash__(self) -> int:
@@ -191,13 +225,33 @@ class Jump(Edge):
     symbolic = False
 
     @property
-    def insn(self) -> "JumpInsn":
+    def insn(self) -> JumpInsn:
         return self._insn
 
-    def __init__(self, source: "Block", target: "Block", insn: "JumpInsn") -> None:
+    def __init__(self, source: Block, target: Block, insn: JumpInsn) -> None:
         super().__init__(source, target)
         self._insn = insn
         self._hash = hash((source, target, insn.opcode))
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "Jump":
+        return Jump(self._source, self._target, deepcopy(self._insn, memo))
+
+    def __replace__(self, **changes: object) -> "Jump":
+        source = changes.pop("source", self._source)
+        target = changes.pop("target", self._target)
+        insn = changes.pop("insn", self._insn)
+
+        if not isinstance(source, Block):
+            raise TypeError(f"source {source!r} is not a block")
+        if not isinstance(target, Block):
+            raise TypeError(f"target {target!r} is not a block")
+        if not isinstance(insn, JumpInsn):
+            raise TypeError(f"insn {insn!r} is not a jump instruction")
+
+        if changes:
+            raise TypeError(f"got unexpected attributes {list(changes)!r}")
+
+        return Jump(source, target, insn)
 
     def __repr__(self) -> str:
         return f"<Jump(source={self._source!s}, target={self._target!s}, insn={self._insn!s})>"
@@ -212,7 +266,7 @@ class Jump(Edge):
             isinstance(other, Jump) and
             self._source == other._source and
             self._target == other._target and
-            self._insn.opcode == other._insn.opcode
+            self._insn == other._insn
         )
 
     def __hash__(self) -> int:
@@ -246,8 +300,29 @@ class Ret(Jump):
 
     __slots__ = ()
 
-    def __init__(self, source: "Block", target: "Block", insn: "RetInsn") -> None:
+    def __init__(self, source: Block, target: Block, insn: RetInsn) -> None:
         super().__init__(source, target, insn)
+        self._insn: RetInsn
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "Ret":
+        return Ret(self._source, self._target, deepcopy(self._insn, memo))
+
+    def __replace__(self, **changes: object) -> "Ret":
+        source = changes.pop("source", self._source)
+        target = changes.pop("target", self._target)
+        insn = changes.pop("insn", self._insn)
+
+        if not isinstance(source, Block):
+            raise TypeError(f"source {source!r} is not a block")
+        if not isinstance(target, Block):
+            raise TypeError(f"target {target!r} is not a block")
+        if not isinstance(insn, RetInsn):
+            raise TypeError(f"insn {insn!r} is not a ret instruction")
+
+        if changes:
+            raise TypeError(f"got unexpected attributes {list(changes)!r}")
+
+        return Ret(source, target, insn)
 
     def __repr__(self) -> str:
         return f"<Ret(source={self._source!s}, target={self._target!s}, insn={self._insn!s})>"
@@ -298,11 +373,34 @@ class Switch(Edge):
     def value(self) -> int | None:
         return self._value
 
-    def __init__(self, source: "Block", target: "Block", insn: "SwitchInsn", value: int | None) -> None:
+    def __init__(self, source: Block, target: Block, insn: "SwitchInsn", value: int | None) -> None:
         super().__init__(source, target)
         self._insn = insn
         self._value = value
         self._hash = hash((source, target, insn.opcode, value))
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "Switch":
+        return Switch(self._source, self._target, deepcopy(self._insn, memo), self._value)
+
+    def __replace__(self, **changes: object) -> "Switch":
+        source = changes.pop("source", self._source)
+        target = changes.pop("target", self._target)
+        insn = changes.pop("insn", self._insn)
+        value = changes.pop("value", self._value)
+
+        if not isinstance(source, Block):
+            raise TypeError(f"source {source!r} is not a block")
+        if not isinstance(target, Block):
+            raise TypeError(f"target {target!r} is not a block")
+        if not isinstance(insn, SwitchInsn):
+            raise TypeError(f"insn {insn!r} is not a switch instruction")
+        if value is not None and not isinstance(value, int):
+            raise TypeError(f"value {value!r} is not an int")
+
+        if changes:
+            raise TypeError(f"got unexpected attributes {list(changes)!r}")
+
+        return Switch(source, target, insn, value)
 
     def __repr__(self) -> str:
         return f"<Switch(source={self._source!s}, target={self._target!s}, insn={self._insn!s}, value={self._value})>"
@@ -317,7 +415,7 @@ class Switch(Edge):
             isinstance(other, Switch) and
             self._source == other._source and
             self._target == other._target and
-            self._insn.opcode == other._insn.opcode and
+            self._insn == other._insn and
             self._value == other._value
         )
 
@@ -376,18 +474,43 @@ class Catch(Edge):
         return self._priority + 3
 
     @property
-    def class_(self) -> Optional["ConstInfo"]:
+    def class_(self) -> ConstInfo | None:
         return self._class
 
     @property
     def priority(self) -> int:
         return self._priority
 
-    def __init__(self, source: "Block", target: "Block", class_: Optional["ConstInfo"], priority: int) -> None:
+    def __init__(self, source: Block, target: Block, class_: ConstInfo | None, priority: int) -> None:
         super().__init__(source, target)
         self._class = class_
         self._priority = priority
         self._hash = hash((source, target, id(class_) if class_ is not None else None, priority))
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "Catch":
+        if self._class is None:
+            return self
+        return Catch(self._source, self._target, deepcopy(self._class, memo), self._priority)
+
+    def __replace__(self, **changes: object) -> "Catch":
+        source = changes.pop("source", self._source)
+        target = changes.pop("target", self._target)
+        class_ = changes.pop("class_", self._class)
+        priority = changes.pop("priority", self._priority)
+
+        if not isinstance(source, Block):
+            raise TypeError(f"source {source!r} is not a block")
+        if not isinstance(target, Block):
+            raise TypeError(f"target {target!r} is not a block")
+        if class_ is not None and not isinstance(class_, ConstInfo):
+            raise TypeError(f"class {class_!r} is not a class constant")
+        if not isinstance(priority, int):
+            raise TypeError(f"priority {priority!r} is not an int")
+
+        if changes:
+            raise TypeError(f"got unexpected attributes {list(changes)!r}")
+
+        return Catch(source, target, class_, priority)
 
     def __repr__(self) -> str:
         return (

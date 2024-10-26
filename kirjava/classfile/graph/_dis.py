@@ -12,7 +12,6 @@ from ..fmt.constants import UTF8Info
 The JVM bytecode disassembler.
 """
 
-import sys
 import typing
 from io import BytesIO
 from operator import itemgetter
@@ -132,7 +131,7 @@ def disassemble(graph: T, method: MethodInfo, cf: ClassFile | None) -> Result[T]
 
         block = graph.entry
         label = block.label + 1
-        prev = graph.entry
+        # prev = graph.entry
         last = 0
 
         # We'll only add the entry block if we know that there are no back edges to offset 0. If there are, this means
@@ -166,8 +165,8 @@ def disassemble(graph: T, method: MethodInfo, cf: ClassFile | None) -> Result[T]
                     edge = Fallthrough(prev, block, instruction)
                 else:
                     edge = Fallthrough(prev, block)
-                edges_out[prev].add(edge)
-                edges_in[block].add(edge)
+                edges_out[prev][edge] = None
+                edges_in[block][edge] = None
 
         if splits:  # The end offset of the last block is the offset we finished disassembling at.
             bounds[split] = (block, offset)
@@ -188,17 +187,17 @@ def disassemble(graph: T, method: MethodInfo, cf: ClassFile | None) -> Result[T]
                 else:
                     edge = JumpEdge(block, graph.opaque, instruction)
 
-                edges_out[edge.source].add(edge)
-                edges_in[edge.target].add(edge)
+                edges_out[edge.source][edge] = None
+                edges_in[edge.target][edge] = None
 
             elif isinstance(instruction, SwitchInsn):
                 edge = SwitchEdge(block, bounds[offset + instruction.default][0], instruction, None)
-                edges_out[edge.source].add(edge)
-                edges_in[edge.target].add(edge)
+                edges_out[edge.source][edge] = None
+                edges_in[edge.target][edge] = None
                 for value, branch in instruction.offsets.items():
                     edge = SwitchEdge(block, bounds[offset + branch][0], instruction, value)
-                    edges_out[edge.source].add(edge)
-                    edges_in[edge.target].add(edge)
+                    edges_out[edge.source][edge] = None
+                    edges_in[edge.target][edge] = None
 
             else:
                 block._insns.append(instruction)
@@ -213,8 +212,8 @@ def disassemble(graph: T, method: MethodInfo, cf: ClassFile | None) -> Result[T]
 
             while True:  # Wishing for a do-while loop right now.
                 edge = Catch(block, target, handler.class_, index)
-                edges_out[block].add(edge)
-                edges_in[target].add(edge)
+                edges_out[block][edge] = None
+                edges_in[target][edge] = None
                 if end == handler.end_pc:
                     break
                 block, end = bounds[end]

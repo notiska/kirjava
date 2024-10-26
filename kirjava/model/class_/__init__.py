@@ -7,11 +7,15 @@ __all__ = (
     "Class", "Field", "Method",
 )
 
+import typing
 from typing import Iterable, Optional
 
 from .field import Field
 from .method import Method
 from ..types import Class as ClassType, Interface, Type
+
+if typing.TYPE_CHECKING:
+    from ...classfile import ClassFile
 
 
 class Class:
@@ -22,6 +26,8 @@ class Class:
     ----------
     access: str
         A pretty access flag string.
+    info: ClassFile | None
+        The class file that this class was generated from.
     name: str
         The internal name of the class (e.g. `java/lang/Object`).
     super: Class | None
@@ -50,6 +56,10 @@ class Class:
         The fields in this class.
     methods: list[Method]
         The methods in this class.
+    documentation: bytes | None
+        Any associated documentation for this class.
+    source: str | None
+        The source file this class was compiled from.
 
     Methods
     -------
@@ -63,11 +73,13 @@ class Class:
 
     __slots__ = (
         "__weakref__",
+        "info",
         "name",
         "is_public", "is_final", "is_super", "is_interface", "is_abstract",
         "is_synthetic", "is_annotation", "is_enum", "is_module",
         "super", "interfaces",
         "fields", "methods",
+        "documentation", "source",
     )
 
     @property
@@ -103,6 +115,8 @@ class Class:
             is_enum:       bool = False,
             is_module:     bool = False,
     ) -> None:
+        self.info: Optional["ClassFile"] = None
+
         self.name = name
 
         self.is_public = is_public
@@ -127,8 +141,16 @@ class Class:
         if methods is not None:
             self.methods.extend(methods)
 
+        self.documentation: bytes | None = None
+        self.source: str | None = None
+
     def __repr__(self) -> str:
         interfaces_str = ", ".join(map(str, self.interfaces))
+        if self.info is not None:
+            return (
+                f"<Class(info={self.info!s}, name={self.name!r}, super={self.super!s}, interfaces=[{interfaces_str}], "
+                f"fields={self.fields!r}, methods={self.methods!r})>"
+            )
         return (
             f"<Class(name={self.name!r}, super={self.super!s}, interfaces=[{interfaces_str}], fields={self.fields!r}, "
             f"methods={self.methods!r})>"
