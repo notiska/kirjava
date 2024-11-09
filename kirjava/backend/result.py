@@ -81,6 +81,8 @@ class Result(Generic[T]):
     ----------
     value: T | None
         The actual value of the result, may be `None` if there was en error.
+    errors: tuple[Exception, ...]
+        Any errors.
     element: object | None
         The element responsible for the metadata. May not necessarily be the value
         of the result.
@@ -137,6 +139,10 @@ class Result(Generic[T]):
     @property
     def value(self) -> T | None:
         return self._value
+
+    @property
+    def errors(self) -> tuple[Exception, ...]:
+        return tuple(self._errors)
 
     def __init__(self, *, name: str | None = None, element: object | None = None) -> None:
         self._value: T | None = None

@@ -16,8 +16,8 @@ from typing import IO, Iterable
 
 from .attribute import AttributeInfo, Documentation
 from .constants import *
-from .._desc import parse_field_descriptor
 from .._struct import *
+from ..desc import parse_field_descriptor
 from ..version import JAVA_1_0, Version
 from ..._compat import Self
 from ...backend import Result
@@ -278,7 +278,7 @@ class FieldInfo:
                 return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))
 
             field = Field(
-                self.name.decode(), parse_field_descriptor(self.descriptor.decode()),
+                self.name.decode(), parse_field_descriptor(self.descriptor.decode()).unwrap_into(result),
                 is_public=self.is_public,
                 is_private=self.is_private,
                 is_protected=self.is_protected,

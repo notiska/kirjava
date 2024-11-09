@@ -373,7 +373,7 @@ class MethodHandle(Constant):
 
     @property
     def name(self) -> str:
-        return self.name
+        return self._name
 
     @property
     def arg_types(self) -> tuple[Type, ...]:

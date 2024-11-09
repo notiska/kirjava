@@ -571,7 +571,10 @@ class ReturnAddress(Primitive, OneWord):
     def __init__(self, source: object | None) -> None:
         super().__init__(None)
         self._source = source
-        self._hash = hash((ReturnAddress, source))
+        try:
+            self._hash = hash((ReturnAddress, source))
+        except TypeError:
+            self._hash = hash((ReturnAddress, id(source)))
 
     def __repr__(self) -> str:
         if self._source is not None:
@@ -629,7 +632,10 @@ class Uninitialized(Reference, OneWord):
 
     def __init__(self, source: object | None) -> None:
         self._source = source
-        self._hash = hash((Uninitialized, source))
+        try:
+            self._hash = hash((Uninitialized, source))
+        except TypeError:
+            self._hash = hash((Uninitialized, id(source)))
 
     def __repr__(self) -> str:
         return f"<Uninitialized(source={self._source!s})>"
@@ -747,6 +753,7 @@ class Array(_JavaReference):
     def element(self) -> Type:
         return self._element
 
+    @property
     def dimension(self) -> int:
         dimension = 1
         element = self._element
@@ -755,12 +762,14 @@ class Array(_JavaReference):
             element = element._element
         return dimension
 
+    @property
     def lowest(self) -> Type:
         element = self._element
         while isinstance(element, Array):
             element = element._element
         return element
 
+    @property
     def primitive(self) -> bool:
         return isinstance(self._element, Primitive)  # and not self.element.abstract
 

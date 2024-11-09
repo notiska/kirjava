@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 __all__ = (
     "Frame",
 )
 
 import typing
+from copy import copy
 from operator import itemgetter
 from typing import Iterable, Mapping, Optional
 
@@ -31,6 +34,8 @@ class Frame:
 
     Methods
     -------
+    copy(self) -> Frame
+        Creates a copy of this frame.
     pop(self, expect: Verification) -> Result[Verification]
         Pops the item off the top of the stack.
     push(self, value: Verification) -> None
@@ -75,6 +80,10 @@ class Frame:
         if locals_ is not None:
             self.locals.update(locals_)
 
+    def __copy__(self) -> "Frame":
+        copied = Frame(self.stack, self.locals)
+        return copied
+
     def __repr__(self) -> str:
         stack_str = ", ".join(map(str, self.stack))
         locals_str = ", ".join(f"{index}: {type_!s}" for index, type_ in sorted(self.locals.items(), key=itemgetter(0)))
@@ -91,6 +100,13 @@ class Frame:
             self.stack == other.stack and
             self.locals == other.locals
         )
+
+    def copy(self) -> "Frame":
+        """
+        Creates a copy of this frame.
+        """
+
+        return copy(self)
 
     def pop(self, expect: "Verification") -> Result["Verification"]:
         """

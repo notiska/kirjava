@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "fmt", "graph", "insns", "loaders", "version",
+    "analysis", "desc", "fmt", "graph", "insns", "loaders", "version",
     "INSTRUCTIONS",
 
     "dump", "dumps", "load", "loads",

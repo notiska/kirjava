@@ -23,8 +23,8 @@ from .annotation import ElementValue, ParameterAnnotations
 from .attribute import AttributeInfo
 from .constants import *
 from .stackmap import StackMapFrame
-from .._desc import parse_method_descriptor
 from .._struct import *
+from ..desc import parse_method_descriptor
 from ..insns import Instruction
 from ..version import *
 from ..._compat import Self
@@ -337,7 +337,7 @@ class MethodInfo:
                 return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))
 
             return result.ok(Method(
-                self.name.decode(), *parse_method_descriptor(self.descriptor.decode()),
+                self.name.decode(), *parse_method_descriptor(self.descriptor.decode()).unwrap_into(result),
                 is_public=self.is_public,
                 is_private=self.is_private,
                 is_protected=self.is_protected,

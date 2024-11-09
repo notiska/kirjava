@@ -13,7 +13,7 @@ T = TypeVar("T")
 if sys.version_info >= (3, 13):
     from copy import replace
 else:
-    def replace(obj: T, /, **changes: object) -> T:
+    def replace(obj: T, **changes: object) -> T:
         try:
             return obj.__replace__(**changes)  # type: ignore[attr-defined,no-any-return]
         except AttributeError:

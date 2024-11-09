@@ -12,8 +12,8 @@ from copy import deepcopy
 from typing import IO
 
 from . import Instruction
-from .._desc import parse_field_descriptor
 from .._struct import *
+from ..desc import parse_field_descriptor
 from ..fmt.constants import ConstInfo, FieldrefInfo, NameAndTypeInfo, UTF8Info
 from ..._compat import Self
 from ...backend import Result

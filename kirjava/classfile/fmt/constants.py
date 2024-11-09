@@ -17,8 +17,8 @@ import typing
 from copy import copy, deepcopy
 from typing import Any, IO, Iterator
 
-from .._desc import *
 from .._struct import *
+from ..desc import *
 from ..version import *
 from ..._compat import Self
 from ...backend import *
@@ -220,7 +220,7 @@ class ConstInfo:
         Creates a lifted constant from this constant info.
         """
 
-        return Err(ValueError(f"cannot lift constant {self!r}"))
+        return Err(TypeError(f"cannot lift constant {self!r}"))
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
@@ -673,7 +673,9 @@ class ClassInfo(ConstInfo):
             if not isinstance(self.name, UTF8Info):
                 return result.err(TypeError(f"name {self.name!s} is not a UTF8 constant"))
             # https://github.com/ItzSomebody/stopdecompilingmyjava/blob/master/decompiler-tool-bugs/entry-007/entry.md
-            return result.ok(parse_reference(self.name.decode()))
+            ref_type = parse_reference(self.name.decode()).unwrap_into(result)
+            if isinstance(ref_type, Reference):  # May return an invalid type.
+                return result.ok(ref_type)
         return result
 
 
@@ -864,7 +866,7 @@ class FieldrefInfo(ConstInfo):
             descriptor = self.name_and_type.descriptor
             if not isinstance(descriptor, UTF8Info):
                 return result.err(TypeError(f"descriptor {descriptor!s} is not a UTF8 constant"))
-            return result.ok(parse_field_descriptor(descriptor.decode()))
+            return result.ok(parse_field_descriptor(descriptor.decode()).unwrap_into(result))
         return result
 
 
@@ -987,7 +989,7 @@ class MethodrefInfo(ConstInfo):
             descriptor = self.name_and_type.descriptor
             if not isinstance(descriptor, UTF8Info):
                 return result.err(TypeError(f"descriptor {descriptor!s} is not a UTF8 constant"))
-            return result.ok(parse_method_descriptor(descriptor.decode()))
+            return result.ok(parse_method_descriptor(descriptor.decode()).unwrap_into(result))
         return result
 
 
@@ -1113,7 +1115,7 @@ class InterfaceMethodrefInfo(ConstInfo):
             descriptor = self.name_and_type.descriptor
             if not isinstance(descriptor, UTF8Info):
                 return result.err(TypeError(f"descriptor {descriptor!s} is not a UTF8 constant"))
-            return result.ok(parse_method_descriptor(descriptor.decode()))
+            return result.ok(parse_method_descriptor(descriptor.decode()).unwrap_into(result))
         return result
 
 
@@ -1339,10 +1341,10 @@ class MethodHandleInfo(ConstInfo):
                 return result.err(TypeError(f"reference descriptor {descriptor!s} is not a UTF8 constant"))
 
             if not field:
-                arg_types, ret_type = parse_method_descriptor(descriptor.decode())
+                arg_types, ret_type = parse_method_descriptor(descriptor.decode()).unwrap_into(result)
             else:
                 arg_types = ()
-                ret_type = parse_field_descriptor(descriptor.decode())
+                ret_type = parse_field_descriptor(descriptor.decode()).unwrap_into(result)
 
             lifted = MethodHandle(
                 MethodHandle.Kind(self.kind), class_.lift().unwrap_into(result), name.decode(), arg_types, ret_type,
@@ -1413,7 +1415,7 @@ class MethodTypeInfo(ConstInfo):
         with Result[MethodType]() as result:
             if not isinstance(self.descriptor, UTF8Info):
                 return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))
-            lifted = MethodType(*parse_method_descriptor(self.descriptor.decode()))
+            lifted = MethodType(*parse_method_descriptor(self.descriptor.decode()).unwrap_into(result))
             lifted.info = self
             return result.ok(lifted)
         return result
@@ -1598,7 +1600,7 @@ class InvokeDynamicInfo(ConstInfo):  # FIXME: Documentation may need to be bette
             descriptor = self.name_and_type.descriptor
             if not isinstance(descriptor, UTF8Info):
                 return result.err(TypeError(f"descriptor {descriptor!s} is not a UTF8 constant"))
-            return result.ok(parse_method_descriptor(descriptor.decode()))
+            return result.ok(parse_method_descriptor(descriptor.decode()).unwrap_into(result))
         return result
 
 

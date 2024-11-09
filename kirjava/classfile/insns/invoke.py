@@ -13,8 +13,8 @@ from typing import IO
 
 from . import Instruction
 # from .stack import New
-from .._desc import parse_method_descriptor
 from .._struct import *
+from ..desc import parse_method_descriptor
 from ..fmt.constants import (
     ConstInfo, InterfaceMethodrefInfo, InvokeDynamicInfo, MethodrefInfo, NameAndTypeInfo, UTF8Info,
 )
