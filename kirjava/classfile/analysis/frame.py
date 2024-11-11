@@ -86,12 +86,12 @@ class Frame:
 
     def __repr__(self) -> str:
         stack_str = ", ".join(map(str, self.stack))
-        locals_str = ", ".join(f"{index}: {type_!s}" for index, type_ in sorted(self.locals.items(), key=itemgetter(0)))
+        locals_str = ", ".join(f"{index}: {type!s}" for index, type in sorted(self.locals.items(), key=itemgetter(0)))
         return f"<Frame(stack=[{stack_str}], locals={{{locals_str}}})>"
 
     def __str__(self) -> str:
         stack_str = ",".join(map(str, self.stack))
-        locals_str = ",".join(f"{index}={type_!s}" for index, type_ in sorted(self.locals.items(), key=itemgetter(0)))
+        locals_str = ",".join(f"{index}={type!s}" for index, type in sorted(self.locals.items(), key=itemgetter(0)))
         return f"frame([{stack_str}],{{{locals_str}}})"
 
     def __eq__(self, other: object) -> bool:

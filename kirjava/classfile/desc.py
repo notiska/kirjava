@@ -145,16 +145,16 @@ def parse_field_descriptor(descriptor: str, *, strict: bool = True) -> Result[Ty
         return Err(ValueError("descriptor is empty"))
 
     with Result[Type]() as result:  # Guard against hard crashes from bugs, also recursion error is possible here.
-        type_, remaining = _next_type(descriptor)
+        type, remaining = _next_type(descriptor)
 
         if remaining:
             result.err(ValueError(f"trailing data {remaining!r} in descriptor"), reraise=strict)
-        if type_ is void_t or isinstance(type_, Invalid):
-            result.err(TypeError(f"invalid type {type_!s} in descriptor"), reraise=strict)
-        elif isinstance(type_, Array) and isinstance(type_.lowest, Invalid):
-            result.err(TypeError(f"invalid type {type_!s} in descriptor"), reraise=strict)
+        if type is void_t or isinstance(type, Invalid):
+            result.err(TypeError(f"invalid type {type!s} in descriptor"), reraise=strict)
+        elif isinstance(type, Array) and isinstance(type.lowest, Invalid):
+            result.err(TypeError(f"invalid type {type!s} in descriptor"), reraise=strict)
 
-        return result.ok(type_)
+        return result.ok(type)
     return result
 
 
@@ -224,28 +224,28 @@ def to_descriptor(*types: Iterable[Type] | Type, strict: bool = True) -> Result[
     with Result[str]() as result:
         descriptor = ""
 
-        for type_ in types:
+        for type in types:
             # This is done for performance, although mypy does complain. Might need a better solution in the future.
-            base = _TYPE_TO_STR.get(type_)  # type: ignore[call-overload]
+            base = _TYPE_TO_STR.get(type)  # type: ignore[call-overload]
             # FIXME: ^^^ will crash if type is unhashable. Could be encountered if lists are passed through, etc.
             if base is not None:
                 descriptor += base
                 continue
-            elif isinstance(type_, Class):
-                descriptor += f"L{type_.name};"
+            elif isinstance(type, Class):
+                descriptor += f"L{type.name};"
                 continue
-            elif isinstance(type_, Array):
-                descriptor += "[" + to_descriptor(type_.element, strict=strict).unwrap_into(result)
+            elif isinstance(type, Array):
+                descriptor += "[" + to_descriptor(type.element, strict=strict).unwrap_into(result)
                 continue
-            elif isinstance(type_, Invalid):
-                result.err(TypeError(f"invalid type {type_!s} in descriptor"), reraise=strict)
-                descriptor += type_.descriptor
+            elif isinstance(type, Invalid):
+                result.err(TypeError(f"invalid type {type!s} in descriptor"), reraise=strict)
+                descriptor += type.descriptor
                 continue
 
             try:
-                descriptor += "(" + to_descriptor(*type_, strict=strict).unwrap_into(result) + ")"  # type: ignore[misc]
+                descriptor += "(" + to_descriptor(*type, strict=strict).unwrap_into(result) + ")"  # type: ignore[misc]
             except TypeError:  # Hacky, yes, whatever.
-                result.err(TypeError(f"invalid type {type_!s} in descriptor"), reraise=strict)
+                result.err(TypeError(f"invalid type {type!s} in descriptor"), reraise=strict)
 
         return result.ok(descriptor)
     return result

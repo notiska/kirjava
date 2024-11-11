@@ -173,8 +173,8 @@ class Annotation:
             elements.append(Annotation.NamedElement(pool[name_index], value))
         return cls(pool[type_index], elements)
 
-    def __init__(self, type_: ConstInfo, elements: Iterable["Annotation.NamedElement"] | None = None) -> None:
-        self.type = type_
+    def __init__(self, type: ConstInfo, elements: Iterable["Annotation.NamedElement"] | None = None) -> None:
+        self.type = type
         self.elements: list[Annotation.NamedElement] = []
 
         # TODO: It may also be nice to accept a dictionary for a more Pythonic approach.
@@ -737,10 +737,10 @@ class TypeAnnotation(Annotation):
         return cls(pool[type_index], info, path, elements)
 
     def __init__(
-            self, type_: ConstInfo, info: TargetInfo, path: TypePath,
+            self, type: ConstInfo, info: TargetInfo, path: TypePath,
             elements: Iterable["Annotation.NamedElement"] | None = None,
     ) -> None:
-        super().__init__(type_, elements)
+        super().__init__(type, elements)
         self.info = info
         self.path = path
 
@@ -872,9 +872,9 @@ class EnumConstValue(ElementValue):
         type_index, name_index = unpack_HH(stream.read(4))
         return cls(pool[type_index], pool[name_index])
 
-    def __init__(self, type_: ConstInfo, name: ConstInfo) -> None:
+    def __init__(self, type: ConstInfo, name: ConstInfo) -> None:
         super().__init__(EnumConstValue.tags[0])
-        self.type = type_
+        self.type = type
         self.name = name
 
     def __repr__(self) -> str:
@@ -914,9 +914,9 @@ class ClassValue(ElementValue):
         index, = unpack_H(stream.read(2))
         return cls(pool[index])
 
-    def __init__(self, type_: ConstInfo) -> None:
+    def __init__(self, type: ConstInfo) -> None:
         super().__init__(ClassValue.tags[0])
-        self.type = type_
+        self.type = type
 
     def __repr__(self) -> str:
         return f"<ClassValue(type={self.type!s})>"

@@ -13,6 +13,7 @@ Mainly for internal usage.
 """
 
 import logging
+import sys
 import weakref
 from logging import Filter, Logger, LogRecord
 from types import TracebackType
@@ -182,10 +183,33 @@ class Result(Generic[T]):
             traceback: TracebackType | None,
     ) -> bool:
         if isinstance(exc_value, Exception):
-            self._errors.append(exc_value)
+            # The traceback we're given only goes one up until the context handler, so we'll add the extra frames too.
+            # FIXME: This also includes the context handler in the function, still do that? Could be confusing to some.
+            print(repr(exc_value), exc_value in self._errors)
+            if not exc_value in self._errors:
+                self._errors.append(exc_value.with_traceback(self._make_tb(traceback)))
             return True
         # print(exc_value, traceback)
         return False
+
+    def _make_tb(self, start: TracebackType | None = None) -> TracebackType | None:
+        """
+        Creates a traceback for exceptions.
+        """
+
+        traceback = start
+        # The caller of the caller of this function.
+        frame = sys._getframe().f_back.f_back if start is None else start.tb_frame
+
+        while frame is not None:
+            traceback = TracebackType(traceback, frame, frame.f_lasti, frame.f_lineno)
+            # Prevents excessive tracebacks with things like ipython. Not 100% sure if this is the correct way to do
+            # this, though.
+            if frame.f_code.co_name == "<module>":
+                break
+            frame = frame.f_back
+
+        return traceback
 
     def ok(self, value: T) -> Self:
         """
@@ -218,7 +242,8 @@ class Result(Generic[T]):
             If `reraise=True`, the provided error.
         """
 
-        self._errors.append(error)
+        if not error in self._errors:
+            self._errors.append(error.with_traceback(self._make_tb()))
         if reraise:
             raise error
         return self
@@ -266,9 +291,15 @@ class Result(Generic[T]):
         parent._messages.extend(self._messages)
         return self
 
-    def reraise(self) -> Self:
+    def reraise(self, index: int = -1) -> Self:
         """
         Re-raises the last error.
+
+        Parameters
+        ----------
+        index: int
+            The index of the error to reraise.
+            If out of bounds, the last error is reraised.
 
         Raises
         ------
@@ -277,7 +308,10 @@ class Result(Generic[T]):
         """
 
         if self._errors:
-            raise self._errors[-1]
+            if 0 > index >= len(self._errors):
+                index = -1
+            error = self._errors[index]
+            raise error from None  # FIXME: We may also be able to work out cause errors, if we had child results.
         return self
 
     def unwrap(self) -> T:
@@ -295,7 +329,7 @@ class Result(Generic[T]):
         if self._value is not None:
             return self._value
         elif self._errors:
-            raise self._errors[-1]
+            self.reraise()
         raise ValueError("failed to unwrap result, no value present")
 
     def unwrap_into(self, parent: Result[Any], default: T | None = None, *, reraise: bool = True) -> T:
@@ -333,7 +367,7 @@ class Result(Generic[T]):
         if reraise and self._errors:  # FIXME: Perhaps some other failure state?
             # It does actually make more sense to re-raise the last error in this case, as we're assuming that the first
             # errors were probably added through .err().
-            raise self._errors[-1]
+            self.reraise()
         raise ValueError("failed to unwrap result, no value present and no default provided")
 
     def unwrap_or(self, default: T) -> T:

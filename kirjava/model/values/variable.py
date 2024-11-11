@@ -36,8 +36,8 @@ class Variable(Value):  # TODO: Names, is it a local, etc...
     ID_THIS  = 0
     ID_SUPER = -1
 
-    def __init__(self, type_: "Type", id_: int) -> None:
-        self.type = type_
+    def __init__(self, type: "Type", id_: int) -> None:
+        self.type = type
         self.id = id_
 
     def __repr__(self) -> str:
@@ -57,8 +57,8 @@ class This(Variable):
 
     __slots__ = ()
 
-    def __init__(self, type_: "Class") -> None:
-        super().__init__(type_, Variable.ID_THIS)
+    def __init__(self, type: "Class") -> None:
+        super().__init__(type, Variable.ID_THIS)
 
     def __repr__(self) -> str:
         return f"<This(type={self.type!s})>"
@@ -74,8 +74,8 @@ class Super(Variable):
 
     __slots__ = ()
 
-    def __init__(self, type_: "Class") -> None:
-        super().__init__(type_, Variable.ID_SUPER)
+    def __init__(self, type: "Class") -> None:
+        super().__init__(type, Variable.ID_SUPER)
 
     def __repr__(self) -> str:
         return f"<Super(type={self.type!s})>"

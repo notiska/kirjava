@@ -30,8 +30,8 @@ class Array(Value):
 
     # TODO: We could also store elements, to some degree.
 
-    def __init__(self, type_: ArrayType, sizes: tuple[Value, ...]) -> None:
-        self.type = type_
+    def __init__(self, type: ArrayType, sizes: tuple[Value, ...]) -> None:
+        self.type = type
         self.sizes = sizes
 
     def __repr__(self) -> str:
@@ -39,12 +39,12 @@ class Array(Value):
 
     def __str__(self) -> str:
         sizes = []
-        type_ = self.type
+        type = self.type
         for size in self.sizes:
             # Mypy issue again, the type is checked properly in the loop, though.
-            type_ = type_.element  # type: ignore[attr-defined]
+            type = type.element  # type: ignore[attr-defined]
             sizes.append(f"[{size}]")
-            if not isinstance(type_, ArrayType):
+            if not isinstance(type, ArrayType):
                 break
         sizes_str = "".join(sizes)
         return f"{self.type!s}{sizes_str}"
@@ -64,8 +64,8 @@ class Object(Value):
 
     # TODO: We could also store information about (potential) fields and methods.
 
-    def __init__(self, type_: Class) -> None:
-        self.type = type_
+    def __init__(self, type: Class) -> None:
+        self.type = type
 
     def __repr__(self) -> str:
         return f"<Object(type={self.type!s})>"

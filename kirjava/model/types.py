@@ -736,10 +736,10 @@ class Array(_JavaReference):
 
         if dimension <= 0:
             raise ValueError(f"invalid dimension {dimension} for array type")
-        type_ = cls(element)
+        type = cls(element)
         for _ in range(dimension - 1):
-            type_ = cls(type_)
-        return type_
+            type = cls(type)
+        return type
 
     @property  # type: ignore[override]
     def name(self) -> str:
