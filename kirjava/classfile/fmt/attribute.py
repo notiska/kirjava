@@ -15,7 +15,7 @@ JVM class file shared attributes.
 
 import typing
 from os import SEEK_CUR, SEEK_SET
-from typing import IO, Iterable, Iterator
+from typing import IO, Iterable, Iterator, Union
 
 from .annotation import Annotation, TypeAnnotation
 from .constants import ConstInfo, UTF8Info
@@ -23,8 +23,12 @@ from .._struct import *
 from ..version import *
 from ..._compat import Self
 from ...backend import Err, Ok, Result
+from ...model import Class, Field, Linker, Method
 
 if typing.TYPE_CHECKING:
+    from .classfile import ClassFile, Record
+    from .field import FieldInfo
+    from .method import Code, MethodInfo
     from .pool import ConstPool
 
 
@@ -63,6 +67,8 @@ class AttributeInfo:
     read(stream: IO[bytes], version: Version, pool: ConstPool, location: int) -> Result[AttributeInfo]
         Reads an attribute from a binary stream.
 
+    lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]
+        Applies information in this attribute to the lifted object.
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
         Writes this attribute to a binary stream.
     """
@@ -205,6 +211,28 @@ class AttributeInfo:
 
         ...  # raise NotImplementedError(f"_write() is not implemented for {type(self)!r}")
 
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        """
+        Applies information in this attribute to the lifted object.
+
+        Parameters
+        ----------
+        linker: Linker
+            The linker to use to resolve references.
+        parent: object
+            The parent containing this attribute.
+        lifted: Class | Field | Method
+            The lifted object to populate.
+
+        Returns
+        -------
+        Result[Class | Field | Method]
+            A result containing the same lifted object, with any metadata or errors.
+        """
+
+        # raise NotImplementedError(f"lift() is not implemented for {type(self)!r}")
+        return Ok(lifted)  # TODO: ^^^
+
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         """
         Writes this attribute to a binary stream.
@@ -271,6 +299,9 @@ class RawInfo(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RawInfo) and self.name == other.name and self.data == other.data
 
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        return Ok(lifted).err(ValueError("raw attribute"))
+
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HI(pool.add(self.name), len(self.data) + len(self.extra)))
         stream.write(self.data)
@@ -315,6 +346,10 @@ class Documentation(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Documentation) and self.doc == other.doc
 
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        lifted.documentation = self.doc  # TODO: Check for already existing documentation?
+        return Ok(lifted)
+
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HI(pool.add(self.name or UTF8Info(self.tag)), len(self.extra) + len(self.doc)))
         stream.write(self.doc)
@@ -347,6 +382,9 @@ class Synthetic(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Synthetic)
+
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        return Ok(lifted)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HI(pool.add(self.name or UTF8Info(self.tag)), len(self.extra)))
@@ -428,6 +466,13 @@ class Deprecated(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Deprecated)
+
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        # Only marks as deprecated if the lifted object was generated from the parent. This is to avoid `Deprecated` on
+        # a `Record.ComponentInfo` marking the `Class` as deprecated, for example. Would do an instance check, but can't
+        # import the required classes in this file.
+        lifted.deprecated = lifted.info == parent
+        return Ok(lifted)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HI(pool.add(self.name or UTF8Info(self.tag)), len(self.extra)))

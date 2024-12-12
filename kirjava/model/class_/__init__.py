@@ -7,18 +7,17 @@ __all__ = (
     "Class", "Field", "Method",
 )
 
-import typing
-from typing import Iterable, Optional
+from typing import Any, Generic, Iterable, Optional
 
 from .field import Field
 from .method import Method
 from ..types import Class as ClassType, Interface, Type
+from ..._compat import TypeVar
 
-if typing.TYPE_CHECKING:
-    from ...classfile import ClassFile
+T = TypeVar("T", default=Any)
 
 
-class Class:
+class Class(Generic[T]):
     """
     A Java class model.
 
@@ -26,8 +25,8 @@ class Class:
     ----------
     access: str
         A pretty access flag string.
-    info: ClassFile | None
-        The class file that this class was generated from.
+    info: T | None
+        The info that this class was generated from.
     name: str
         The internal name of the class (e.g. `java/lang/Object`).
     super: Class | None
@@ -58,12 +57,16 @@ class Class:
         The methods in this class.
     documentation: bytes | None
         Any associated documentation for this class.
+    deprecated: bool
+        Whether this class if marked as deprecated.
     source: str | None
         The source file this class was compiled from.
+    debug_ext: bytes | None
+        Any extended debug information for this class.
 
     Methods
     -------
-    get_field(self, name: str, type_: Type) -> Field | None
+    get_field(self, name: str, type: Type) -> Field | None
         Gets a field in this class by its name and type.
     get_method(self, name: str, arg_types: tuple[Type, ...], ret_type: Type) -> Method | None
         Gets a method in this class by its name, argument types and return type
@@ -79,7 +82,7 @@ class Class:
         "is_synthetic", "is_annotation", "is_enum", "is_module",
         "super", "interfaces",
         "fields", "methods",
-        "documentation", "source",
+        "documentation", "deprecated", "source", "debug_ext",
     )
 
     @property
@@ -100,7 +103,7 @@ class Class:
     def __init__(
             self,
             name: str,
-            super_: Optional["Class"] = None,
+            super: Optional["Class"] = None,
             interfaces: Iterable["Class"] | None = None,
             fields:     Iterable["Field"] | None = None,
             methods:   Iterable["Method"] | None = None,
@@ -115,7 +118,7 @@ class Class:
             is_enum:       bool = False,
             is_module:     bool = False,
     ) -> None:
-        self.info: Optional["ClassFile"] = None
+        self.info: T | None = None
 
         self.name = name
 
@@ -129,7 +132,7 @@ class Class:
         self.is_enum = is_enum
         self.is_module = is_module
 
-        self.super = super_
+        self.super = super
         self.interfaces: list[Class] = []
         self.fields:     list[Field] = []
         self.methods:   list[Method] = []
@@ -142,7 +145,9 @@ class Class:
             self.methods.extend(methods)
 
         self.documentation: bytes | None = None
+        self.deprecated = False
         self.source: str | None = None
+        self.debug_ext: bytes | None = None
 
     def __repr__(self) -> str:
         interfaces_str = ", ".join(map(str, self.interfaces))
@@ -157,12 +162,13 @@ class Class:
         )
 
     def __str__(self) -> str:
-        interfaces_str = ",".join(map(str, self.interfaces))
+        super_str = self.super.name if self.super is not None else "[none]"
+        interfaces_str = ",".join(interface.name for interface in self.interfaces)
         fields_str = ",".join(map(str, self.fields))
         methods_str = ",".join(map(str, self.methods))
-        return f"class({self.name!s},{self.super!s},[{interfaces_str}],[{fields_str}],[{methods_str}])"
+        return f"class({self.name!s},{super_str},[{interfaces_str}],[{fields_str}],[{methods_str}])"
 
-    def get_field(self, name: str, type_: Type) -> Field | None:
+    def get_field(self, name: str, type: Type) -> Field | None:
         """
         Gets a field in this class by its name and type.
 
@@ -170,7 +176,7 @@ class Class:
         ----------
         name: str
             The name of the field.
-        type_: Type
+        type: Type
             The type of the field.
 
         Returns
@@ -180,7 +186,7 @@ class Class:
         """
 
         for field in self.fields:
-            if field.name == name and field.type == type_:
+            if field.name == name and field.type == type:
                 return field
         return None
 

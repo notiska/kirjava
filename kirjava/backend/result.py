@@ -17,9 +17,9 @@ import sys
 import weakref
 from logging import Filter, Logger, LogRecord
 from types import TracebackType
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic
 
-from .._compat import Self
+from .._compat import Self, TypeVar
 
 T = TypeVar("T")
 
@@ -117,7 +117,7 @@ class Result(Generic[T]):
 
     __slots__ = (
         "__weakref__",
-        "_value", "_errors",
+        "_value", "_set", "_errors",
         # Metadata stuff.
         "_logger", "_filter", "element", "_messages",
     )
@@ -147,6 +147,7 @@ class Result(Generic[T]):
 
     def __init__(self, *, name: str | None = None, element: object | None = None) -> None:
         self._value: T | None = None
+        self._set = False
         self._errors: list[Exception] = []
 
         self._logger: Logger | None
@@ -172,7 +173,7 @@ class Result(Generic[T]):
         return isinstance(other, Result) and self._value == other._value
 
     def __bool__(self) -> bool:
-        return self._value is not None
+        return self._set
 
     def __enter__(self) -> Self:
         return self
@@ -185,7 +186,6 @@ class Result(Generic[T]):
         if isinstance(exc_value, Exception):
             # The traceback we're given only goes one up until the context handler, so we'll add the extra frames too.
             # FIXME: This also includes the context handler in the function, still do that? Could be confusing to some.
-            print(repr(exc_value), exc_value in self._errors)
             if not exc_value in self._errors:
                 self._errors.append(exc_value.with_traceback(self._make_tb(traceback)))
             return True
@@ -198,8 +198,12 @@ class Result(Generic[T]):
         """
 
         traceback = start
-        # The caller of the caller of this function.
-        frame = sys._getframe().f_back.f_back if start is None else start.tb_frame
+        if start is None:
+            # The caller of the caller of this function.
+            frame = sys._getframe().f_back
+            frame = frame.f_back if frame is not None else None
+        else:
+            frame = start.tb_frame
 
         while frame is not None:
             traceback = TracebackType(traceback, frame, frame.f_lasti, frame.f_lineno)
@@ -218,9 +222,10 @@ class Result(Generic[T]):
         If `element` is `None`, then it will also be set to the value.
         """
 
-        if self._value is not None:
+        if self._set:
             raise ValueError(f"{self!r} already has a valid value")
         self._value = value
+        self._set = True
         if self.element is not None:
             self.element = value
         return self
@@ -326,8 +331,10 @@ class Result(Generic[T]):
             If no value is present and there are no errors.
         """
 
-        if self._value is not None:
-            return self._value
+        if self._set:
+            # In the case that `self._value` is `None`, it's likely that T is `None` too.
+            # FIXME: ^^^ find a way around this?
+            return self._value  # type: ignore[return-value]
         elif self._errors:
             self.reraise()
         raise ValueError("failed to unwrap result, no value present")
@@ -359,8 +366,8 @@ class Result(Generic[T]):
         parent._errors.extend(self._errors)
         parent._messages.extend(self._messages)
 
-        if self._value is not None:
-            return self._value
+        if self._set:
+            return self._value  # type: ignore[return-value]
         elif default is not None:
             return default
 
@@ -380,8 +387,8 @@ class Result(Generic[T]):
             The default value to use if no value is present.
         """
 
-        if self._value is not None:
-            return self._value
+        if self._set:
+            return self._value  # type: ignore[return-value]
         return default
 
 
@@ -393,6 +400,7 @@ class Ok(Result[T]):
     def __init__(self, value: T, *, name: str | None = None, element: object | None = None) -> None:
         super().__init__(name=name, element=element or value)
         self._value = value
+        self._set = True
 
 
 class Err(Result[T]):

@@ -143,8 +143,9 @@ class MonitorEnter(Instruction):
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             # FIXME: Can we enter an object monitor with an array? Can we narrow it down to object_t?
-            frame.pop(reference_t).into(result)
-        return result.ok(frame)
+            frame.pop(reference_t).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         frame.push(reference_t)
@@ -191,8 +192,9 @@ class MonitorExit(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(reference_t).into(result)
-        return result.ok(frame)
+            frame.pop(reference_t).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         frame.push(reference_t)

@@ -60,10 +60,11 @@ class BinOp(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(self.type).into(result)
-            frame.pop(self.type).into(result)
+            frame.pop(self.type).unwrap_into(result)
+            frame.pop(self.type).unwrap_into(result)
             frame.push(self.type)
-        return result.ok(frame)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -139,10 +140,11 @@ class Shift(BinOp):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(int_t).into(result)
-            frame.pop(self.type).into(result)
+            frame.pop(int_t).unwrap_into(result)
+            frame.pop(self.type).unwrap_into(result)
             frame.push(self.type)
-        return result.ok(frame)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -182,10 +184,11 @@ class Comparison(BinOp):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(self.type).into(result)
-            frame.pop(self.type).into(result)
+            frame.pop(self.type).unwrap_into(result)
+            frame.pop(self.type).unwrap_into(result)
             frame.push(int_t)
-        return result.ok(frame)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -428,9 +431,10 @@ class Negate(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(self.type).into(result)
+            frame.pop(self.type).unwrap_into(result)
             frame.push(self.type)
-        return result.ok(frame)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:

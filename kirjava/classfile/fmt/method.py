@@ -28,8 +28,8 @@ from ..desc import parse_method_descriptor
 from ..insns import Instruction
 from ..version import *
 from ..._compat import Self
-from ...backend import Result
-from ...model.class_.method import Method
+from ...backend import Err, Ok, Result
+from ...model import Class, Field, Linker, Method
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
@@ -120,7 +120,7 @@ class MethodInfo:
 
     visit(self, visitor: MethodInfoVisitor) -> None
         Calls a visitor on this method.
-    lift(self) -> Result[Method]
+    lift(self, linker: Linker, *, strict: bool = True) -> Result[Method]
         Creates a lifted method from this method info.
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
         Writes this method to a binary stream.
@@ -325,9 +325,16 @@ class MethodInfo:
             visitor.visit_attribute(attribute)
         visitor.visit_end(self)
 
-    def lift(self) -> Result[Method]:
+    def lift(self, linker: Linker, *, strict: bool = True) -> Result[Method[Self]]:
         """
         Creates a lifted method from this method info.
+
+        Parameters
+        ----------
+        linker: Linker
+            The linker to use to resolve references.
+        strict: bool
+            Whether to return a value upon encountering non-critical errors.
         """
 
         with Result[Method]() as result:
@@ -336,8 +343,9 @@ class MethodInfo:
             if not isinstance(self.descriptor, UTF8Info):
                 return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))
 
-            return result.ok(Method(
-                self.name.decode(), *parse_method_descriptor(self.descriptor.decode()).unwrap_into(result),
+            lifted = Method(
+                self.name.decode(),
+                *parse_method_descriptor(self.descriptor.decode(), strict=strict).unwrap_into(result),
                 is_public=self.is_public,
                 is_private=self.is_private,
                 is_protected=self.is_protected,
@@ -350,7 +358,16 @@ class MethodInfo:
                 is_abstract=self.is_abstract,
                 is_strictfp=self.is_strict,
                 is_synthetic=self.is_synthetic,
-            ))
+            )
+
+            seen = set()
+            for attribute in self.attributes:
+                if type(attribute) in seen:
+                    continue
+                seen.add(type(attribute))
+                attribute.lift(linker, self, lifted).unwrap_into(result, reraise=strict)
+
+            return result.ok(lifted)
         return result
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
@@ -716,6 +733,26 @@ class Exceptions(AttributeInfo):
     def __len__(self) -> int:
         return len(self.exceptions)
 
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        with Result[Class | Field | Method]() as result:
+            if not isinstance(parent, MethodInfo):
+                raise TypeError(f"exceptions on wrong element {parent!s}")
+            assert isinstance(lifted, Method), "lifting method info to non-method"
+
+            for exception in self.exceptions:
+                if not isinstance(exception, ClassInfo):
+                    result.err(TypeError(f"exception {exception!s} is not a class constant"))
+                    continue
+                # Here we'll just try our best to recover as much "information" as possible, even if it isn't valid.
+                classref = exception.lift().into(result)
+                if not classref:
+                    continue
+                class_ = linker.find_class(classref.unwrap().name).into(result)
+                if class_:
+                    lifted.throws.append(class_.unwrap())
+
+        return result.ok(lifted)
+
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HIH(
             pool.add(self.name or UTF8Info(self.tag)),
@@ -790,6 +827,12 @@ class LineNumberTable(AttributeInfo):
 
     def __len__(self) -> int:
         return len(self.lines)
+
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        result = Ok(lifted)
+        if not isinstance(parent, Code):
+            result.err(TypeError(f"line number table on wrong element {parent!s}"))
+        return result
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HIH(
@@ -898,6 +941,12 @@ class LocalVariableTable(AttributeInfo):
 
     def __len__(self) -> int:
         return len(self.locals)
+
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        result = Ok(lifted)
+        if not isinstance(parent, Code):
+            result.err(TypeError(f"local variable table on wrong element {parent!s}"))
+        return result
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HIH(
@@ -1024,6 +1073,12 @@ class LocalVariableTypeTable(AttributeInfo):
 
     def __len__(self) -> int:
         return len(self.locals)
+
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        result = Ok(lifted)
+        if not isinstance(parent, Code):
+            result.err(TypeError(f"local variable type table on wrong element {parent!s}"))
+        return result
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HIH(
@@ -1190,6 +1245,25 @@ class MethodParameters(AttributeInfo):
 
     def __len__(self) -> int:
         return len(self.params)
+
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        with Result[Class | Field | Method]() as result:
+            if not isinstance(parent, MethodInfo):
+                raise TypeError(f"method parameters on wrong element {parent!s}")
+            assert isinstance(lifted, Method), "lifting method info to non-method"
+
+            for index, param in enumerate(self.params):
+                name = None
+                if param.name is not None:
+                    if not isinstance(param.name, UTF8Info):
+                        result.err(TypeError(f"parameter name {param.name!s} is not a UTF8 constant"))
+                        continue
+                    name = param.name.decode()
+                lifted.parameters.append(Method.Parameter(
+                    index, name, is_final=param.is_final, is_synthetic=param.is_synthetic, is_mandated=param.is_mandated,
+                ))
+
+        return result.ok(lifted)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HI(pool.add(UTF8Info(self.tag)), 1 + len(self.extra) + len(self.params) * 4))

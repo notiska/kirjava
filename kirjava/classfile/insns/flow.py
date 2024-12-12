@@ -25,6 +25,7 @@ from typing import IO, Iterator, Mapping
 from . import Instruction
 from .misc import wide
 from .._struct import *
+from ..version import JAVA_1_1
 from ..._compat import Self
 from ...backend import Ok, Result
 from ...model.types import *
@@ -179,9 +180,10 @@ class Compare(Jump):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(self.type).into(result)
-            frame.pop(self.type).into(result)
-        return result.ok(frame)
+            frame.pop(self.type).unwrap_into(result)
+            frame.pop(self.type).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         frame.push(self.type)
@@ -300,8 +302,9 @@ class CompareToZero(Compare):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(int_t).into(result)
-        return result.ok(frame)
+            frame.pop(int_t).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         frame.push(int_t)
@@ -331,6 +334,22 @@ class IfEq(CompareToZero):  # FIXME: Extra functionality for allowing reference 
             return f"<IfEq(offset={self.offset}, delta={self.delta})>"
         return f"<IfEq(delta={self.delta})>"
 
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        if frame.version >= JAVA_1_1:
+            return super().step(frame)
+
+        with Result["Frame"]() as result:
+            frame.pop(Union(int_t, reference_t)).unwrap_into(result)
+            return result.ok(frame)
+        return result
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        if frame.version >= JAVA_1_1:
+            return super().step(frame)
+
+        frame.push(Union(int_t, reference_t))
+        return Ok(frame)
+
 
 class IfNe(CompareToZero):
     """
@@ -346,6 +365,22 @@ class IfNe(CompareToZero):
         if self.offset is not None:
             return f"<IfNe(offset={self.offset}, delta={self.delta})>"
         return f"<IfNe(delta={self.delta})>"
+
+    def step(self, frame: "Frame") -> Result["Frame"]:
+        if frame.version >= JAVA_1_1:
+            return super().step(frame)
+
+        with Result["Frame"]() as result:
+            frame.pop(Union(int_t, reference_t)).unwrap_into(result)
+            return result.ok(frame)
+        return result
+
+    def rstep(self, frame: "Frame") -> Result["Frame"]:
+        if frame.version >= JAVA_1_1:
+            return super().step(frame)
+
+        frame.push(Union(int_t, reference_t))
+        return Ok(frame)
 
 
 class CompareToNull(Compare):
@@ -366,8 +401,9 @@ class CompareToNull(Compare):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(reference_t).into(result)
-        return result.ok(frame)
+            frame.pop(reference_t).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         frame.push(reference_t)
@@ -487,8 +523,9 @@ class Ret(Jump):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.get(self.index, return_address_t).into(result)
-        return result.ok(frame)
+            frame.get(self.index, return_address_t).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         frame.rget(self.index, return_address_t)
@@ -600,8 +637,9 @@ class Switch(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(int_t).into(result)
-        return result.ok(frame)
+            frame.pop(int_t).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         frame.push(int_t)
@@ -823,8 +861,9 @@ class Return(Jump):
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             if self.type is not void_t:
-                frame.pop(self.type).into(result)
-        return result.ok(frame)
+                frame.pop(self.type).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         if self.type is not void_t:
@@ -886,8 +925,9 @@ class AThrow(Jump):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(reference_t).into(result)
-        return result.ok(frame)
+            frame.pop(reference_t).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         frame.push(reference_t)

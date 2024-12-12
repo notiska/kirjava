@@ -27,7 +27,7 @@ __all__ = (
     "byte_array_t", "short_array_t", "char_array_t", "int_array_t", "long_array_t",
     "float_array_t", "double_array_t",
 
-    "Type", "Invalid", "Verification",
+    "Type", "Invalid", "Verification", "Union",
     "Primitive", "Reference",
     "Top", "OneWord", "TwoWord",
     "Integer",
@@ -54,7 +54,7 @@ class Type:
 
     Methods
     -------
-    assignable(self, other: Type) -> bool
+    assignable(self, other: Type, *, implicit: bool = False) -> bool
         Checks if a value of this type is assignable to a value of the provided type.
     verification(self) -> Verification
         Returns the verification type that represents this type.
@@ -78,7 +78,9 @@ class Type:
     def __hash__(self) -> int:
         raise NotImplementedError(f"hash() is not implemented for {type(self)!r}")
 
-    def assignable(self, other: "Type") -> bool:
+    # FIXME: Implicit cast option, because it doesn't make sense to use language-level constructs when evaluating the
+    #        validity of bytecode stack map frames.
+    def assignable(self, other: "Type", *, implicit: bool = False) -> bool:
         """
         Checks if another type is assignable to this type.
 
@@ -89,6 +91,13 @@ class Type:
         Or, in pseudocode:
          - `top x; int y; x = y;` is valid.
          - `int x; top y; x = y;` is not valid.
+
+        Parameters
+        ----------
+        other: Type
+            The other type to check.
+        implicit: bool
+            Whether to allow implicit casting (typically a language-level construct).
         """
 
         raise NotImplementedError(f"assignable() is not implemented for {type(self)!r}")
@@ -142,7 +151,7 @@ class Invalid(Type):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         return False  # Invalid types shouldn't be assignable to anything, even themselves.
 
 
@@ -157,6 +166,58 @@ class Verification(Type):
 
     def verification(self) -> "Verification":
         return self
+
+
+class Union(Verification):
+    """
+    A union of multiple different types.
+
+    Attributes
+    ----------
+    types: tuple[Type, ...]
+        The types in this union.
+    """
+
+    __slots__ = ("_wide", "_abstract", "_types", "_hash")
+
+    name = "union"
+
+    @property  # type: ignore[override]
+    def wide(self) -> bool:
+        return self._wide
+
+    @property  # type: ignore[override]
+    def abstract(self) -> bool:
+        return self._abstract
+
+    @property
+    def types(self) -> tuple[Type, ...]:
+        return self._types
+
+    def __init__(self, *types: Type) -> None:
+        self._wide = all(type.wide for type in types)
+        self._abstract = any(type.abstract for type in types)
+        self._types = types
+        self._hash = hash(types)
+
+    def __repr__(self) -> str:
+        return f"<Union(types={self._types!r})>"
+
+    def __str__(self) -> str:
+        types_str = ",".join(map(str, self._types))
+        return f"union({types_str})"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Union) and self._types == other._types
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
+        for type in self._types:
+            if type.assignable(other, implicit=implicit):
+                return True
+        return False
 
 
 class Primitive(Type):
@@ -221,7 +282,7 @@ class _Primitive(Primitive, Verification):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         return isinstance(other, Primitive)
 
 
@@ -248,7 +309,7 @@ class _Reference(Reference, Verification):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         return isinstance(other, Reference)
 
 
@@ -276,7 +337,7 @@ class _Void(Primitive):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         return False  # This is a check that should never happen in the first place.
 
 
@@ -337,7 +398,7 @@ class _Top(Top):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         return isinstance(other, Top)
 
 
@@ -355,7 +416,7 @@ class OneWord(Top):
     def __repr__(self) -> str:
         return f"<OneWord(name={self.name!r}>"
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         return isinstance(other, OneWord)
 
 
@@ -373,7 +434,7 @@ class TwoWord(Top):
     def __repr__(self) -> str:
         return f"<TwoWord(name={self.name!r}>"
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         return isinstance(other, TwoWord)
 
 
@@ -401,10 +462,8 @@ class _Reserved(OneWord):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
-        # There shouldn't be a comparison where this has to happen. The assignability check should rather be on the wide
-        # type itself, so if this happens, it should always be incorrect.
-        return False
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
+        return self == other
 
 
 class Integer(Primitive):
@@ -448,7 +507,7 @@ class Integer(Primitive):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         if not isinstance(other, Integer):
             return False
         elif other._width < 0:
@@ -490,10 +549,10 @@ class _Long(Primitive, TwoWord):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
-        if isinstance(other, Integer):
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
+        if isinstance(other, Integer) and implicit:
             return other._width > 0
-        return other is self
+        return self is other
 
 
 class _Float(Primitive, OneWord):
@@ -516,10 +575,14 @@ class _Float(Primitive, OneWord):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
-        if isinstance(other, Integer):
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
+        if self == other:
+            return True
+        elif not implicit:
+            return False
+        elif isinstance(other, Integer):
             return other._width > 0
-        return other is self or isinstance(other, _Long)
+        return isinstance(other, _Long)
 
 
 class _Double(Primitive, TwoWord):
@@ -542,10 +605,14 @@ class _Double(Primitive, TwoWord):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
-        if isinstance(other, Integer):
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
+        if self == other:
+            return True
+        elif not implicit:
+            return False
+        elif isinstance(other, Integer):
             return other._width > 0
-        return self == other or isinstance(other, (_Float, _Long))
+        return isinstance(other, (_Float, _Long))
 
 
 class ReturnAddress(Primitive, OneWord):
@@ -568,6 +635,7 @@ class ReturnAddress(Primitive, OneWord):
     def source(self) -> object | None:
         return self.source
 
+    # TODO: Narrow down the type to perhaps an `int` or `Instruction`. Could also make it generic.
     def __init__(self, source: object | None) -> None:
         super().__init__(None)
         self._source = source
@@ -592,7 +660,7 @@ class ReturnAddress(Primitive, OneWord):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         return self == other
 
 
@@ -651,8 +719,12 @@ class Uninitialized(Reference, OneWord):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
-        return self == other
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
+        if not isinstance(other, Uninitialized):
+            return False
+        elif self._source is None:
+            return True  # We want to allow assignments from uninitialized_this_t.
+        return self._source == other._source
 
 
 class _UninitializedThis(Uninitialized):  # Not fully true to the spec, note.
@@ -676,6 +748,9 @@ class _UninitializedThis(Uninitialized):  # Not fully true to the spec, note.
 
     def __hash__(self) -> int:
         return self._hash
+
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
+        return self is other
 
 
 class _JavaReference(Reference, OneWord):
@@ -801,7 +876,7 @@ class Array(_JavaReference):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         if not isinstance(other, Array):
             return isinstance(other, _Null)
         elif isinstance(self._element, Primitive):
@@ -853,7 +928,7 @@ class Class(_JavaReference):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         if self is object_t:
             return isinstance(other, _JavaReference)
         elif isinstance(other, Class):
@@ -919,7 +994,7 @@ class _Null(_JavaReference):
     def __hash__(self) -> int:
         return self._hash
 
-    def assignable(self, other: Type) -> bool:
+    def assignable(self, other: Type, *, implicit: bool = False) -> bool:
         return isinstance(other, _Null)
 
 

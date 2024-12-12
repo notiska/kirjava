@@ -16,6 +16,7 @@ from io import BytesIO
 from os import PathLike
 from typing import IO
 
+from .analysis import Analysis
 from .fmt import ClassFile, MethodInfo
 from .graph import Graph
 
@@ -79,3 +80,11 @@ def disassemble(method: MethodInfo, cf: ClassFile | None = None) -> Graph:
     """
 
     return Graph.disassemble(method, cf).unwrap()
+
+
+def analyse(graph: Graph) -> Analysis:
+    """
+    Performs an analysis pass on the provided JVM CFG.
+    """
+
+    return Analysis.analyse(graph).unwrap()

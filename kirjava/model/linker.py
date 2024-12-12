@@ -25,7 +25,7 @@ class Loader:  # TODO: Default loaders as well, i.e. jar, zip, dir, etc...
 
     Methods
     -------
-    find_class(self, name: str, linker: Linker) -> Result[Class]
+    find_class(self, linker: Linker, name: str) -> Result[Class]
         Finds a class given its name.
     find_resource(self, name: str) -> Result[bytes]
         Finds a resource given its name.
@@ -53,16 +53,16 @@ class Loader:  # TODO: Default loaders as well, i.e. jar, zip, dir, etc...
 
     #     raise NotImplementedError(f"owns_class() not implemented for {type(self)!r}")
 
-    def find_class(self, name: str, linker: "Linker") -> Result[Class]:
+    def find_class(self, linker: "Linker", name: str) -> Result[Class]:
         """
         Finds a class given its name.
 
         Parameters
         ----------
-        name: str
-            The unqualified name of the class.
         linker: Linker
             The linker to use to resolve further references.
+        name: str
+            The unqualified name of the class.
         """
 
         raise NotImplementedError(f"find_class() not implemented for {type(self)!r}")
@@ -110,7 +110,7 @@ class Linker:
     clear(self) -> None
         Clears all class loaders from the linker.
     find_class(self, name: str) -> Result[Class]
-    find_field(self, name: str, type_: Type) -> Field | None
+    find_field(self, name: str, type: Type) -> Field | None
     find_method(self, name: str, arg_types: tuple[Type, ...], ret_type: Type) -> Method | None
     """
 
@@ -233,11 +233,14 @@ class Linker:
 
         cached = self._cached.get(name)
         if cached is not None:
-            return Ok(cached)
+            if cached.name == name:  # Need to do this check as `Class` objects are mutable.
+                return Ok(cached)
+            del self._cached[name]
+            self._cached[cached.name] = cached
 
         with Result[Class]() as result:
             for loader in self.loaders:
-                class_ = loader.find_class(name, self).into(result).value
+                class_ = loader.find_class(self, name).into(result).value
                 if class_ is not None:
                     self._cached[name] = class_
                     return result.ok(class_)
@@ -246,7 +249,7 @@ class Linker:
 
     # FIXME: Static lookups needed too.
 
-    def find_field(self, name: str, type_: "Type") -> Result[Field]:
+    def find_field(self, name: str, type: "Type") -> Result[Field]:
         raise NotImplementedError()
 
     def find_method(self, name: str, arg_types: tuple["Type", ...], ret_type: "Type") -> Result[Method]:

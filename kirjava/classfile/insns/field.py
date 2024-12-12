@@ -81,11 +81,10 @@ class GetStatic(Instruction):
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             if not isinstance(self.fieldref, FieldrefInfo):
-                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
-                frame.push(top_t)
-            else:
-                frame.push(self.fieldref.get_type().unwrap_into(result, top_t).verification())
-        return result.ok(frame)
+                raise TypeError(f"field ref {self.fieldref!s} is not a field ref constant")
+            frame.push(self.fieldref.get_type().unwrap_into(result).verification())
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -178,11 +177,10 @@ class PutStatic(Instruction):
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             if not isinstance(self.fieldref, FieldrefInfo):
-                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
-                frame.pop(top_t).into(result)
-            else:
-                frame.pop(self.fieldref.get_type().unwrap_into(result, top_t).verification())
-        return result.ok(frame)
+                raise TypeError(f"field ref {self.fieldref!s} is not a field ref constant")
+            frame.pop(self.fieldref.get_type().unwrap_into(result).verification())
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -273,21 +271,22 @@ class GetField(Instruction):
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             if not isinstance(self.fieldref, FieldrefInfo):
-                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
-                frame.pop(object_t).into(result)  # TODO: Definitely can't get fields off arrays?
-                frame.push(top_t)
-            else:
-                frame.pop(self.fieldref.get_class().unwrap_into(result, object_t)).into(result)
-                frame.push(self.fieldref.get_type().unwrap_into(result, top_t).verification())
-        return result.ok(frame)
+                raise TypeError(f"field ref {self.fieldref!s} is not a field ref constant")
+            # FIXME: Interesting thing to consider, class type names must match in order to be assignable. Not sure what
+            #        to do here yet, I'll figure it out later.
+            frame.pop(self.fieldref.get_class().unwrap_into(result)).unwrap_into(result)
+            frame.push(self.fieldref.get_type().unwrap_into(result).verification())
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             if not isinstance(self.fieldref, FieldrefInfo):
                 result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
                 frame.pop(top_t).into(result)
-                frame.push(object_t)
+                frame.push(object_t)  # TODO: reference_t, definitely can't get fields off arrays?
             else:
+                # FIXME: Verification can throw, I think?
                 frame.pop(self.fieldref.get_type().unwrap_into(result, top_t).verification()).into(result)
                 frame.push(self.fieldref.get_class().unwrap_into(result, object_t))
         return result.ok(frame)
@@ -382,13 +381,11 @@ class PutField(Instruction):
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             if not isinstance(self.fieldref, FieldrefInfo):
-                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
-                frame.pop(object_t).into(result)
-                frame.pop(top_t).into(result)
-            else:
-                frame.pop(self.fieldref.get_class().unwrap_into(result, object_t)).into(result)
-                frame.pop(self.fieldref.get_type().unwrap_into(result, top_t).verification()).into(result)
-        return result.ok(frame)
+                raise TypeError(f"field ref {self.fieldref!s} is not a field ref constant")
+            frame.pop(self.fieldref.get_type().unwrap_into(result).verification()).unwrap_into(result)
+            frame.pop(self.fieldref.get_class().unwrap_into(result)).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -397,6 +394,7 @@ class PutField(Instruction):
                 frame.push(top_t)
                 frame.push(object_t)
             else:
+                # FIXME: Above.
                 frame.push(self.fieldref.get_type().unwrap_into(result, top_t).verification())
                 frame.push(self.fieldref.get_class().unwrap_into(result, object_t))
         return result.ok(frame)

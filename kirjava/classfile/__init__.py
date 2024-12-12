@@ -6,6 +6,9 @@ __all__ = (
 
     "dump", "dumps", "load", "loads",
     "dis", "disassemble",
+    # "analyse",
+
+    "Analysis",
 
     "ClassFile", "FieldInfo",
     "MethodInfo", "Code",
@@ -21,6 +24,7 @@ __all__ = (
 
     "Block", "Edge", "Graph",
     "Instruction",
+    "DirLoader", "ListLoader", "ZipLoader",
     "Version",
 )
 
@@ -28,9 +32,11 @@ __all__ = (
 Everything related to JVM class files.
 """
 
-from . import fmt, graph, insns, loaders, version
+from . import analysis, desc, fmt, graph, insns, loaders, version
 from ._api import *
+from .analysis import Analysis
 from .fmt import *
 from .graph import Block, Edge, Graph
 from .insns import INSTRUCTIONS, Instruction
+from .loaders import *
 from .version import Version

@@ -7,14 +7,18 @@ __all__ = (
 )
 
 import typing
-from typing import Iterable, Optional
+from typing import Any, Generic, Iterable
+
+from ..._compat import TypeVar
 
 if typing.TYPE_CHECKING:
+    from . import Class
     from ..types import Type
-    from ...classfile import MethodInfo
+
+T = TypeVar("T", default=Any)
 
 
-class Method:
+class Method(Generic[T]):
     """
     A Java method model.
 
@@ -22,8 +26,8 @@ class Method:
     ----------
     access: str
         A pretty access flag string.
-    info: MethodInfo | None
-        The method info that this method was generated from.
+    info: T | None
+        The info that this method was generated from.
     name: str
         The name of the method.
     arg_types: tuple[Type, ...]
@@ -56,6 +60,12 @@ class Method:
         If the method is synthetic.
     documentation: bytes | None
         Any associated documentation for this method.
+    deprecated: bool
+        Whether this method is marked as deprecated.
+    parameters: list[Method.Parameter]
+        A list of formal parameter information.
+    throws: list[Class]
+        A list of checked or unchecked exceptions that this method may throw.
     """
 
     __slots__ = (
@@ -63,7 +73,7 @@ class Method:
         "name", "arg_types", "ret_type",
         "is_public", "is_private", "is_protected", "is_static", "is_final", "is_synchronized",
         "is_bridge", "is_varargs", "is_native", "is_abstract", "is_strictfp", "is_synthetic",
-        "documentation",
+        "documentation", "deprecated", "parameters", "throws",
     )
 
     @property
@@ -85,8 +95,7 @@ class Method:
         return " ".join(filter(None, access))
 
     def __init__(
-            self,
-            name: str, arg_types: Iterable["Type"], ret_type: "Type",
+            self, name: str, arg_types: Iterable["Type"], ret_type: "Type",
             *,
             is_public:       bool = False,
             is_private:      bool = False,
@@ -101,7 +110,7 @@ class Method:
             is_strictfp:     bool = False,
             is_synthetic:    bool = False,
     ) -> None:
-        self.info: Optional["MethodInfo"] = None
+        self.info: T | None = None
 
         self.name = name
         self.arg_types = tuple(arg_types)
@@ -121,6 +130,9 @@ class Method:
         self.is_synthetic = is_synthetic
 
         self.documentation: bytes | None = None
+        self.deprecated = False
+        self.parameters: list[Method.Parameter] = []
+        self.throws: list["Class"] = []
 
     def __repr__(self) -> str:
         arg_types_str = ", ".join(map(str, self.arg_types))
@@ -129,3 +141,46 @@ class Method:
     def __str__(self) -> str:
         arg_types_str = ",".join(map(str, self.arg_types))
         return f"method({self.name!s}:({arg_types_str}){self.ret_type})"
+
+    class Parameter:
+        """
+        Information about a formal method parameter.
+
+        Attributes
+        ----------
+        index: int
+            The index of the parameter.
+        name: str | None
+            The name of the parameter, as declared in the source code.
+            If `None`, then no name exists in source code (AKA it is compiler-generated).
+        is_final: bool
+            If the parameter is final.
+        is_synthetic: bool
+            If the parameter is synthetic.
+        is_mandated: bool
+            If the parameter is mandated, meaing it was implicitly declared in the
+            source code.
+        """
+
+        __slots__ = ("index", "name", "is_final", "is_synthetic", "is_mandated")
+
+        def __init__(
+                self, index: int, name: str | None,
+                *,
+                is_final:     bool = False,
+                is_synthetic: bool = False,
+                is_mandated:  bool = False,
+        ) -> None:
+            self.index = index
+            self.name = name
+            self.is_final = is_final
+            self.is_synthetic = is_synthetic
+            self.is_mandated = is_mandated
+
+        def __repr__(self) -> str:
+            return f"<Method.Paramter(index={self.index}, name={self.name!r})>"
+
+        def __str__(self) -> str:
+            if self.name is not None:
+                return f"parameter({self.index}:{self.name!s})"
+            return f"parameter({self.index})"

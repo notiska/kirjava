@@ -91,7 +91,7 @@ class TestTypes(unittest.TestCase):
         self.assertFalse(void_t.assignable(void_t))
         self.assertFalse(top_t.assignable(void_t))
 
-        self.assertFalse(reserved_t.assignable(reserved_t))
+        self.assertTrue(reserved_t.assignable(reserved_t))
         self.assertFalse(reserved_t.assignable(top_t))
 
         self.assertTrue(primitive_t.assignable(primitive_t))
@@ -113,25 +113,25 @@ class TestTypes(unittest.TestCase):
         self.assertFalse(short_t.assignable(int_t))
 
         self.assertTrue(long_t.assignable(long_t))
-        self.assertTrue(long_t.assignable(byte_t))
-        self.assertTrue(long_t.assignable(int_t))
+        self.assertFalse(long_t.assignable(byte_t))
+        self.assertFalse(long_t.assignable(int_t))
         self.assertFalse(int_t.assignable(long_t))
         self.assertFalse(long_t.assignable(boolean_t))
 
         self.assertTrue(float_t.assignable(float_t))
-        self.assertTrue(float_t.assignable(byte_t))
-        self.assertTrue(float_t.assignable(int_t))
-        self.assertTrue(float_t.assignable(long_t))
+        self.assertFalse(float_t.assignable(byte_t))
+        self.assertFalse(float_t.assignable(int_t))
+        self.assertFalse(float_t.assignable(long_t))
         self.assertFalse(int_t.assignable(float_t))
         self.assertFalse(float_t.assignable(boolean_t))
         self.assertFalse(long_t.assignable(float_t))
         self.assertFalse(float_t.assignable(double_t))
 
         self.assertTrue(double_t.assignable(double_t))
-        self.assertTrue(double_t.assignable(byte_t))
-        self.assertTrue(double_t.assignable(int_t))
-        self.assertTrue(double_t.assignable(long_t))
-        self.assertTrue(double_t.assignable(float_t))
+        self.assertFalse(double_t.assignable(byte_t))
+        self.assertFalse(double_t.assignable(int_t))
+        self.assertFalse(double_t.assignable(long_t))
+        self.assertFalse(double_t.assignable(float_t))
         self.assertFalse(int_t.assignable(double_t))
         self.assertFalse(double_t.assignable(boolean_t))
         self.assertFalse(long_t.assignable(double_t))
@@ -143,10 +143,11 @@ class TestTypes(unittest.TestCase):
 
         self.assertTrue(uninitialized_t.assignable(uninitialized_t))
         self.assertTrue(uninitialized_t.assignable(Uninitialized(0)))
+        self.assertTrue(uninitialized_t.assignable(uninitialized_this_t))
         self.assertTrue(Uninitialized(0).assignable(Uninitialized(0)))
         self.assertFalse(Uninitialized(0).assignable(uninitialized_t))
         self.assertFalse(Uninitialized(0).assignable((Uninitialized(1))))
-        self.assertFalse(uninitialized_t.assignable(uninitialized_this_t))
+        self.assertFalse(Uninitialized(0).assignable(uninitialized_this_t))
 
         self.assertTrue(uninitialized_this_t.assignable(uninitialized_this_t))
         self.assertFalse(uninitialized_this_t.assignable(uninitialized_t))
@@ -193,3 +194,16 @@ class TestTypes(unittest.TestCase):
         self.assertFalse(Array(object_t).assignable(int_array_t))
         self.assertFalse(Array(class_t).assignable(Array(object_t)))
         self.assertFalse(Array.nested(class_t, 2).assignable(Array(object_t)))
+
+    def test_assignability_implicit(self) -> None:
+        self.assertTrue(long_t.assignable(byte_t, implicit=True))
+        self.assertTrue(long_t.assignable(int_t, implicit=True))
+
+        self.assertTrue(float_t.assignable(byte_t, implicit=True))
+        self.assertTrue(float_t.assignable(int_t, implicit=True))
+        self.assertTrue(float_t.assignable(long_t, implicit=True))
+
+        self.assertTrue(double_t.assignable(byte_t, implicit=True))
+        self.assertTrue(double_t.assignable(int_t, implicit=True))
+        self.assertTrue(double_t.assignable(long_t, implicit=True))
+        self.assertTrue(double_t.assignable(float_t, implicit=True))

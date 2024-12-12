@@ -35,6 +35,7 @@ assert sizeof(float) == 4, "float is not 4 bytes"
 assert sizeof(double) == 8, "double is not 8 bytes"
 
 
+# FIXME: Reverse required. <- wtf does this mean Iska, come on?
 cdef class u8:
 
     cdef uint8_t value
@@ -1247,7 +1248,6 @@ cpdef f32 _le_unpack_f32(bytes data):
     cdef uint8_t *cdata = <uint8_t*>data
     cdef uint8_t[4] swap = [cdata[3], cdata[2], cdata[1], cdata[0]]
     return f32((<float*>swap)[0])
-
 
 
 cpdef bytes _be_pack_f32(f32 value):

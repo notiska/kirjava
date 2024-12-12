@@ -294,6 +294,8 @@ class UTF8Info(ConstInfo):
 
     Methods
     -------
+    encode(value: str) -> Self
+        Encodes a string value into a UTF8 constant.
     decode(self) -> str
         Decodes the UTF8 bytes into a string.
     """
@@ -309,6 +311,14 @@ class UTF8Info(ConstInfo):
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
         length, = unpack_H(stream.read(2))
         return cls(stream.read(length))
+
+    @classmethod
+    def encode(cls, value: str) -> Self:
+        """
+        Encodes a string value into a UTF8 constant.
+        """
+
+        return cls(value.encode("utf-8").replace(b"\x00", b"\xc0\x80"))
 
     def __init__(self, value: bytes) -> None:  # TODO: Automatic string encoding.
         super().__init__()
@@ -396,7 +406,7 @@ class IntegerInfo(ConstInfo):
     def deref(self, pool: "ConstPool") -> None:
         ...
 
-    def lift(self) -> Result[Integer]:
+    def lift(self) -> Result[Integer[Self]]:
         lifted = Integer(self.value)
         lifted.info = self
         return Ok(lifted)
@@ -461,7 +471,7 @@ class FloatInfo(ConstInfo):
     def deref(self, pool: "ConstPool") -> None:
         ...
 
-    def lift(self) -> Result[Float]:
+    def lift(self) -> Result[Float[Self]]:
         lifted = Float(self.value)
         lifted.info = self
         return Ok(lifted)
@@ -583,7 +593,7 @@ class DoubleInfo(ConstInfo):
     def deref(self, pool: "ConstPool") -> None:
         ...
 
-    def lift(self) -> Result[Double]:
+    def lift(self) -> Result[Double[Self]]:
         lifted = Double(self.value)
         lifted.info = self
         return Ok(lifted)
@@ -654,7 +664,7 @@ class ClassInfo(ConstInfo):
         if isinstance(self.name, ConstIndex):
             self.name = pool[self.name.index]
 
-    def lift(self) -> Result[ClassConst]:
+    def lift(self) -> Result[ClassConst[Self]]:
         with Result[ClassConst]() as result:
             lifted = ClassConst(self.get_type().unwrap_into(result))
             lifted.info = self
@@ -734,7 +744,7 @@ class StringInfo(ConstInfo):
         if isinstance(self.value, ConstIndex):
             self.value = pool[self.value.index]
 
-    def lift(self) -> Result[String]:
+    def lift(self) -> Result[String[Self]]:
         with Result[String]() as result:
             if not isinstance(self.value, UTF8Info):
                 return result.err(TypeError(f"value {self.value!s} is not a UTF8 constant"))
@@ -1300,7 +1310,7 @@ class MethodHandleInfo(ConstInfo):
         if isinstance(self.ref, ConstIndex):
             self.ref = pool[self.ref.index]
 
-    def lift(self) -> Result[MethodHandle]:
+    def lift(self) -> Result[MethodHandle[Self]]:
         with Result[MethodHandle]() as result:
             field = False
 
@@ -1411,7 +1421,7 @@ class MethodTypeInfo(ConstInfo):
         if isinstance(self.descriptor, ConstIndex):
             self.descriptor = pool[self.descriptor.index]
 
-    def lift(self) -> Result[MethodType]:
+    def lift(self) -> Result[MethodType[Self]]:
         with Result[MethodType]() as result:
             if not isinstance(self.descriptor, UTF8Info):
                 return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))

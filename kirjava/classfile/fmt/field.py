@@ -21,7 +21,7 @@ from ..desc import parse_field_descriptor
 from ..version import JAVA_1_0, Version
 from ..._compat import Self
 from ...backend import Result
-from ...model.class_.field import Field
+from ...model import Class, Field, Linker, Method
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
@@ -97,7 +97,7 @@ class FieldInfo:
 
     visit(self, visitor: FieldInfoVisitor) -> None
         Calls a visitor on this field.
-    lift(self) -> Field
+    lift(self, linker: Linker, *, strict: bool = True) -> Field
         Creates a lifted field from this field info.
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
         Writes this field to the binary stream.
@@ -266,9 +266,16 @@ class FieldInfo:
             visitor.visit_attribute(attribute)
         visitor.visit_end(self)
 
-    def lift(self) -> Result[Field]:
+    def lift(self, linker: Linker, *, strict: bool = True) -> Result[Field[Self]]:
         """
         Creates a lifted field from this field info.
+
+        Parameters
+        ----------
+        linker: Linker
+            The linker to use to resolve references.
+        strict: bool
+            Whether to return a value upon encountering non-critical errors.
         """
 
         with Result[Field]() as result:
@@ -277,8 +284,8 @@ class FieldInfo:
             if not isinstance(self.descriptor, UTF8Info):
                 return result.err(TypeError(f"descriptor {self.descriptor!s} is not a UTF8 constant"))
 
-            field = Field(
-                self.name.decode(), parse_field_descriptor(self.descriptor.decode()).unwrap_into(result),
+            lifted = Field(
+                self.name.decode(), parse_field_descriptor(self.descriptor.decode(), strict=strict).unwrap_into(result),
                 is_public=self.is_public,
                 is_private=self.is_private,
                 is_protected=self.is_protected,
@@ -290,14 +297,14 @@ class FieldInfo:
                 is_enum=self.is_enum,
             )
 
-            # FIXME: Link for individual attributes?
+            seen = set()
             for attribute in self.attributes:
-                if isinstance(attribute, Documentation) and field.documentation is None:
-                    field.documentation = attribute.doc
-                elif isinstance(attribute, ConstantValue) and field.value is None:
-                    field.value = attribute.value.lift().into(result).value
+                if type(attribute) in seen:
+                    continue
+                seen.add(type(attribute))
+                attribute.lift(linker, self, lifted).unwrap_into(result, reraise=strict)
 
-            return result.ok(field)
+            return result.ok(lifted)
         return result
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
@@ -359,6 +366,28 @@ class ConstantValue(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ConstantValue) and self.value == other.value
+
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        required = False
+
+        with Result[Class | Field | Method]() as result:
+            if not isinstance(parent, FieldInfo):
+                result.err(TypeError(f"constant value on wrong element {parent!s}"))
+                return result.ok(lifted)
+
+            # Basically saying that this attribute is required to be correct if the field is static and final.
+            required = parent.is_static and parent.is_final
+
+            assert isinstance(lifted, Field), "lifting field info to non-field"
+            value = self.value.lift().unwrap_into(result)
+            if lifted.type.verification() != value.type.verification():
+                raise TypeError(f"value type {value.type!s} is not field type {lifted.type!s}")
+            lifted.value = value
+            return result.ok(lifted)
+
+        if required:
+            return result  # Allows an empty result to be returned if this is required, as it would be a critical error.
+        return result.ok(lifted)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_HIH(

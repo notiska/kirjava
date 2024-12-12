@@ -75,14 +75,13 @@ class PushConstant(Instruction):
         with Result["Frame"]() as result:
             frame.push(self.constant.type.verification())
             return result.ok(frame)
-        frame.push(top_t)
-        return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             frame.pop(self.constant.type.verification()).into(result)
             return result.ok(frame)
-        with result:
+        with result:  # .verification() threw exception, so top_t it is.
             frame.pop(top_t).into(result)
         return result.ok(frame)
 
@@ -286,8 +285,7 @@ class LoadConstant(Instruction):
         with Result["Frame"]() as result:
             frame.push(self.info.lift().unwrap_into(result).type.verification())
             return result.ok(frame)
-        frame.push(top_t)
-        return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -484,8 +482,10 @@ class Pop(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(top_t).into(result)
-        return result.ok(frame)
+            # FIXME: Check if it's a wide type?
+            frame.pop(top_t).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         frame.push(top_t)
@@ -532,8 +532,8 @@ class Pop2(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(top_t).into(result)
-            frame.pop(top_t).into(result)
+            frame.pop(top_t).unwrap_into(result)
+            frame.pop(top_t).unwrap_into(result)
         return result.ok(frame)
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
@@ -580,7 +580,10 @@ class Dup(Instruction):
         return isinstance(other, Dup)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
-        return frame.dup()
+        with Result["Frame"]() as result:
+            frame.dup().unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup()
@@ -624,7 +627,10 @@ class DupX1(Instruction):
         return isinstance(other, DupX1)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
-        return frame.dup_x1()
+        with Result["Frame"]() as result:
+            frame.dup_x1().unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup_x1()
@@ -668,7 +674,10 @@ class DupX2(Instruction):
         return isinstance(other, DupX2)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
-        return frame.dup_x2()
+        with Result["Frame"]() as result:
+            frame.dup_x2().unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup_x2()
@@ -712,7 +721,10 @@ class Dup2(Instruction):
         return isinstance(other, Dup2)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
-        return frame.dup2()
+        with Result["Frame"]() as result:
+            frame.dup2().unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup2()
@@ -762,7 +774,10 @@ class Dup2X1(Instruction):
         return isinstance(other, Dup2X1)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
-        return frame.dup2_x1()
+        with Result["Frame"]() as result:
+            frame.dup2_x1().unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(Self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup2_x1()
@@ -801,7 +816,10 @@ class Dup2X2(Instruction):
         return isinstance(other, Dup2X2)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
-        return frame.dup2_x2()
+        with Result["Frame"]() as result:
+            frame.dup2_x2().unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup2_x2()
@@ -840,10 +858,13 @@ class Swap(Instruction):
         return isinstance(other, Swap)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
-        return frame.swap()
+        with Result["Frame"]() as result:
+            frame.swap().unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
-        return frame.swap()
+        return frame.rswap()
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

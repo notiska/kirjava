@@ -64,10 +64,11 @@ class ArrayLoad(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(int_t).into(result)
-            frame.pop(Array(self.type)).into(result)
+            frame.pop(int_t).unwrap_into(result)
+            frame.pop(Array(self.type)).unwrap_into(result)
             frame.push(self.type)
-        return result.ok(frame)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -145,10 +146,11 @@ class ArrayStore(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(self.type).into(result)
-            frame.pop(int_t).into(result)
-            frame.pop(Array(self.type)).into(result)
-        return result.ok(frame)
+            frame.pop(self.type).unwrap_into(result)
+            frame.pop(int_t).unwrap_into(result)
+            frame.pop(Array(self.type)).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -292,10 +294,11 @@ class NewArray(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(int_t).into(result)
+            frame.pop(int_t).unwrap_into(result)
             # TODO: Report error on invalid tag.
             frame.push(Array(self.type))
-        return result.ok(frame)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -387,13 +390,12 @@ class ANewArray(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(int_t).into(result)
+            frame.pop(int_t).unwrap_into(result)
             if not isinstance(self.classref, ClassInfo):
-                result.err(TypeError(f"class ref {self.classref!s} is not a class constant"))
-                frame.push(Array(reference_t))
-            else:
-                frame.push(Array(self.classref.get_type().unwrap_into(result, reference_t)))
-        return result.ok(frame)
+                raise TypeError(f"class ref {self.classref!s} is not a class constant")
+            frame.push(Array(self.classref.get_type().unwrap_into(result)))
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -496,20 +498,18 @@ class MultiANewArray(Instruction):
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             for _ in range(self.dimensions):
-                frame.pop(int_t).into(result)
+                frame.pop(int_t).unwrap_into(result)
+            # TODO: ^^ verify JVM behaviour when there are more dimensions than the type can provide.
 
-            item = None
             if not isinstance(self.classref, ClassInfo):
-                result.err(TypeError(f"class ref {self.classref!s} is not a class constant"))
-            else:
-                item = self.classref.get_type().into(result).value
-            if item is None or not isinstance(item, Array):
-                # At the very least, we can assume that this array has `self.dimensions` number of dimensions.
-                # TODO: ^^ verify JVM behaviour when there are more dimensions than the type can provide.
-                item = Array.nested(top_t, self.dimensions)
+                raise TypeError(f"class ref {self.classref!s} is not a class constant")
+            item = self.classref.get_type().unwrap_into(result)
+            if not isinstance(item, Array):
+                raise TypeError(f"type {item!s} is not an array type")
             frame.push(item)
 
-        return result.ok(frame)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -519,6 +519,7 @@ class MultiANewArray(Instruction):
             else:
                 item = self.classref.get_type().into(result).value
             if item is None or not isinstance(item, Array):
+                # At the very least, we can assume that this array has `self.dimensions` number of dimensions.
                 item = Array.nested(top_t, self.dimensions)
             frame.pop(item).into(result)
 
@@ -612,9 +613,10 @@ class ArrayLength(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(array_t).into(result)
+            frame.pop(array_t).unwrap_into(result)
             frame.push(int_t)
-        return result.ok(frame)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:

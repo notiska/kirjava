@@ -7,15 +7,18 @@ __all__ = (
 )
 
 import typing
-from typing import Optional
+from typing import Any, Generic, Optional
+
+from ..._compat import TypeVar
 
 if typing.TYPE_CHECKING:
     from ..values import Constant
     from ..types import Type
-    from ...classfile import FieldInfo
+
+T = TypeVar("T", default=Any)
 
 
-class Field:
+class Field(Generic[T]):
     """
     A Java field model.
 
@@ -23,8 +26,8 @@ class Field:
     ----------
     access: str
         A pretty access flag string.
-    info: FieldInfo | None
-        The field info that this field was generated from.
+    info: T | None
+        The info that this field was generated from.
     name: str
         The name of the field.
     type: Type
@@ -49,6 +52,8 @@ class Field:
         If the field is an enum.
     documentation: bytes | None
         Any associated documentation for this field.
+    deprecated: bool
+        Whether this field is marked as deprecated.
     value: Constant | None
         If applicable, a constant value. Only stored with `static final` fields.
     """
@@ -58,7 +63,7 @@ class Field:
         "name", "type",
         "is_public", "is_private", "is_protected", "is_static", "is_final",
         "is_volatile", "is_transient", "is_synthetic", "is_enum",
-        "documentation", "value",
+        "documentation", "deprecated", "value",
     )
 
     @property
@@ -77,8 +82,7 @@ class Field:
         return " ".join(filter(None, access))
 
     def __init__(
-            self,
-            name: str, type_: "Type",
+            self, name: str, type: "Type",
             *,
             is_public:    bool = False,
             is_private:   bool = False,
@@ -90,10 +94,10 @@ class Field:
             is_synthetic: bool = False,
             is_enum:      bool = False,
     ) -> None:
-        self.info: Optional["FieldInfo"] = None
+        self.info: T | None = None
 
         self.name = name
-        self.type = type_
+        self.type = type
 
         self.is_public = is_public
         self.is_private = is_private
@@ -106,6 +110,7 @@ class Field:
         self.is_enum = is_enum
 
         self.documentation: bytes | None = None
+        self.deprecated = False
         self.value: Optional["Constant"] = None
 
     def __repr__(self) -> str:

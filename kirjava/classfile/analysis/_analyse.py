@@ -9,8 +9,8 @@ __all__ = (
 import operator
 import typing
 from collections import defaultdict
-from typing import TypeVar
 
+from ..._compat import TypeVar
 from ...backend import Result
 
 if typing.TYPE_CHECKING:
@@ -28,4 +28,5 @@ def analyse(analysis: T, graph: "Graph") -> Result[T]:
 
     with Result[T].meta(__name__) as result:
         ...
+
     return result

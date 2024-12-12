@@ -15,7 +15,6 @@ The JVM bytecode disassembler.
 import typing
 from io import BytesIO
 from operator import itemgetter
-from typing import TypeVar
 
 from .block import MutableBlock
 from .edge import Catch, Edge, Fallthrough, Jump as JumpEdge, Ret as RetEdge, Switch as SwitchEdge
@@ -23,6 +22,7 @@ from ..fmt import ClassFile, ConstPool, RawInfo
 from ..fmt.method import Code, MethodInfo
 from ..insns import Instruction
 from ..insns.flow import Jsr, Jump as JumpInsn, Ret as RetInsn, Return, Switch as SwitchInsn
+from ..._compat import TypeVar
 from ...backend import Result
 
 if typing.TYPE_CHECKING:
@@ -76,8 +76,11 @@ def disassemble(graph: T, method: MethodInfo, cf: ClassFile | None) -> Result[T]
 
         edge: Edge  # To make mypy happy.
 
-        # FIXME: Added indices won't be 100% accurate which could result in minor differences.
-        pool = cf.pool if cf is not None else ConstPool()
+        if cf is None:
+            result.warn("No class file provided, disassembly may not be accurate.")
+            pool = ConstPool()
+        else:
+            pool = cf.pool
         stream = BytesIO()
         offset = 0
 
@@ -122,6 +125,7 @@ def disassemble(graph: T, method: MethodInfo, cf: ClassFile | None) -> Result[T]
                     stops.add(offset)
 
         # TODO: Debug information such as LNT, LVT and LVTT.
+        # TODO: Stack map table information as well.
 
     # ------------------------------------------------------------ #
     #                 Create blocks and jump edges                 #

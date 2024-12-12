@@ -76,14 +76,15 @@ class LoadLocal(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.get(self.index, self.type).into(result)
-            frame.push(self.type)
-        return result.ok(frame)
+            item = frame.get(self.index, self.type).unwrap_into(result)
+            frame.push(item)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(self.type).into(result)
-            frame.rget(self.index, self.type)
+            item = frame.pop(self.type).unwrap_into(result, self.type)
+            frame.rget(self.index, item)
         return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -131,13 +132,14 @@ class StoreLocal(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            # FIXME: Return addresses.
-            frame.pop(self.type).into(result)
-            frame.set(self.index, self.type)
-        return result.ok(frame)
+            item = frame.pop(self.type).unwrap_into(result)
+            frame.set(self.index, item).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
+            # FIXME: Item might already exist in local slot? Could try to take that into account.
             frame.rset(self.index, self.type)
             frame.push(self.type)
         return result.ok(frame)
@@ -294,9 +296,10 @@ class IInc(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.get(self.index, int_t).into(result)
-            frame.set(self.index, int_t)
-        return result.ok(frame)
+            frame.get(self.index, int_t).unwrap_into(result)
+            frame.set(self.index, int_t).unwrap_into(result)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -474,13 +477,13 @@ istore = StoreLocalAt.make(0x36, "istore", type=int_t)
 lstore = StoreLocalAt.make(0x37, "lstore", type=long_t)
 fstore = StoreLocalAt.make(0x38, "fstore", type=float_t)
 dstore = StoreLocalAt.make(0x39, "dstore", type=double_t)
-astore = StoreLocalAt.make(0x3a, "astore", type=reference_t)
+astore = StoreLocalAt.make(0x3a, "astore", type=Union(reference_t, return_address_t))
 
 istore_w = StoreLocalAtWide.make(0x36, "istore_w", type=int_t)
 lstore_w = StoreLocalAtWide.make(0x37, "lstore_w", type=long_t)
 fstore_w = StoreLocalAtWide.make(0x38, "fstore_w", type=float_t)
 dstore_w = StoreLocalAtWide.make(0x39, "dstore_w", type=double_t)
-astore_w = StoreLocalAtWide.make(0x3a, "astore_w", type=reference_t)
+astore_w = StoreLocalAtWide.make(0x3a, "astore_w", type=Union(reference_t, return_address_t))
 
 istore_0 = StoreLocal.make(0x3b, "istore_0", type=int_t, index=0)
 istore_1 = StoreLocal.make(0x3c, "istore_1", type=int_t, index=1)
@@ -502,10 +505,10 @@ dstore_1 = StoreLocal.make(0x48, "dstore_1", type=double_t, index=1)
 dstore_2 = StoreLocal.make(0x49, "dstore_2", type=double_t, index=2)
 dstore_3 = StoreLocal.make(0x4a, "dstore_3", type=double_t, index=3)
 
-astore_0 = StoreLocal.make(0x4b, "astore_0", type=reference_t, index=0)
-astore_1 = StoreLocal.make(0x4c, "astore_1", type=reference_t, index=1)
-astore_2 = StoreLocal.make(0x4d, "astore_2", type=reference_t, index=2)
-astore_3 = StoreLocal.make(0x4e, "astore_3", type=reference_t, index=3)
+astore_0 = StoreLocal.make(0x4b, "astore_0", type=Union(reference_t, return_address_t), index=0)
+astore_1 = StoreLocal.make(0x4c, "astore_1", type=Union(reference_t, return_address_t), index=1)
+astore_2 = StoreLocal.make(0x4d, "astore_2", type=Union(reference_t, return_address_t), index=2)
+astore_3 = StoreLocal.make(0x4e, "astore_3", type=Union(reference_t, return_address_t), index=3)
 
 iinc       = IInc.make(0x84, "iinc")
 iinc_w = IIncWide.make(0x84, "iinc_w")

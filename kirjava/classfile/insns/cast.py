@@ -56,9 +56,10 @@ class ValueCast(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(self.type_in).into(result)
+            frame.pop(self.type_in).unwrap_into(result)
             frame.push(self.type_out)
-        return result.ok(frame)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -158,16 +159,12 @@ class CheckCast(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(reference_t).into(result)
-            item = None
+            frame.pop(reference_t).unwrap_into(result)
             if not isinstance(self.classref, ClassInfo):
-                result.err(TypeError(f"class ref {self.classref!s} is not a class constant"))
-            else:
-                item = self.classref.get_type().into(result).value
-            if item is None or not isinstance(item, Verification):
-                item = reference_t  # FIXME: object_t, is it possible to have an array type in checkcast?
-            frame.push(item)
-        return result.ok(frame)
+                raise TypeError(f"class ref {self.classref!s} is not a class constant")
+            frame.push(self.classref.get_type().unwrap_into(result).verification())
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -177,7 +174,7 @@ class CheckCast(Instruction):
             else:
                 item = self.classref.get_type().into(result).value
             if item is None or not isinstance(item, Verification):
-                item = reference_t
+                item = reference_t  # FIXME: object_t, is it possible to have an array type in checkcast?
             frame.pop(item).into(result)
             frame.push(reference_t)
         return result.ok(frame)
@@ -254,9 +251,10 @@ class InstanceOf(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.pop(reference_t).into(result)
+            frame.pop(reference_t).unwrap_into(result)
             frame.push(int_t)
-        return result.ok(frame)
+            return result.ok(frame)
+        return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:

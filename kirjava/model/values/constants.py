@@ -14,46 +14,42 @@ __all__ = (
 Models for constant values.
 """
 
-import typing
 from enum import Enum
-from typing import Iterable, Optional
+from typing import Any, Generic, Iterable
 
 from . import Value
 # Mypy gets confused if we do import * because `Class` is also defined in types, so yea...
 from ..types import (
-    byte_t, char_t, class_t, double_t, float_t, int_t, long_t, method_handle_t, method_type_t, null_t, short_t,
+    class_t, double_t, float_t, int_t, long_t, method_handle_t, method_type_t, null_t,
     string_t,
-    Array, Class as ClassType, Primitive, Reference, Type,
+    Array, Class as ClassType, Reference, Type,
 )
+from ..._compat import TypeVar
 from ...backend import f32, f64, i32, i64
 
-if typing.TYPE_CHECKING:
-    from ...classfile.fmt import (
-        ClassInfo, ConstInfo, DoubleInfo, FloatInfo, IntegerInfo, LongInfo, MethodHandleInfo, MethodTypeInfo,
-        StringInfo,
-    )
+T = TypeVar("T", default=Any)
 
 
-class Constant(Value):
+class Constant(Generic[T], Value):
     """
     A constant value.
 
     Attributes
     ----------
-    info: ConstInfo | None
+    info: T | None
         The constant info that this constant was generated from.
     """
 
     __slots__ = ("info",)
 
     def __init__(self) -> None:
-        self.info: Optional["ConstInfo"] = None
+        self.info: T | None = None
 
     def __hash__(self) -> int:
         raise NotImplementedError(f"hash() is not implemented for {type(self)!r}")
 
 
-class Null(Constant):
+class Null(Constant[None]):
     """
     A null constant.
     """
@@ -75,7 +71,7 @@ class Null(Constant):
         return hash(Null)  # FIXME: A better hash value?
 
 
-class Integer(Constant):
+class Integer(Constant[T]):
     """
     A 32-bit integer constant.
 
@@ -95,8 +91,6 @@ class Integer(Constant):
 
     def __init__(self, value: int | i32) -> None:
         super().__init__()
-        self.info: Optional["IntegerInfo"]
-
         if isinstance(value, int):
             value = i32(value)
         self._value = value
@@ -117,7 +111,7 @@ class Integer(Constant):
         return self._hash
 
 
-class Float(Constant):
+class Float(Constant[T]):
     """
     A 32-bit float constant.
 
@@ -137,8 +131,6 @@ class Float(Constant):
 
     def __init__(self, value: float | f32) -> None:
         super().__init__()
-        self.info: Optional["FloatInfo"]
-
         if isinstance(value, float):
             value = f32(value)
         self._value = value
@@ -160,7 +152,7 @@ class Float(Constant):
         return self._hash
 
 
-class Long(Constant):
+class Long(Constant[T]):
     """
     A 64-bit long constant.
 
@@ -180,8 +172,6 @@ class Long(Constant):
 
     def __init__(self, value: int | i64) -> None:
         super().__init__()
-        self.info: Optional["LongInfo"]
-
         if isinstance(value, int):
             value = i64(value)
         self._value = value
@@ -202,7 +192,7 @@ class Long(Constant):
         return self._hash
 
 
-class Double(Constant):
+class Double(Constant[T]):
     """
     A 64-bit double constant.
 
@@ -222,7 +212,6 @@ class Double(Constant):
 
     def __init__(self, value: float | f64) -> None:
         super().__init__()
-        self.info: Optional["DoubleInfo"]
 
         if isinstance(value, float):
             value = f64(value)
@@ -245,7 +234,7 @@ class Double(Constant):
         return self._hash
 
 
-class Class(Constant):
+class Class(Constant[T]):
     """
     A class constant.
 
@@ -277,8 +266,6 @@ class Class(Constant):
 
     def __init__(self, name_or_ref_type: str | Reference) -> None:
         super().__init__()
-        self.info: Optional["ClassInfo"]
-
         if isinstance(name_or_ref_type, str):
             name_or_ref_type = ClassType(name_or_ref_type)
         self._ref_type = name_or_ref_type
@@ -299,7 +286,7 @@ class Class(Constant):
         return self._hash
 
 
-class String(Constant):  # TODO: Note: string constants might escape the method, could be modified via reflection.
+class String(Constant[T]):  # TODO: Note: string constants might escape the method, could be modified via reflection.
     """
     A string constant.
 
@@ -319,8 +306,6 @@ class String(Constant):  # TODO: Note: string constants might escape the method,
 
     def __init__(self, value: str) -> None:
         super().__init__()
-        self.info: Optional["StringInfo"]
-
         self._value = value
         self._hash = hash(value)
 
@@ -340,7 +325,7 @@ class String(Constant):  # TODO: Note: string constants might escape the method,
         return self._hash
 
 
-class MethodHandle(Constant):
+class MethodHandle(Constant[T]):
     """
     A method handle constant.
 
@@ -387,8 +372,6 @@ class MethodHandle(Constant):
             self, kind: "MethodHandle.Kind", class_: Class, name: str, arg_types: Iterable[Type], ret_type: Type,
     ) -> None:
         super().__init__()
-        self.info: Optional["MethodHandleInfo"]
-
         self._kind = kind
         self._class = class_
         self._name = name
@@ -443,7 +426,7 @@ class MethodHandle(Constant):
         INVOKE_INTERFACE   = 9
 
 
-class MethodType(Constant):
+class MethodType(Constant[T]):
     """
     A method type constant.
 
@@ -469,8 +452,6 @@ class MethodType(Constant):
 
     def __init__(self, arg_types: Iterable[Type], ret_type: Type) -> None:
         super().__init__()
-        self.info: Optional["MethodTypeInfo"]
-
         self._arg_types = tuple(arg_types)
         self._ret_type = ret_type
         self._hash = hash((self._arg_types, ret_type))

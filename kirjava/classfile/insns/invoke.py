@@ -12,7 +12,7 @@ from copy import deepcopy
 from typing import IO
 
 from . import Instruction
-# from .stack import New
+from .stack import New
 from .._struct import *
 from ..desc import parse_method_descriptor
 from ..fmt.constants import (
@@ -20,7 +20,9 @@ from ..fmt.constants import (
 )
 from ..._compat import Self
 from ...backend import Result
-from ...model.types import error_t, object_t, reference_t, throwable_t, void_t
+from ...model.types import (
+    error_t, object_t, reference_t, throwable_t, uninitialized_t, uninitialized_this_t, void_t, Uninitialized,
+)
 # from ...model.types import *
 # from ...model.values.constants import Null
 
@@ -81,15 +83,11 @@ class InvokeVirtual(Instruction):
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             if not isinstance(self.methodref, MethodrefInfo):
-                # TODO: Some educated guesses, at the very least.
                 raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
-            # TODO: Early throw from inability to parse descriptor, etc. Could make another educated guess?
             arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
             for arg_type in arg_types:
-                # FIXME: If `.verification()` raises, we'll exit early with no result. Could just push top_t instead.
-                frame.pop(arg_type.verification()).into(result)
-            # TODO: Same as with fields - arrays, reference_t?
-            frame.pop(self.methodref.get_class().unwrap_into(result, object_t)).into(result)
+                frame.pop(arg_type.verification()).unwrap_into(result)
+            frame.pop(self.methodref.get_class().unwrap_into(result)).unwrap_into(result)
             if ret_type is not void_t:
                 frame.push(ret_type.verification())
             return result.ok(frame)
@@ -98,10 +96,14 @@ class InvokeVirtual(Instruction):
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             if not isinstance(self.methodref, MethodrefInfo):
+                # TODO: Some educated guesses, at the very least.
                 raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
+            # TODO: Early throw from inability to parse descriptor, etc. Could make another educated guess?
             arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
             if ret_type is not void_t:
+                # FIXME: If `.verification()` raises, we'll exit early with no result. Could just push top_t instead.
                 frame.pop(ret_type.verification()).into(result)
+            # TODO: Same as with fields - arrays, reference_t?
             frame.push(self.methodref.get_class().unwrap_into(result, object_t))
             for arg_type in reversed(arg_types):
                 frame.push(arg_type.verification())
@@ -213,10 +215,24 @@ class InvokeSpecial(Instruction):
         with Result["Frame"]() as result:
             if not isinstance(self.methodref, MethodrefInfo):
                 raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
+            name = self.methodref.get_name().into(result).value
             arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
             for arg_type in arg_types:
-                frame.pop(arg_type.verification()).into(result)
-            frame.pop(self.methodref.get_class().unwrap_into(result, object_t)).into(result)
+                frame.pop(arg_type.verification()).unwrap_into(result)
+
+            if name == "<init>" and ret_type is void_t:
+                item = frame.pop(uninitialized_t).unwrap_into(result)
+                assert isinstance(item, Uninitialized), "uninitialised type expected"  # Should not happen.
+                if item == uninitialized_this_t:
+                    frame.substitute(item, frame.this)
+                elif isinstance(item.source, New):
+                    new = item.source.classref.lift().unwrap_into(result).ref_type.verification()
+                    frame.substitute(item, new)
+                else:
+                    raise TypeError(f"don't know how to handle uninitialised source {source!s}")
+                return result.ok(frame)
+
+            frame.pop(self.methodref.get_class().unwrap_into(result)).unwrap_into(result)
             if ret_type is not void_t:
                 frame.push(ret_type.verification())
             return result.ok(frame)
@@ -357,7 +373,7 @@ class InvokeStatic(Instruction):
                 raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
             arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
             for arg_type in arg_types:
-                frame.pop(arg_type.verification()).into(result)
+                frame.pop(arg_type.verification()).unwrap_into(result)
             if ret_type is not void_t:
                 frame.push(ret_type.verification())
             return result.ok(frame)
@@ -481,12 +497,11 @@ class InvokeInterface(Instruction):
         with Result["Frame"]() as result:
             if not isinstance(self.methodref, MethodrefInfo):
                 raise TypeError(f"method ref {self.methodref!s} is not an interface method ref constant")
-            # TODO: On failure, could use count to work out arg count? Also all of the above todos.
             arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
             for arg_type in arg_types:
-                frame.pop(arg_type.verification()).into(result)
+                frame.pop(arg_type.verification()).unwrap_into(result)
             # TODO: `.interface()` call on class type, or generify to object by default.
-            frame.pop(self.methodref.get_class().unwrap_into(result, object_t)).into(result)
+            frame.pop(self.methodref.get_class().unwrap_into(result)).unwrap_into(result)
             if ret_type is not void_t:
                 frame.push(ret_type.verification())
             return result.ok(frame)
@@ -496,6 +511,7 @@ class InvokeInterface(Instruction):
         with Result["Frame"]() as result:
             if not isinstance(self.methodref, MethodrefInfo):
                 raise TypeError(f"method ref {self.methodref!s} is not a method ref constant")
+            # TODO: On failure, could use count to work out arg count? Also all of the above todos.
             arg_types, ret_type = self.methodref.get_types().unwrap_into(result)
             if ret_type is not void_t:
                 frame.pop(ret_type.verification()).into(result)
@@ -625,7 +641,7 @@ class InvokeDynamic(Instruction):
                 raise TypeError(f"indy ref {self.indyref!s} is not an invoke dynamic constant")
             arg_types, ret_type = self.indyref.get_types().unwrap_into(result)
             for arg_type in arg_types:
-                frame.pop(arg_type.verification()).into(result)
+                frame.pop(arg_type.verification()).unwrap_into(result)
             if ret_type is not void_t:
                 frame.push(ret_type.verification())
             return result.ok(frame)
@@ -637,7 +653,7 @@ class InvokeDynamic(Instruction):
                 raise TypeError(f"method ref {self.indyref!s} is not an invoke dynamic constant")
             arg_types, ret_type = self.indyref.get_types().unwrap_into(result)
             if ret_type is not void_t:
-                frame.pop(ret_type.verification()).into(result)
+                frame.pop(ret_type.verification()).unwrap_into(result)
             for arg_type in reversed(arg_types):
                 frame.push(arg_type.verification())
             return result.ok(frame)

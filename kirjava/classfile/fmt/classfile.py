@@ -22,7 +22,7 @@ from .._struct import *
 from ..version import *
 from ..._compat import Self
 from ...backend import Result
-from ...model import Class, Linker
+from ...model import Class, Field, Linker, Method
 
 if typing.TYPE_CHECKING:
     from ..visitor import ClassFileVisitor
@@ -106,7 +106,7 @@ class ClassFile:
 
     visit(self, visitor: ClassFileVisitor) -> None
         Calls a visitor on this class file.
-    lift(self, linker: Linker) -> Result[Class]
+    lift(self, linker: Linker, *, strict: bool = True) -> Result[Class]
         Creates a lifted class from this class file.
     write(self, stream: IO[bytes]) -> None
         Writes this class file to a binary stream.
@@ -323,7 +323,7 @@ class ClassFile:
             visitor.visit_attribute(attribute)
         visitor.visit_end(self)
 
-    def lift(self, linker: Linker) -> Result[Class]:
+    def lift(self, linker: Linker, *, strict: bool = True) -> Result[Class[Self]]:
         """
         Creates a lifted class from this class file.
 
@@ -331,6 +331,8 @@ class ClassFile:
         ----------
         linker: Linker
             The linker to use to resolve references.
+        strict: bool
+            Whether to return a value upon encountering non-critical errors.
         """
 
         with Result[Class].meta(__name__, self) as result:
@@ -350,12 +352,12 @@ class ClassFile:
                     return result.err(TypeError(f"interface {interface!s} is not a class constant"))
                 interfaces.append(interface.lift().unwrap_into(result))
 
-            return result.ok(Class(
+            lifted = Class(
                 this.name,
                 linker.find_class(super_.name).unwrap_into(result) if super_ is not None else None,
                 [linker.find_class(interface.name).unwrap_into(result) for interface in interfaces],
-                [field.lift().unwrap_into(result) for field in self.fields],
-                [method.lift().unwrap_into(result) for method in self.methods],
+                [field.lift(linker, strict=strict).unwrap_into(result) for field in self.fields],
+                [method.lift(linker, strict=strict).unwrap_into(result) for method in self.methods],
                 is_public=self.is_public,
                 is_final=self.is_final,
                 is_super=self.is_super,
@@ -365,7 +367,17 @@ class ClassFile:
                 is_annotation=self.is_annotation,
                 is_enum=self.is_enum,
                 is_module=self.is_module,
-            ))
+            )
+
+            seen = set()
+            for attribute in self.attributes:
+                # Ensure we only parse the first attribute of a certain type, as the JVM does iirc.
+                if type(attribute) in seen:
+                    continue
+                seen.add(type(attribute))
+                attribute.lift(linker, self, lifted).unwrap_into(result, reraise=strict)
+
+            return result.ok(lifted)
         return result
 
     def write(self, stream: IO[bytes]) -> None:
@@ -1221,6 +1233,16 @@ class SourceFile(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SourceFile) and self.file == other.file
 
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        with Result[Class | Field | Method]() as result:
+            if not isinstance(parent, ClassFile):
+                raise TypeError(f"source file on wrong element {parent!s}")
+            elif not isinstance(self.file, UTF8Info):
+                raise TypeError(f"source file {self.file!s} is not a UTF8 constant")
+            assert isinstance(lifted, Class), "lifting class file to non-class"
+            lifted.source = self.file.decode()
+        return result.ok(lifted)
+
     def write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None:
         stream.write(pack_HIH(pool.add(self.name or UTF8Info(self.tag)), 2 + len(self.extra), pool.add(self.file)))
         stream.write(self.extra)
@@ -1265,6 +1287,14 @@ class SourceDebugExtension(AttributeInfo):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SourceDebugExtension) and self.extension == other.extension
+
+    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        with Result[Class | Field | Method]() as result:
+            if not isinstance(parent, ClassFile):
+                raise TypeError(f"source debug extension on wrong element {parent!s}")
+            assert isinstance(lifted, Class), "lifting class file to non-class"
+            lifted.debug_ext = self.extension
+        return result.ok(lifted)
 
     def write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None:
         stream.write(pack_HI(pool.add(self.name or UTF8Info(self.tag)), len(self.extra) + len(self.extension)))
