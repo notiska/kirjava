@@ -17,7 +17,7 @@ if typing.TYPE_CHECKING:
     from .types import Type
 
 
-class Loader:  # TODO: Default loaders as well, i.e. jar, zip, dir, etc...
+class Loader:
     """
     A class loader base.
 

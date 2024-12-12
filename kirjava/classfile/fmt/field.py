@@ -17,7 +17,7 @@ from typing import IO, Iterable
 from .attribute import AttributeInfo, Documentation
 from .constants import *
 from .._struct import *
-from ..desc import parse_field_descriptor
+from ..desc import parse_field_descriptor, to_descriptor
 from ..version import JAVA_1_0, Version
 from ..._compat import Self
 from ...backend import Result
@@ -94,6 +94,8 @@ class FieldInfo:
     -------
     read(stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]
         Reads a field from the binary stream.
+    lower(field: Field) -> Result[Self]
+        Lowers the provided field into a field info.
 
     visit(self, visitor: FieldInfoVisitor) -> None
         Calls a visitor on this field.
@@ -137,6 +139,26 @@ class FieldInfo:
                 for _ in range(attr_count)
             ]
             return result.ok(cls(access, pool[name_index], pool[desc_index], attributes))
+        return result
+
+    @classmethod
+    def lower(cls, field: Field) -> Result[Self]:
+        """
+        Lowers the provided field into a field info.
+        """
+
+        with Result[Self]() as result:
+            self = cls(0, UTF8Info.encode(field.name), UTF8Info.encode(to_descriptor(field.type).unwrap_into(result)))
+            self.is_public = field.is_public
+            self.is_private = field.is_private
+            self.is_protected = field.is_protected
+            self.is_static = field.is_static
+            self.is_final = field.is_final
+            self.is_volatile = field.is_volatile
+            self.is_transient = self.is_transient
+            self.is_synthetic = field.is_synthetic
+            self.is_enum = field.is_enum
+            return result.ok(self)
         return result
 
     @property
@@ -328,7 +350,7 @@ class FieldInfo:
 
 # ---------------------------------------- Attributes ---------------------------------------- #
 
-class ConstantValue(AttributeInfo):
+class ConstantValue(AttributeInfo[FieldInfo, Field]):
     """
     The ConstantValue attribute.
 
@@ -367,10 +389,10 @@ class ConstantValue(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ConstantValue) and self.value == other.value
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+    def lift(self, linker: Linker, parent: FieldInfo, lifted: Field) -> Result[Field]:
         required = False
 
-        with Result[Class | Field | Method]() as result:
+        with Result[Field]() as result:
             if not isinstance(parent, FieldInfo):
                 result.err(TypeError(f"constant value on wrong element {parent!s}"))
                 return result.ok(lifted)

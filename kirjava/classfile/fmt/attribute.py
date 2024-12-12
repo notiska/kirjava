@@ -15,13 +15,13 @@ JVM class file shared attributes.
 
 import typing
 from os import SEEK_CUR, SEEK_SET
-from typing import IO, Iterable, Iterator, Union
+from typing import Any, Generic, IO, Iterable, Iterator, Union
 
 from .annotation import Annotation, TypeAnnotation
 from .constants import ConstInfo, UTF8Info
 from .._struct import *
 from ..version import *
-from ..._compat import Self
+from ..._compat import Self, TypeVar
 from ...backend import Err, Ok, Result
 from ...model import Class, Field, Linker, Method
 
@@ -31,8 +31,18 @@ if typing.TYPE_CHECKING:
     from .method import Code, MethodInfo
     from .pool import ConstPool
 
+P = TypeVar("P", default=Any)
+L = TypeVar(
+    "L",
+    # FIXME: Is the a better way to do this lol?
+    Class, Field, Method,
+    Class | Field, Class | Method, Field | Method,
+    Class | Field | Method,
+    default=Class | Field | Method,
+)
 
-class AttributeInfo:
+
+class AttributeInfo(Generic[P, L]):
     """
     An attribute_info struct.
 
@@ -62,12 +72,14 @@ class AttributeInfo:
 
     Methods
     -------
-    lookup(tag: bytes) -> type[AttributeInfo] | None
+    lookup(tag: bytes) -> type[AttributeInfo[Any, Class | Field | Method]] | None
         Looks up an attribute type by tag/name.
     read(stream: IO[bytes], version: Version, pool: ConstPool, location: int) -> Result[AttributeInfo]
         Reads an attribute from a binary stream.
+    lower(lifted: L, parent: P) -> Result[Self | None]
+        Lowers information from the provided class/field/method.
 
-    lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]
+    lift(self, linker: Linker, parent: P, lifted: L) -> Result[L]
         Applies information in this attribute to the lifted object.
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
         Writes this attribute to a binary stream.
@@ -97,7 +109,7 @@ class AttributeInfo:
         raise NotImplementedError(f"_read() is not implemented for {cls!r}")
 
     @classmethod
-    def lookup(cls, tag: bytes) -> type["AttributeInfo"] | None:
+    def lookup(cls, tag: bytes) -> type["AttributeInfo[Any, Any]"] | None:
         """
         Looks up an attribute type by tag/name.
 
@@ -191,6 +203,21 @@ class AttributeInfo:
 
         return result
 
+    @classmethod
+    def lower(cls, lifted: L, parent: P) -> Result[Self | None]:
+        """
+        Lowers information from the provided class/field/method.
+
+        Returns
+        -------
+        Result[Self | None]
+            A result containing the lowered attribute, or `None` if the information
+            was not present on the lifted object.
+        """
+
+        # raise NotImplementedError(f"lower() is not implemented for {type(self)!r}")
+        return Ok(None)  # TODO: ^^^^
+
     def __init__(self, name: ConstInfo | None = None, extra: bytes = b"") -> None:
         self.name = name
         self.extra = extra
@@ -211,7 +238,7 @@ class AttributeInfo:
 
         ...  # raise NotImplementedError(f"_write() is not implemented for {type(self)!r}")
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+    def lift(self, linker: Linker, parent: P, lifted: L) -> Result[L]:
         """
         Applies information in this attribute to the lifted object.
 
@@ -219,14 +246,14 @@ class AttributeInfo:
         ----------
         linker: Linker
             The linker to use to resolve references.
-        parent: object
+        parent: P
             The parent containing this attribute.
-        lifted: Class | Field | Method
+        lifted: L
             The lifted object to populate.
 
         Returns
         -------
-        Result[Class | Field | Method]
+        Result[L]
             A result containing the same lifted object, with any metadata or errors.
         """
 
@@ -261,7 +288,7 @@ class AttributeInfo:
         stream.seek(end, SEEK_SET)
 
 
-class RawInfo(AttributeInfo):
+class RawInfo(AttributeInfo[Any, Class | Field | Method]):
     """
     A raw attribute.
 
@@ -299,7 +326,7 @@ class RawInfo(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RawInfo) and self.name == other.name and self.data == other.data
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+    def lift(self, linker: Linker, parent: Any, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
         return Ok(lifted).err(ValueError("raw attribute"))
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
@@ -308,7 +335,7 @@ class RawInfo(AttributeInfo):
         stream.write(self.extra)
 
 
-class Documentation(AttributeInfo):
+class Documentation(AttributeInfo[Any, Class | Field | Method]):
     """
     The Documentation attribute.
 
@@ -346,7 +373,7 @@ class Documentation(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Documentation) and self.doc == other.doc
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+    def lift(self, linker: Linker, parent: Any, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
         lifted.documentation = self.doc  # TODO: Check for already existing documentation?
         return Ok(lifted)
 
@@ -356,7 +383,7 @@ class Documentation(AttributeInfo):
         stream.write(self.extra)
 
 
-class Synthetic(AttributeInfo):
+class Synthetic(AttributeInfo[Any, Class | Field | Method]):
     """
     The Synthetic attribute.
 
@@ -383,7 +410,7 @@ class Synthetic(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Synthetic)
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+    def lift(self, linker: Linker, parent: Any, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
         return Ok(lifted)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
@@ -439,7 +466,7 @@ class Signature(AttributeInfo):
         stream.write(self.extra)
 
 
-class Deprecated(AttributeInfo):
+class Deprecated(AttributeInfo[Any, Class | Field | Method]):
     """
     The Deprecated attribute.
 
@@ -467,11 +494,11 @@ class Deprecated(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Deprecated)
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+    def lift(self, linker: Linker, parent: Any, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
         # Only marks as deprecated if the lifted object was generated from the parent. This is to avoid `Deprecated` on
         # a `Record.ComponentInfo` marking the `Class` as deprecated, for example. Would do an instance check, but can't
         # import the required classes in this file.
-        lifted.deprecated = lifted.info == parent
+        lifted.deprecated = lifted.info == parent  # FIXME: Better solution?
         return Ok(lifted)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:

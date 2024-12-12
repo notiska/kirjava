@@ -24,7 +24,7 @@ from .attribute import AttributeInfo
 from .constants import *
 from .stackmap import StackMapFrame
 from .._struct import *
-from ..desc import parse_method_descriptor
+from ..desc import parse_method_descriptor, to_descriptor
 from ..insns import Instruction
 from ..version import *
 from ..._compat import Self
@@ -117,6 +117,8 @@ class MethodInfo:
     -------
     read(stream: IO[bytes], version: Version, pool: ConstPool) -> Result[Self]
         Reads a method from a binary stream.
+    lower(method: Method) -> Result[Self]
+        Lowers the provided method into a method info.
 
     visit(self, visitor: MethodInfoVisitor) -> None
         Calls a visitor on this method.
@@ -163,6 +165,32 @@ class MethodInfo:
                 for _ in range(attr_count)
             ]
             return result.ok(cls(access, pool[name_index], pool[desc_index], attributes))
+        return result
+
+    @classmethod
+    def lower(cls, method: Method) -> Result[Self]:
+        """
+        Lowers the provided method into a method info.
+        """
+
+        with Result[Self]() as result:
+            self = cls(
+                0, UTF8Info.encode(method.name),
+                UTF8Info.encode(to_descriptor(method.arg_types, method.ret_type).unwrap_into(result)),
+            )
+            self.is_public = method.is_public
+            self.is_private = method.is_private
+            self.is_protected = method.is_protected
+            self.is_static = method.is_static
+            self.is_final = method.is_final
+            self.is_synchronized = method.is_synchronized
+            self.is_bridge = method.is_bridge
+            self.is_varargs = method.is_varargs
+            self.is_native = method.is_native
+            self.is_abstract = method.is_abstract
+            self.is_strict = method.is_strictfp
+            self.is_synthetic = method.is_synthetic
+            return result.ok(self)
         return result
 
     @property
@@ -396,7 +424,7 @@ class MethodInfo:
 
 # ---------------------------------------- Attributes ---------------------------------------- #
 
-class Code(AttributeInfo):
+class Code(AttributeInfo[MethodInfo, Method]):
     """
     The Code attribute.
 
@@ -603,7 +631,7 @@ class Code(AttributeInfo):
             return iter((self.start_pc, self.end_pc, self.handler_pc, self.class_))
 
 
-class StackMapTable(AttributeInfo):
+class StackMapTable(AttributeInfo[Code, Method]):
     """
     The StackMapTable attribute.
 
@@ -669,7 +697,7 @@ class StackMapTable(AttributeInfo):
             frame.write(stream, pool)
 
 
-class Exceptions(AttributeInfo):
+class Exceptions(AttributeInfo[MethodInfo, Method]):
     """
     The Exceptions attribute.
 
@@ -733,8 +761,8 @@ class Exceptions(AttributeInfo):
     def __len__(self) -> int:
         return len(self.exceptions)
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
-        with Result[Class | Field | Method]() as result:
+    def lift(self, linker: Linker, parent: MethodInfo, lifted: Method) -> Result[Method]:
+        with Result[Method]() as result:
             if not isinstance(parent, MethodInfo):
                 raise TypeError(f"exceptions on wrong element {parent!s}")
             assert isinstance(lifted, Method), "lifting method info to non-method"
@@ -764,7 +792,7 @@ class Exceptions(AttributeInfo):
         stream.write(self.extra)
 
 
-class LineNumberTable(AttributeInfo):
+class LineNumberTable(AttributeInfo[Code, Method]):
     """
     The LineNumberTable attribute.
 
@@ -828,10 +856,12 @@ class LineNumberTable(AttributeInfo):
     def __len__(self) -> int:
         return len(self.lines)
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
-        result = Ok(lifted)
-        if not isinstance(parent, Code):
-            result.err(TypeError(f"line number table on wrong element {parent!s}"))
+    def lift(self, linker: Linker, parent: Code, lifted: Method) -> Result[Method]:
+        with Result[Method]() as result:
+            if not isinstance(parent, Code):
+                raise TypeError(f"line number table on wrong element {parent!s}")
+            # TODO
+            return result.ok(lifted)
         return result
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
@@ -877,7 +907,7 @@ class LineNumberTable(AttributeInfo):
             return iter((self.start_pc, self.line))
 
 
-class LocalVariableTable(AttributeInfo):
+class LocalVariableTable(AttributeInfo[Code, Method]):
     """
     The LocalVariableTable attribute.
 
@@ -942,10 +972,11 @@ class LocalVariableTable(AttributeInfo):
     def __len__(self) -> int:
         return len(self.locals)
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
-        result = Ok(lifted)
-        if not isinstance(parent, Code):
-            result.err(TypeError(f"local variable table on wrong element {parent!s}"))
+    def lift(self, linker: Linker, parent: Code, lifted: Method) -> Result[Method]:
+        with Result[Method]() as result:
+            if not isinstance(parent, Code):
+                raise TypeError(f"local variable table on wrong element {parent!s}")
+            return result.ok(lifted)
         return result
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
@@ -1009,7 +1040,7 @@ class LocalVariableTable(AttributeInfo):
             return iter((self.start_pc, self.length, self.name, self.descriptor, self.index))
 
 
-class LocalVariableTypeTable(AttributeInfo):
+class LocalVariableTypeTable(AttributeInfo[Code, Method]):
     """
     The LocalVariableTypeTable attribute.
 
@@ -1074,10 +1105,11 @@ class LocalVariableTypeTable(AttributeInfo):
     def __len__(self) -> int:
         return len(self.locals)
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
-        result = Ok(lifted)
-        if not isinstance(parent, Code):
-            result.err(TypeError(f"local variable type table on wrong element {parent!s}"))
+    def lift(self, linker: Linker, parent: Code, lifted: Method) -> Result[Method]:
+        with Result[Method]() as result:
+            if not isinstance(parent, Code):
+                raise TypeError(f"local variable type table on wrong element {parent!s}")
+            return result.ok(lifted)
         return result
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
@@ -1140,7 +1172,7 @@ class LocalVariableTypeTable(AttributeInfo):
             return iter((self.start_pc, self.length, self.name, self.signature, self.index))
 
 
-class AnnotationDefault(AttributeInfo):
+class AnnotationDefault(AttributeInfo[MethodInfo, Method]):
     """
     An AnnotationDefault attribute primitive.
 
@@ -1182,7 +1214,7 @@ class AnnotationDefault(AttributeInfo):
         self.default.write(stream, pool)
 
 
-class MethodParameters(AttributeInfo):
+class MethodParameters(AttributeInfo[MethodInfo, Method]):
     """
     The MethodParameters attribute.
 
@@ -1246,8 +1278,8 @@ class MethodParameters(AttributeInfo):
     def __len__(self) -> int:
         return len(self.params)
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
-        with Result[Class | Field | Method]() as result:
+    def lift(self, linker: Linker, parent: MethodInfo, lifted: Method) -> Result[Method]:
+        with Result[Method]() as result:
             if not isinstance(parent, MethodInfo):
                 raise TypeError(f"method parameters on wrong element {parent!s}")
             assert isinstance(lifted, Method), "lifting method info to non-method"
@@ -1349,7 +1381,7 @@ class MethodParameters(AttributeInfo):
             )
 
 
-class RuntimeVisibleParameterAnnotations(AttributeInfo):
+class RuntimeVisibleParameterAnnotations(AttributeInfo[MethodInfo, Method]):
     """
     A RuntimeVisibleParameterAnnotations attribute primitive.
 
@@ -1417,7 +1449,7 @@ class RuntimeVisibleParameterAnnotations(AttributeInfo):
             annotation.write(stream, pool)
 
 
-class RuntimeInvisibleParameterAnnotations(AttributeInfo):
+class RuntimeInvisibleParameterAnnotations(AttributeInfo[MethodInfo, Method]):
     """
     A RuntimeInvisibleParameterAnnotations attribute primitive.
 

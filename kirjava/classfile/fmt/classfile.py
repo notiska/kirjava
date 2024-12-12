@@ -103,6 +103,8 @@ class ClassFile:
     -------
     read(stream: IO[bytes], reader: Reader) -> Result[Self]
         Reads a class file from a binary stream.
+    lower(class_: Class) -> Result[Self]
+        Lowers the provided class into a class file.
 
     visit(self, visitor: ClassFileVisitor) -> None
         Calls a visitor on this class file.
@@ -167,6 +169,33 @@ class ClassFile:
                 access, pool[this_index], pool[super_index] if super_index else None, interfaces,
                 fields, methods, attributes,
             ))
+        return result
+
+    @classmethod
+    def lower(cls, class_: Class) -> Result[Self]:
+        """
+        Lowers the provided class into a class file.
+        """
+
+        with Result[Self]() as result:
+            self = cls(
+                JAVA_MAX,  # Assume maximum Java version by default. The user can change this later.
+                ConstPool(), 0, ClassInfo(UTF8Info.encode(class_.name)),
+                ClassInfo(UTF8Info.encode(class_.super.name)) if class_.super is not None else None,
+                [ClassInfo(UTF8Info.encode(interface.name)) for interface in class_.interfaces],
+                [FieldInfo.lower(field).unwrap_into(result) for field in class_.fields],
+                [MethodInfo.lower(method).unwrap_into(result) for method in class_.methods],
+            )
+            self.is_public = class_.is_public
+            self.is_final = class_.is_final
+            self.is_super = class_.is_super
+            self.is_interface = class_.is_interface
+            self.is_abstract = class_.is_abstract
+            self.is_synthetic = class_.is_synthetic
+            self.is_annotation = class_.is_annotation
+            self.is_enum = class_.is_enum
+            self.is_module = class_.is_module
+            return result.ok(self)
         return result
 
     @property
@@ -422,7 +451,7 @@ class ClassFile:
 
 # ---------------------------------------- Attributes ---------------------------------------- #
 
-class BootstrapMethods(AttributeInfo):
+class BootstrapMethods(AttributeInfo[ClassFile, Class]):
     """
     The BootstrapMethods attribute.
 
@@ -536,7 +565,7 @@ class BootstrapMethods(AttributeInfo):
             return iter((self.ref, self.args))
 
 
-class NestHost(AttributeInfo):
+class NestHost(AttributeInfo[ClassFile, Class]):
     """
     The NestHost attribute.
 
@@ -580,7 +609,7 @@ class NestHost(AttributeInfo):
         stream.write(self.extra)
 
 
-class NestMembers(AttributeInfo):
+class NestMembers(AttributeInfo[ClassFile, Class]):
     """
     The NestMembers attribute.
 
@@ -655,7 +684,7 @@ class NestMembers(AttributeInfo):
         stream.write(self.extra)
 
 
-class PermittedSubclasses(AttributeInfo):
+class PermittedSubclasses(AttributeInfo[ClassFile, Class]):
     """
     The PermittedSubclasses attribute.
 
@@ -728,7 +757,7 @@ class PermittedSubclasses(AttributeInfo):
         stream.write(self.extra)
 
 
-class InnerClasses(AttributeInfo):
+class InnerClasses(AttributeInfo[ClassFile, Class]):
     """
     The InnerClasses attribute.
 
@@ -1028,7 +1057,7 @@ class InnerClasses(AttributeInfo):
             )
 
 
-class EnclosingMethod(AttributeInfo):
+class EnclosingMethod(AttributeInfo[ClassFile, Class]):
     """
     The EnclosingMethod attribute.
 
@@ -1078,7 +1107,7 @@ class EnclosingMethod(AttributeInfo):
         stream.write(self.extra)
 
 
-class Record(AttributeInfo):
+class Record(AttributeInfo[ClassFile, Class]):
     """
     The Record attribute.
 
@@ -1194,7 +1223,7 @@ class Record(AttributeInfo):
             )
 
 
-class SourceFile(AttributeInfo):
+class SourceFile(AttributeInfo[ClassFile, Class]):
     """
     The SourceFile attribute.
 
@@ -1233,8 +1262,8 @@ class SourceFile(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SourceFile) and self.file == other.file
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
-        with Result[Class | Field | Method]() as result:
+    def lift(self, linker: Linker, parent: ClassFile, lifted: Class) -> Result[Class]:
+        with Result[Class]() as result:
             if not isinstance(parent, ClassFile):
                 raise TypeError(f"source file on wrong element {parent!s}")
             elif not isinstance(self.file, UTF8Info):
@@ -1248,7 +1277,7 @@ class SourceFile(AttributeInfo):
         stream.write(self.extra)
 
 
-class SourceDebugExtension(AttributeInfo):
+class SourceDebugExtension(AttributeInfo[ClassFile, Class]):
     """
     The SourceDebugExtension attribute.
 
@@ -1288,8 +1317,8 @@ class SourceDebugExtension(AttributeInfo):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SourceDebugExtension) and self.extension == other.extension
 
-    def lift(self, linker: Linker, parent: object, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
-        with Result[Class | Field | Method]() as result:
+    def lift(self, linker: Linker, parent: ClassFile, lifted: Class) -> Result[Class]:
+        with Result[Class]() as result:
             if not isinstance(parent, ClassFile):
                 raise TypeError(f"source debug extension on wrong element {parent!s}")
             assert isinstance(lifted, Class), "lifting class file to non-class"
@@ -1302,7 +1331,7 @@ class SourceDebugExtension(AttributeInfo):
         stream.write(self.extra)
 
 
-class Module(AttributeInfo):
+class Module(AttributeInfo[ClassFile, Class]):
     """
     The Module attribute.
 
@@ -1738,7 +1767,7 @@ class Module(AttributeInfo):
             return isinstance(other, Module.Provide) and self.interface == other.interface and self.impls == other.impls
 
 
-class ModulePackages(AttributeInfo):
+class ModulePackages(AttributeInfo[ClassFile, Class]):
     """
     The ModulePackages attribute.
 
@@ -1814,7 +1843,7 @@ class ModulePackages(AttributeInfo):
         stream.write(self.extra)
 
 
-class ModuleMainClass(AttributeInfo):
+class ModuleMainClass(AttributeInfo[ClassFile, Class]):
     """
     The ModuleMainClass attribute.
 
