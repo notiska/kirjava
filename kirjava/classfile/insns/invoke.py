@@ -229,7 +229,7 @@ class InvokeSpecial(Instruction):
                     new = item.source.classref.lift().unwrap_into(result).ref_type.verification()
                     frame.substitute(item, new)
                 else:
-                    raise TypeError(f"don't know how to handle uninitialised source {source!s}")
+                    raise TypeError(f"don't know how to handle uninitialised source {item.source!s}")
                 return result.ok(frame)
 
             frame.pop(self.methodref.get_class().unwrap_into(result)).unwrap_into(result)
