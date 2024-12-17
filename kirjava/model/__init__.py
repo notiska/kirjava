@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "class_", "linker", "types", "values",
+    "annotation", "class_", "linker", "types", "values",
+    "Annotation",
     "Class", "Field", "Method",
     "Linker",
 )
@@ -10,6 +11,7 @@ __all__ = (
 Internal models for language and interpreter constructs.
 """
 
-from . import class_, linker, types, values
+from . import annotation, class_, linker, types, values
+from .annotation import Annotation
 from .class_ import Class, Field, Method
 from .linker import Linker

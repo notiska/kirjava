@@ -12,6 +12,7 @@ from typing import Any, Generic, Optional
 from ..._compat import TypeVar
 
 if typing.TYPE_CHECKING:
+    from ..annotation import Annotation
     from ..values import Constant
     from ..types import Type
 
@@ -52,8 +53,13 @@ class Field(Generic[T]):
         If the field is an enum.
     documentation: bytes | None
         Any associated documentation for this field.
+    synthetic: bool
+        Whether this field is marked as synthetic (via an attribute).
+        Not to be confused with `is_synthetic`, which is an access flag.
     deprecated: bool
         Whether this field is marked as deprecated.
+    annotations: list[Annotation]
+        Any annotations on this field.
     value: Constant | None
         If applicable, a constant value. Only stored with `static final` fields.
     """
@@ -63,7 +69,7 @@ class Field(Generic[T]):
         "name", "type",
         "is_public", "is_private", "is_protected", "is_static", "is_final",
         "is_volatile", "is_transient", "is_synthetic", "is_enum",
-        "documentation", "deprecated", "value",
+        "documentation", "synthetic", "deprecated", "annotations", "value",
     )
 
     @property
@@ -110,7 +116,9 @@ class Field(Generic[T]):
         self.is_enum = is_enum
 
         self.documentation: bytes | None = None
+        self.synthetic = False
         self.deprecated = False
+        self.annotations: list["Annotation"] = []
         self.value: Optional["Constant"] = None
 
     def __repr__(self) -> str:

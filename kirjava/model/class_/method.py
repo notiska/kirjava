@@ -12,8 +12,8 @@ from typing import Any, Generic, Iterable
 from ..._compat import TypeVar
 
 if typing.TYPE_CHECKING:
-    from . import Class
-    from ..types import Type
+    from ..annotation import Annotation
+    from ..types import Class, Type
 
 T = TypeVar("T", default=Any)
 
@@ -60,8 +60,13 @@ class Method(Generic[T]):
         If the method is synthetic.
     documentation: bytes | None
         Any associated documentation for this method.
+    synthetic: bool
+        Whether this method is marked as synthetic (via an attribute).
+        Not to be confused with `is_synthetic`, which is an access flag.
     deprecated: bool
         Whether this method is marked as deprecated.
+    annotations: list[Annotation]
+        Any annotations on this method.
     parameters: list[Method.Parameter]
         A list of formal parameter information.
     throws: list[Class]
@@ -73,7 +78,7 @@ class Method(Generic[T]):
         "name", "arg_types", "ret_type",
         "is_public", "is_private", "is_protected", "is_static", "is_final", "is_synchronized",
         "is_bridge", "is_varargs", "is_native", "is_abstract", "is_strictfp", "is_synthetic",
-        "documentation", "deprecated", "parameters", "throws",
+        "documentation", "synthetic", "deprecated", "annotations", "parameters", "throws",
     )
 
     @property
@@ -130,7 +135,9 @@ class Method(Generic[T]):
         self.is_synthetic = is_synthetic
 
         self.documentation: bytes | None = None
+        self.synthetic = False
         self.deprecated = False
+        self.annotations: list["Annotation"] = []
         self.parameters: list[Method.Parameter] = []
         self.throws: list["Class"] = []
 
@@ -160,9 +167,11 @@ class Method(Generic[T]):
         is_mandated: bool
             If the parameter is mandated, meaing it was implicitly declared in the
             source code.
+        annotations: list[Annotation]
+            Any annotations on this parameter.
         """
 
-        __slots__ = ("index", "name", "is_final", "is_synthetic", "is_mandated")
+        __slots__ = ("index", "name", "is_final", "is_synthetic", "is_mandated", "annotations")
 
         def __init__(
                 self, index: int, name: str | None,
@@ -176,6 +185,8 @@ class Method(Generic[T]):
             self.is_final = is_final
             self.is_synthetic = is_synthetic
             self.is_mandated = is_mandated
+
+            self.annotations: list["Annotation"] = []
 
         def __repr__(self) -> str:
             return f"<Method.Paramter(index={self.index}, name={self.name!r})>"

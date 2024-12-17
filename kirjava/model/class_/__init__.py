@@ -7,12 +7,16 @@ __all__ = (
     "Class", "Field", "Method",
 )
 
+import typing
 from typing import Any, Generic, Iterable, Optional
 
 from .field import Field
 from .method import Method
 from ..types import Class as ClassType, Interface, Type
 from ..._compat import TypeVar
+
+if typing.TYPE_CHECKING:
+    from ..annotation import Annotation
 
 T = TypeVar("T", default=Any)
 
@@ -32,7 +36,7 @@ class Class(Generic[T]):
     super: Class | None
         The direct superclass of this class.
     interfaces: list[Class]
-        The interfaces that this class implements.
+        The superinterfaces that this class implements.
     is_public: bool
         If the class is public.
     is_final: bool
@@ -57,12 +61,17 @@ class Class(Generic[T]):
         The methods in this class.
     documentation: bytes | None
         Any associated documentation for this class.
+    synthetic: bool
+        Whether this class is marked as synthetic (via an attribute).
+        Not to be confused with `is_synthetic`, which is an access flag.
     deprecated: bool
         Whether this class if marked as deprecated.
     source: str | None
         The source file this class was compiled from.
     debug_ext: bytes | None
         Any extended debug information for this class.
+    annotations: list[Annotation]
+        Any annotations on this class.
 
     Methods
     -------
@@ -82,7 +91,7 @@ class Class(Generic[T]):
         "is_synthetic", "is_annotation", "is_enum", "is_module",
         "super", "interfaces",
         "fields", "methods",
-        "documentation", "deprecated", "source", "debug_ext",
+        "documentation", "synthetic", "deprecated", "source", "debug_ext", "annotations",
     )
 
     @property
@@ -145,9 +154,11 @@ class Class(Generic[T]):
             self.methods.extend(methods)
 
         self.documentation: bytes | None = None
+        self.synthetic = False
         self.deprecated = False
         self.source: str | None = None
         self.debug_ext: bytes | None = None
+        self.annotations: list["Annotation"] = []
 
     def __repr__(self) -> str:
         interfaces_str = ", ".join(map(str, self.interfaces))

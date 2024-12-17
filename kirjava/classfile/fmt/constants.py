@@ -22,9 +22,9 @@ from ..desc import *
 from ..version import *
 from ..._compat import Self
 from ...backend import *
-from ...model.types import Class as ClassType, Reference, Type
+from ...model.types import Class as ClassType, Interface, Reference, Type
 from ...model.values.constants import (
-    Class as ClassConst, Double, Float, Integer, Long, MethodHandle, MethodType, String,
+    Class as ClassConst, Constant, Double, Float, Integer, Long, MethodHandle, MethodType, String,
 )
 
 if typing.TYPE_CHECKING:
@@ -59,6 +59,8 @@ class ConstInfo:
         Reads a constant info from a binary stream.
     lookup(tag: int) -> type[ConstInfo] | None
         Looks up a constant info type by tag.
+    lower(constant: Constant) -> ConstInfo
+        Lowers the provided constant into a constant info.
 
     copy(self, deep: bool = True) -> ConstInfo
         Creates a copy of this constant.
@@ -130,6 +132,84 @@ class ConstInfo:
             raise ValueError(f"unknown constant pool tag {tag}")
         info = subclass._read(stream, pool)
         info.index = len(pool)
+        return info
+
+    @classmethod
+    def lower(cls, constant: Constant) -> "ConstInfo":
+        """
+        Lowers the provided constant into a constant info.
+        """
+
+        info: ConstInfo
+
+        if isinstance(constant, Integer):
+            info = IntegerInfo(constant.value)
+        elif isinstance(constant, Float):
+            info = FloatInfo(constant.value)
+        elif isinstance(constant, Long):
+            info = LongInfo(constant.value)
+        elif isinstance(constant, Double):
+            info = DoubleInfo(constant.value)
+        elif isinstance(constant, ClassConst):
+            ref_type = constant.ref_type
+            if isinstance(ref_type, ClassType):
+                info = ClassInfo(UTF8Info.encode(ref_type.name))
+            else:
+                info = ClassInfo(UTF8Info.encode(to_descriptor(ref_type, strict=False).unwrap()))
+        elif isinstance(constant, String):
+            info = StringInfo(UTF8Info.encode(constant.value))
+        elif isinstance(constant, MethodHandle):
+            classref = cls.lower(constant.class_)
+            assert isinstance(classref, ClassInfo), "class constant was not lowered to a class info"
+
+            if constant.kind in (
+                MethodHandle.Kind.GET_FIELD, MethodHandle.Kind.GET_STATIC,
+                MethodHandle.Kind.PUT_FIELD, MethodHandle.Kind.PUT_STATIC,
+            ):
+                info = MethodHandleInfo(
+                    constant.kind.value, FieldrefInfo(classref, NameAndTypeInfo(
+                        UTF8Info.encode(constant.name),
+                        UTF8Info.encode(to_descriptor(constant.ret_type, strict=False).unwrap()),
+                    )),
+                )
+            elif constant.kind in (MethodHandle.Kind.INVOKE_VIRTUAL, MethodHandle.Kind.NEW_INVOKE_SPECIAL):
+                info = MethodHandleInfo(
+                    constant.kind.value, MethodrefInfo(classref, NameAndTypeInfo(
+                        UTF8Info.encode(constant.name),
+                        UTF8Info.encode(to_descriptor(constant.arg_types, constant.ret_type, strict=False).unwrap()),
+                    )),
+                )
+            elif constant.kind in (
+                MethodHandle.Kind.INVOKE_STATIC, MethodHandle.Kind.INVOKE_SPECIAL, MethodHandle.Kind.INVOKE_INTERFACE,
+            ):
+                if isinstance(constant.class_.ref_type, Interface):
+                    info = MethodHandleInfo(
+                        constant.kind.value, InterfaceMethodrefInfo(classref, NameAndTypeInfo(
+                            UTF8Info.encode(constant.name),
+                            UTF8Info.encode(to_descriptor(constant.arg_types, constant.ret_type, strict=False).unwrap()),
+                        )),
+                    )
+                else:
+                    info = MethodHandleInfo(
+                        constant.kind.value, MethodrefInfo(classref, NameAndTypeInfo(
+                            UTF8Info.encode(constant.name),
+                            UTF8Info.encode(to_descriptor(constant.arg_types, constant.ret_type, strict=False).unwrap()),
+                        )),
+                    )
+            else:
+                raise NotImplementedError(f"don't know how to handle MH kind {constant.kind!s}")
+        elif isinstance(constant, MethodType):
+            info = MethodTypeInfo(UTF8Info.encode(to_descriptor(
+                constant.arg_types, constant.ret_type, strict=False,
+            ).unwrap()))
+        else:
+            raise NotImplementedError(f"don't know how to lower {constant!s}")
+
+        # We want to prefer returning the original constant info, if possible, in order to conserve original constant
+        # pool indices and other information.
+        if constant.info == info:
+            assert isinstance(constant.info, ConstInfo), "bad const info equality check"
+            return constant.info
         return info
 
     # @staticmethod
@@ -1313,6 +1393,7 @@ class MethodHandleInfo(ConstInfo):
     def lift(self) -> Result[MethodHandle[Self]]:
         with Result[MethodHandle]() as result:
             field = False
+            interface = False
 
             if self.kind in (
                 MethodHandleInfo.GET_FIELD, MethodHandleInfo.GET_STATIC,
@@ -1329,16 +1410,20 @@ class MethodHandleInfo(ConstInfo):
             ):
                 # Note that Java 8 and below does not allow this to be an interface method, but we can't check the
                 # version so we'll just be generous in this case.
-                if not isinstance(self.ref, (MethodrefInfo, InterfaceMethodrefInfo)):
+                if isinstance(self.ref, InterfaceMethodrefInfo):
+                    interface = True
+                # Need to keep both in this check for mypy to be happy, although note that it is actually a waste of
+                # time and code...
+                elif not isinstance(self.ref, (MethodrefInfo, InterfaceMethodrefInfo)):
                     return result.err(TypeError(f"reference {self.ref!s} is not a method or interface method reference"))
             else:
                 return result.err(ValueError(f"reference kind {self.kind} is not valid"))
 
-            class_ = self.ref.class_
+            classref = self.ref.class_
             name_and_type = self.ref.name_and_type
 
-            if not isinstance(class_, ClassInfo):
-                return result.err(TypeError(f"reference class {class_!s} is not a class constant"))
+            if not isinstance(classref, ClassInfo):
+                return result.err(TypeError(f"reference class {classref!s} is not a class constant"))
             if not isinstance(name_and_type, NameAndTypeInfo):
                 return result.err(TypeError(f"reference name and type {name_and_type!s} is not a name and type constant"))
 
@@ -1350,15 +1435,18 @@ class MethodHandleInfo(ConstInfo):
             if not isinstance(descriptor, UTF8Info):
                 return result.err(TypeError(f"reference descriptor {descriptor!s} is not a UTF8 constant"))
 
+            class_ = classref.lift().unwrap_into(result)
+            if interface and isinstance(class_.ref_type, ClassType):
+                class_ = ClassConst(class_.ref_type.interface())
+                class_.info = classref
+
             if not field:
                 arg_types, ret_type = parse_method_descriptor(descriptor.decode()).unwrap_into(result)
             else:
                 arg_types = ()
                 ret_type = parse_field_descriptor(descriptor.decode()).unwrap_into(result)
 
-            lifted = MethodHandle(
-                MethodHandle.Kind(self.kind), class_.lift().unwrap_into(result), name.decode(), arg_types, ret_type,
-            )
+            lifted = MethodHandle(MethodHandle.Kind(self.kind), class_, name.decode(), arg_types, ret_type)
             lifted.info = self
             return result.ok(lifted)
         return result

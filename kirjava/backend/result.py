@@ -163,8 +163,11 @@ class Result(Generic[T]):
         self._messages: list[LogRecord] = []
 
     def __del__(self) -> None:
-        if self._logger is not None and self._filter is not None:
-            self._logger.removeFilter(self._filter)
+        try:
+            if self._logger is not None and self._filter is not None:
+                self._logger.removeFilter(self._filter)
+        except AttributeError:  # Weird, but it seems to occur. Might need to look more into __del__.
+            ...
 
     def __repr__(self) -> str:
         return f"<Result(value={self._value!r})>"

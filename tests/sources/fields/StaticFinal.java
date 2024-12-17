@@ -1,5 +1,5 @@
 /**
- * A test of static final fields for Kirjava.
+ * A test of static final fields for kirjava.
  */
 public class StaticFinal {
     public static final boolean TEST_BOOL = true;

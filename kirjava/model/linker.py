@@ -137,6 +137,7 @@ class Linker:
     def __iter__(self) -> Iterator[Loader]:
         return iter(self._loaders)
 
+    # FIXME: typing.overload for specifics. Needed in quite a few places actually.
     def __getitem__(self, key: int | str) -> Loader | Class:
         if isinstance(key, int):
             return self._loaders[key]
