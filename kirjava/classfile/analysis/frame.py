@@ -161,9 +161,9 @@ class Frame:
         return result
 
     def __init__(
-            self, stack: Iterable[Verification] | None = None,
-            locals:  Mapping[int, Verification] | None = None,
-            this: Class = object_t, super: Class | None = object_t, version: Version = JAVA_MAX,
+        self, stack: Iterable[Verification] | None = None,
+        locals:  Mapping[int, Verification] | None = None,
+        this: Class = object_t, super: Class | None = object_t, version: Version = JAVA_MAX,
     ) -> None:
         self.stack: list[Verification] = []
         self.locals: dict[int, Verification] = {}

@@ -772,9 +772,9 @@ class FullFrame(StackMapFrame):
         return cls(delta, locals_, stack)
 
     def __init__(
-            self, delta: int,
-            locals_: Iterable[VerificationTypeInfo] | None = None,
-            stack:   Iterable[VerificationTypeInfo] | None = None,
+        self, delta: int,
+        locals_: Iterable[VerificationTypeInfo] | None = None,
+        stack:   Iterable[VerificationTypeInfo] | None = None,
     ) -> None:
         self.delta = delta
         self.locals: list[VerificationTypeInfo] = []

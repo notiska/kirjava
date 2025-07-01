@@ -22,13 +22,14 @@ from ..version import JAVA_1_0, Version
 from ..._compat import Self
 from ...backend import Result
 from ...model import Class, Field, Linker, Method
+from ...visitor import *
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
-    from ..visitor import FieldInfoVisitor
+    # from .visitor import FIVisitor
 
 
-class FieldInfo:
+class FieldInfo(Visitable):
     """
     A field_info struct.
 
@@ -97,8 +98,6 @@ class FieldInfo:
     lower(field: Field) -> Result[Self]
         Lowers the provided field into a field info.
 
-    visit(self, visitor: FieldInfoVisitor) -> None
-        Calls a visitor on this field.
     lift(self, linker: Linker, *, strict: bool = True) -> Field
         Creates a lifted field from this field info.
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
@@ -148,7 +147,9 @@ class FieldInfo:
         """
 
         with Result[Self]() as result:
-            self = cls(0, UTF8Info.encode(field.name), UTF8Info.encode(to_descriptor(field.type).unwrap_into(result)))
+            self = cls(
+                0, UTF8Info.encode(field.name), UTF8Info.encode(to_descriptor(field.type).unwrap_into(result)),
+            )
             self.is_public = field.is_public
             self.is_private = field.is_private
             self.is_protected = field.is_protected
@@ -158,6 +159,12 @@ class FieldInfo:
             self.is_transient = self.is_transient
             self.is_synthetic = field.is_synthetic
             self.is_enum = field.is_enum
+
+            for subclass in AttributeInfo.supported(AttributeInfo.LOC_FIELD):
+                attribute = subclass.lower(field, self).unwrap_into(result)
+                if attribute is not None:
+                    self.attributes.append(attribute)
+
             return result.ok(self)
         return result
 
@@ -278,14 +285,11 @@ class FieldInfo:
     def __str__(self) -> str:
         return f"field_info(0x{self.access:04x},{self.name!s}:{self.descriptor!s})"
 
-    def visit(self, visitor: "FieldInfoVisitor") -> None:
-        """
-        Calls a visitor on this field.
-        """
-
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
         visitor.visit_start(self)
         for attribute in self.attributes:
-            visitor.visit_attribute(attribute)
+            # visitor.visit_attribute(self, attribute)
+            visitors.visit(attribute)
         visitor.visit_end(self)
 
     def lift(self, linker: Linker, *, strict: bool = True) -> Result[Field[Self]]:
@@ -375,6 +379,15 @@ class ConstantValue(AttributeInfo[FieldInfo, Field]):
             index, = unpack_H(stream.read(2))
             return result.ok(cls(pool[index]))
         return result
+
+    @classmethod
+    def lower(cls, lifted: Field, parent: FieldInfo) -> Result[Self | None]:
+        with Result[Self | None]() as result:
+            assert isinstance(lifted, Field), "lowering non-field to field info"
+            assert isinstance(parent, FieldInfo), "lowering field to non-field info"
+            if lifted.value is not None:
+                return result.ok(cls(ConstInfo.lower(lifted.value)))
+        return result.ok(None)
 
     def __init__(self, value: ConstInfo) -> None:
         super().__init__()

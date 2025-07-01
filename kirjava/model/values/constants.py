@@ -5,6 +5,7 @@ from __future__ import annotations
 __all__ = (
     "Constant",
     "Null",
+    "Boolean", "Byte", "Character", "Short",
     "Integer", "Float", "Long", "Double",
     "Class", "String",
     "MethodHandle", "MethodType",
@@ -15,17 +16,17 @@ Models for constant values.
 """
 
 from enum import Enum
-from typing import Any, Generic, Iterable
+from typing import Any, Generic, Iterable, SupportsFloat, SupportsInt
 
 from . import Value
 # Mypy gets confused if we do import * because `Class` is also defined in types, so yea...
 from ..types import (
-    class_t, double_t, float_t, int_t, long_t, method_handle_t, method_type_t, null_t,
-    string_t,
+    boolean_t, byte_t, char_t, class_t, double_t, float_t, int_t, long_t,
+    method_handle_t, method_type_t, null_t, short_t, string_t,
     Array, Class as ClassType, Reference, Type,
 )
 from ..._compat import TypeVar
-from ...backend import f32, f64, i32, i64
+from ...backend import f32, f64, i8, i16, i32, i64, u16
 
 T = TypeVar("T", default=Any)
 
@@ -71,6 +72,213 @@ class Null(Constant[None]):
         return hash(Null)  # FIXME: A better hash value?
 
 
+class Boolean(Constant[T]):
+    """
+    A boolean constant.
+
+    Attributes
+    ----------
+    value: bool
+        The value of this constant.
+
+    Methods
+    -------
+    as_integer(self) -> Integer[T]
+        Returns this constant as an integer constant.
+    """
+
+    __slots__ = ("_value", "_hash")
+
+    type = boolean_t
+
+    @property
+    def value(self) -> bool:
+        return self._value
+
+    def __init__(self, value: bool) -> None:
+        super().__init__()
+        self._value = value
+        self._hash = hash(value)
+
+    def __repr__(self) -> str:
+        if self.info is not None:
+            return f"<Boolean(info={self.info!s}, value={self._value})>"
+        return f"<Boolean(value={self._value})>"
+
+    def __str__(self) -> str:
+        return "true" if self._value else "false"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Boolean) and self._value == other._value
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def as_integer(self) -> "Integer[T]":
+        """
+        Returns this constant as an integer constant.
+        """
+
+        integer = Integer(i32(self._value))
+        integer.info = self.info
+        return integer
+
+
+class Byte(Constant[T]):
+    """
+    An 8-bit integer constant.
+
+    Attributes
+    ----------
+    value: i8
+        The value of this constant.
+
+    Methods
+    -------
+    as_integer(self) -> Integer[T]
+        Returns this constant as an integer constant.
+    """
+
+    __slots__ = ("_value", "_hash")
+
+    type = byte_t
+
+    @property
+    def value(self) -> i8:
+        return self._value
+
+    def __init__(self, value: i8 | SupportsInt) -> None:
+        super().__init__()
+        if not isinstance(value, i8):
+            value = i8(value)
+        self._value = value
+        self._hash = hash(value)
+
+    def __repr__(self) -> str:
+        if self.info is not None:
+            return f"<Byte(info={self.info!s}, value={self._value!r})>"
+        return f"<Byte(value={self._value!r})>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Byte) and self._value == other._value
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def as_integer(self) -> "Integer[T]":
+        """
+        Returns this constant as an integer constant.
+        """
+
+        integer = Integer(i32(self._value))
+        integer.info = self.info
+        return integer
+
+
+class Character(Constant[T]):
+    """
+    A 16-bit unsigned integer constant.
+
+    Attributes
+    ----------
+    value: u16
+        The value of this constant.
+
+    Methods
+    -------
+    as_integer(self) -> Integer[T]
+        Returns this constant as an integer constant.
+    """
+
+    __slots__ = ("_value", "_hash")
+
+    type = char_t
+
+    @property
+    def value(self) -> u16:
+        return self._value
+
+    def __init__(self, value: u16 | str | bytes | SupportsInt) -> None:
+        super().__init__()
+        if isinstance(value, (str, bytes)):
+            value = u16(ord(value))
+        elif not isinstance(value, u16):
+            value = u16(value)
+        self._value = value
+        self._hash = hash(value)
+
+    def __repr__(self) -> str:
+        if self.info is not None:
+            return f"<Character(info={self.info!s}, value={self._value!r})>"
+        return f"<Character(value={self._value!r})>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Character) and self._value == other._value
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def as_integer(self) -> "Integer[T]":
+        """
+        Returns this constant as an integer constant.
+        """
+
+        integer = Integer(self._value)
+        integer.info = self.info
+        return integer
+
+
+class Short(Constant[T]):
+    """
+    A 16-bit integer constant.
+
+    Attributes
+    ----------
+    value: i16
+        The value of this constant.
+
+    Methods
+    -------
+    as_integer(self) -> Integer[T]
+        Returns this constant as an integer constant.
+    """
+
+    __slots__ = ("_value", "_hash")
+
+    type = short_t
+
+    @property
+    def value(self) -> i16:
+        return self._value
+
+    def __init__(self, value: i16 | SupportsInt) -> None:
+        super().__init__()
+        if not isinstance(value, i16):
+            value = i16(value)
+        self._value = value
+        self._hash = hash(value)
+
+    def __repr__(self) -> str:
+        if self.info is not None:
+            return f"<Short(info={self.info!s}, value={self._value!r})>"
+        return f"<Short(value={self._value!r})>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Short) and self._value == other._value
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def as_integer(self) -> "Integer[T]":
+        """
+        Returns this constant as an integer constant.
+        """
+
+        integer = Integer(self._value)
+        integer.info = self.info
+        return integer
+
+
 class Integer(Constant[T]):
     """
     A 32-bit integer constant.
@@ -79,6 +287,17 @@ class Integer(Constant[T]):
     ----------
     value: i32
         The value of this constant.
+
+    Methods
+    -------
+    as_boolean(self) -> Boolean[T]
+        Returns this constant as a boolean constant.
+    as_byte(self) -> Byte[T]
+        Returns this constant as a byte constant.
+    as_character(self) -> Character[T]
+        Returns this constant as a character constant.
+    as_short(self) -> Short[T]
+        Returns this constant as a short constant.
     """
 
     __slots__ = ("_value", "_hash")
@@ -89,9 +308,9 @@ class Integer(Constant[T]):
     def value(self) -> i32:
         return self._value
 
-    def __init__(self, value: int | i32) -> None:
+    def __init__(self, value: i32 | SupportsInt) -> None:
         super().__init__()
-        if isinstance(value, int):
+        if not isinstance(value, i32):
             value = i32(value)
         self._value = value
         self._hash = hash(value)
@@ -109,6 +328,42 @@ class Integer(Constant[T]):
 
     def __hash__(self) -> int:
         return self._hash
+
+    def as_boolean(self) -> Boolean[T]:
+        """
+        Returns this constant as a boolean constant.
+        """
+
+        boolean = Boolean(bool(self._value))
+        boolean.info = self.info
+        return boolean
+
+    def as_byte(self) -> Byte[T]:
+        """
+        Returns this constant as a byte constant.
+        """
+
+        byte = Byte(i8(self._value))  # FIXME: May raise I think? Would the JVM just truncate it?
+        byte.info = self.info
+        return byte
+
+    def as_character(self) -> Character[T]:
+        """
+        Returns this constant as a character constant.
+        """
+
+        character = Character(u16(self._value))
+        character.info = self.info
+        return character
+
+    def as_short(self) -> Short[T]:
+        """
+        Returns this constant as a short constant.
+        """
+
+        short = Short(i16(self._value))
+        short.info = self.info
+        return short
 
 
 class Float(Constant[T]):
@@ -129,9 +384,9 @@ class Float(Constant[T]):
     def value(self) -> f32:
         return self._value
 
-    def __init__(self, value: float | f32) -> None:
+    def __init__(self, value: f32 | SupportsFloat) -> None:
         super().__init__()
-        if isinstance(value, float):
+        if not isinstance(value, f32):
             value = f32(value)
         self._value = value
         self._hash = hash(value)
@@ -170,9 +425,9 @@ class Long(Constant[T]):
     def value(self) -> i64:
         return self._value
 
-    def __init__(self, value: int | i64) -> None:
+    def __init__(self, value: i64 | SupportsInt) -> None:
         super().__init__()
-        if isinstance(value, int):
+        if not isinstance(value, i64):
             value = i64(value)
         self._value = value
         self._hash = hash(value)
@@ -210,10 +465,9 @@ class Double(Constant[T]):
     def value(self) -> f64:
         return self._value
 
-    def __init__(self, value: float | f64) -> None:
+    def __init__(self, value: f64 | SupportsFloat) -> None:
         super().__init__()
-
-        if isinstance(value, float):
+        if not isinstance(value, f64):
             value = f64(value)
         self._value = value
         self._hash = hash(value)
@@ -264,12 +518,12 @@ class Class(Constant[T]):
     def array(self) -> bool:
         return isinstance(self._ref_type, Array)
 
-    def __init__(self, name_or_ref_type: str | Reference) -> None:
+    def __init__(self, name_or_type: str | Reference) -> None:
         super().__init__()
-        if isinstance(name_or_ref_type, str):
-            name_or_ref_type = ClassType(name_or_ref_type)
-        self._ref_type = name_or_ref_type
-        self._hash = hash(name_or_ref_type)
+        if isinstance(name_or_type, str):
+            name_or_type = ClassType(name_or_type)
+        self._ref_type = name_or_type
+        self._hash = hash(name_or_type)
 
     def __repr__(self) -> str:
         if self.info is not None:
@@ -369,7 +623,7 @@ class MethodHandle(Constant[T]):
         return self._ret_type
 
     def __init__(
-            self, kind: "MethodHandle.Kind", class_: Class, name: str, arg_types: Iterable[Type], ret_type: Type,
+        self, kind: "MethodHandle.Kind", class_: Class, name: str, arg_types: Iterable[Type], ret_type: Type,
     ) -> None:
         super().__init__()
         self._kind = kind

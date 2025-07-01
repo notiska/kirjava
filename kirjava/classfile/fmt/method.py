@@ -17,7 +17,7 @@ JVM class file method info struct and attributes.
 import typing
 from io import BytesIO
 from os import SEEK_CUR, SEEK_SET
-from typing import IO, Iterable, Iterator, Union
+from typing import IO, Iterable, Iterator, Optional, Union
 
 from .annotation import ElementValue, ParameterAnnotations
 from .attribute import AttributeInfo
@@ -30,13 +30,16 @@ from ..version import *
 from ..._compat import Self
 from ...backend import Err, Ok, Result
 from ...model import Class, Field, Linker, Method
+from ...model.types import Class as ClassType
+from ...visitor import *
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
-    from ..visitor import MethodInfoVisitor
+    from ..analysis import Frame
+    # from .visitor import MIVisitor
 
 
-class MethodInfo:
+class MethodInfo(Visitable):
     """
     A method_info struct.
 
@@ -120,8 +123,6 @@ class MethodInfo:
     lower(method: Method) -> Result[Self]
         Lowers the provided method into a method info.
 
-    visit(self, visitor: MethodInfoVisitor) -> None
-        Calls a visitor on this method.
     lift(self, linker: Linker, *, strict: bool = True) -> Result[Method]
         Creates a lifted method from this method info.
     write(self, stream: IO[bytes], version: Version, pool: ConstPool) -> None
@@ -190,6 +191,12 @@ class MethodInfo:
             self.is_abstract = method.is_abstract
             self.is_strict = method.is_strictfp
             self.is_synthetic = method.is_synthetic
+
+            for subclass in AttributeInfo.supported(AttributeInfo.LOC_METHOD):
+                attribute = subclass.lower(method, self).unwrap_into(result)
+                if attribute is not None:
+                    self.attributes.append(attribute)
+
             return result.ok(self)
         return result
 
@@ -326,8 +333,8 @@ class MethodInfo:
             self.access &= ~MethodInfo.ACC_SYNTHETIC
 
     def __init__(
-            self, access: int, name: ConstInfo, descriptor: ConstInfo,
-            attributes: Iterable[AttributeInfo] | None = None,
+        self, access: int, name: ConstInfo, descriptor: ConstInfo,
+        attributes: Iterable[AttributeInfo] | None = None,
     ) -> None:
         self.access = access
         self.name = name
@@ -343,14 +350,11 @@ class MethodInfo:
     def __str__(self) -> str:
         return f"method_info(0x{self.access:04x},{self.name!s}:{self.descriptor!s})"
 
-    def visit(self, visitor: "MethodInfoVisitor") -> None:
-        """
-        Calls a visitor on this method.
-        """
-
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
         visitor.visit_start(self)
         for attribute in self.attributes:
-            visitor.visit_attribute(attribute)
+            # visitor.visit_attribute(self, attribute)
+            visitors.visit(attribute)
         visitor.visit_end(self)
 
     def lift(self, linker: Linker, *, strict: bool = True) -> Result[Method[Self]]:
@@ -472,8 +476,18 @@ class Code(AttributeInfo[MethodInfo, Method]):
             wrapper = BytesIO(stream.read(size))  # CodeIOWrapper(stream, base)
 
             insns = []
-            while wrapper.tell() < size:
-                insns.append(Instruction.read(wrapper, pool))
+            try:
+                while wrapper.tell() < size:
+                    insns.append(Instruction.read(wrapper, pool))
+            except Exception as error:
+                result.debug("Error while directly disassembling instructions: %s", error)
+                result.err(error)
+                # insns.clear()
+                wrapper.seek(-1, SEEK_CUR)  # Will have read the opcode (1 byte) and then raised the error, so seek back.
+                offset = wrapper.tell()
+                raw = cls.Raw(wrapper.read())
+                raw.offset = offset
+                insns.append(raw)
 
             # delta = stream.tell() - (base + size)
             # if delta:
@@ -501,10 +515,10 @@ class Code(AttributeInfo[MethodInfo, Method]):
         return result
 
     def __init__(
-            self, max_stack: int, max_locals: int, base: int,
-            insns:           Iterable["Instruction"] | None = None,
-            handlers: Iterable["Code.ExceptHandler"] | None = None,
-            attributes:      Iterable[AttributeInfo] | None = None,
+        self, max_stack: int, max_locals: int, base: int,
+        insns:           Iterable["Instruction"] | None = None,
+        handlers: Iterable["Code.ExceptHandler"] | None = None,
+        attributes:      Iterable[AttributeInfo] | None = None,
     ) -> None:
         super().__init__()
         self.max_stack = max_stack
@@ -544,6 +558,14 @@ class Code(AttributeInfo[MethodInfo, Method]):
             self.attributes == other.attributes
         )
 
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        for insn in self.insns:
+            visitors.visit(insn)
+        for attribute in self.attributes:
+            visitors.visit(attribute)
+        visitor.visit_end(self)
+
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         # if version < JAVA_1_1:
         #     stream.write(bytes((self.max_stack, self.max_locals)))
@@ -582,6 +604,55 @@ class Code(AttributeInfo[MethodInfo, Method]):
         stream.write(pack_H(len(self.attributes)))
         for attribute in self.attributes:
             attribute.write(stream, version, pool)
+
+    class Raw(Instruction):
+        """
+        A "instruction" used if reading the instructions fails.
+
+        Attributes
+        ----------
+        data: bytes
+            The raw bytecode data.
+        """
+
+        __slots__ = ("data",)
+
+        opcode = -1
+        mnemonic = "_raw"
+        since = JAVA_MIN
+
+        @classmethod
+        def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
+            raise ValueError("cannot read raw bytecode")
+
+        def __init__(self, data: bytes) -> None:
+            super().__init__()
+            self.data = data
+
+        def __copy__(self) -> "Code.Raw":
+            copied = Code.Raw(self.data)
+            copied.offset = self.offset
+            return copied
+
+        def __repr__(self) -> str:
+            return f"<Raw(data={self.data!r})>"
+
+        def __str__(self) -> str:
+            if self.offset is not None:
+                return f"{self.offset}:_raw({self.data!r})"
+            return f"_raw({self.data!r})"
+
+        def __eq__(self, other: object) -> bool:
+            return isinstance(other, Code.Raw) and self.data == other.data
+
+        def step(self, frame: "Frame") -> Result["Frame"]:
+            return Err(ValueError("cannot step raw bytecode"))
+
+        def rstep(self, frame: "Frame") -> Result["Frame"]:
+            return Err(ValueError("cannot step raw bytecode"))
+
+        def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
+            stream.write(self.data)
 
     class ExceptHandler:
         """
@@ -726,6 +797,16 @@ class Exceptions(AttributeInfo[MethodInfo, Method]):
             return result.ok(cls(exceptions))
         return result
 
+    @classmethod
+    def lower(cls, lifted: Method, parent: MethodInfo) -> Result[Self | None]:
+        with Result[Self | None]() as result:
+            assert isinstance(lifted, Method), "lowering non-method to method info"
+            assert isinstance(parent, MethodInfo), "lowering method to non-method info"
+            if not lifted.throws:
+                return result.ok(None)
+            return result.ok(cls(ClassInfo(UTF8Info.encode(throw.name)) for throw in lifted.throws))
+        return result.ok(None)
+
     def __init__(self, exceptions: Iterable[ConstInfo] | None = None) -> None:
         super().__init__()
         self.exceptions: list[ConstInfo] = []
@@ -775,9 +856,11 @@ class Exceptions(AttributeInfo[MethodInfo, Method]):
                 classref = exception.lift().into(result)
                 if not classref:
                     continue
-                class_ = linker.find_class(classref.unwrap().name).into(result)
-                if class_:
-                    lifted.throws.append(class_.unwrap())
+                ref_type = classref.unwrap().ref_type
+                if not isinstance(ref_type, ClassType):
+                    result.err(TypeError(f"exception {ref_type!s} is not a class type"))
+                    continue
+                lifted.throws.append(ref_type)
 
         return result.ok(lifted)
 
@@ -1244,6 +1327,25 @@ class MethodParameters(AttributeInfo[MethodInfo, Method]):
             return result.ok(cls(params))
         return result
 
+    @classmethod
+    def lower(cls, lifted: Method, parent: MethodInfo) -> Result[Self | None]:
+        with Result[Self | None]() as result:
+            assert isinstance(lifted, Method), "lowering non-method to method info"
+            assert isinstance(parent, MethodInfo), "lowering method to non-method info"
+            if not lifted.parameters:
+                return result.ok(None)
+            params = []
+            for parameter in lifted.parameters:
+                param = cls.Parameter(  # Great naming Iska, lol.
+                    UTF8Info.encode(parameter.name) if parameter.name is not None else None, 0,
+                )
+                param.is_final = parameter.is_final
+                param.is_synthetic = parameter.is_synthetic
+                param.is_mandated = parameter.is_mandated
+                params.append(param)
+            return result.ok(cls(params))
+        return result.ok(None)
+
     def __init__(self, params: Iterable["MethodParameters.Parameter"] | None = None) -> None:
         super().__init__()
         self.params: list[MethodParameters.Parameter] = []
@@ -1443,6 +1545,12 @@ class RuntimeVisibleParameterAnnotations(AttributeInfo[MethodInfo, Method]):
     def __len__(self) -> int:
         return len(self.annotations)
 
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        for annotation in self.annotations:
+            visitors.visit(annotation)
+        visitor.visit_end(self)
+
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(bytes((len(self.annotations),)))
         for annotation in self.annotations:
@@ -1510,6 +1618,12 @@ class RuntimeInvisibleParameterAnnotations(AttributeInfo[MethodInfo, Method]):
 
     def __len__(self) -> int:
         return len(self.annotations)
+
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        for annotation in self.annotations:
+            visitors.visit(annotation)
+        visitor.visit_end(self)
 
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(bytes((len(self.annotations),)))

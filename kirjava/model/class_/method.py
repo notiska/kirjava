@@ -100,20 +100,20 @@ class Method(Generic[T]):
         return " ".join(filter(None, access))
 
     def __init__(
-            self, name: str, arg_types: Iterable["Type"], ret_type: "Type",
-            *,
-            is_public:       bool = False,
-            is_private:      bool = False,
-            is_protected:    bool = False,
-            is_static:       bool = False,
-            is_final:        bool = False,
-            is_synchronized: bool = False,
-            is_bridge:       bool = False,
-            is_varargs:      bool = False,
-            is_native:       bool = False,
-            is_abstract:     bool = False,
-            is_strictfp:     bool = False,
-            is_synthetic:    bool = False,
+        self, name: str, arg_types: Iterable["Type"], ret_type: "Type",
+        *,
+        is_public:       bool = False,
+        is_private:      bool = False,
+        is_protected:    bool = False,
+        is_static:       bool = False,
+        is_final:        bool = False,
+        is_synchronized: bool = False,
+        is_bridge:       bool = False,
+        is_varargs:      bool = False,
+        is_native:       bool = False,
+        is_abstract:     bool = False,
+        is_strictfp:     bool = False,
+        is_synthetic:    bool = False,
     ) -> None:
         self.info: T | None = None
 
@@ -174,11 +174,11 @@ class Method(Generic[T]):
         __slots__ = ("index", "name", "is_final", "is_synthetic", "is_mandated", "annotations")
 
         def __init__(
-                self, index: int, name: str | None,
-                *,
-                is_final:     bool = False,
-                is_synthetic: bool = False,
-                is_mandated:  bool = False,
+            self, index: int, name: str | None,
+            *,
+            is_final:     bool = False,
+            is_synthetic: bool = False,
+            is_mandated:  bool = False,
         ) -> None:
             self.index = index
             self.name = name

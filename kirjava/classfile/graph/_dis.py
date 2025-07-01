@@ -15,6 +15,7 @@ The JVM bytecode disassembler.
 import typing
 from io import BytesIO
 from operator import itemgetter
+from os import SEEK_SET
 
 from .block import MutableBlock
 from .edge import Catch, Edge, Fallthrough, Jump as JumpEdge, Ret as RetEdge, Switch as SwitchEdge
@@ -55,13 +56,13 @@ def disassemble(graph: T, method: MethodInfo, cf: ClassFile | None) -> Result[T]
             if isinstance(attribute, Code):
                 code = attribute
                 break
-            elif (  # Otherwise, it could be an improperly parsed code attribute.
-                isinstance(attribute, RawInfo) and
-                isinstance(attribute.name, UTF8Info) and
-                attribute.name.value == Code.tag
-            ):
-                code = attribute
-                break
+            # elif (  # Otherwise, it could be an improperly parsed code attribute.
+            #     isinstance(attribute, RawInfo) and
+            #     isinstance(attribute.name, UTF8Info) and
+            #     attribute.name.value == Code.tag
+            # ):
+            #     code = attribute
+            #     break
 
         if not isinstance(code, Code):  # code is None:
             return result.err(ValueError(f"method {method!s} has no code attribute"))
@@ -95,6 +96,9 @@ def disassemble(graph: T, method: MethodInfo, cf: ClassFile | None) -> Result[T]
             targets.add(handler.handler_pc)
             # targets.append(handler.handler_pc)
 
+        raw: list[int] = []  # Offsets of raw bytecode instructions.
+        # TODO: Keep looping until we have no more raw bytecode instructions to disassemble.
+
         for instruction in code.insns:
             # Unfortunately, we can't actually trust that instruction.offset will be correct as it's only really counted
             # as metadata, so we need to re-compute the instruction offsets ourselves, here.
@@ -116,6 +120,9 @@ def disassemble(graph: T, method: MethodInfo, cf: ClassFile | None) -> Result[T]
                 split_ = True
                 targets.add(offset + instruction.default)
                 targets.update(offset + branch for branch in instruction.offsets.values())
+            elif isinstance(instruction, Code.Raw):
+                raw.append(offset)
+                raise NotImplementedError(f"disassembly from raw bytecode at offset {offset}")
 
             offset = stream.tell()
 
@@ -123,6 +130,21 @@ def disassemble(graph: T, method: MethodInfo, cf: ClassFile | None) -> Result[T]
                 splits[offset] = prior
                 if prior is None:
                     stops.add(offset)
+
+        if raw:
+            result.debug("Re-disassembly required due to raw bytecode %i instruction(s).", len(raw))
+
+        size = stream.tell()
+
+        # for offset in raw:
+        #     scratch: dict[int, "Instruction"] = {}
+        #     stream.seek(offset, SEEK_SET)
+        #     while offset < size:
+        #         scratch[offset] = Instruction.read(stream, pool, doraise=False)
+        #         offset = stream.tell()
+        #     print(insns)
+        #     print(scratch)
+        # print(splits)
 
         # TODO: Debug information such as LNT, LVT and LVTT.
         # TODO: Stack map table information as well.

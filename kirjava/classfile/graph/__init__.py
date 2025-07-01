@@ -366,9 +366,9 @@ class Graph:
         return edge
 
     def jump(
-            self, source: int | Block, target: int | Block | None = None,
-            instruction: JumpInsn | type[JumpInsn] = goto,
-            *, doraise: bool = True,
+        self, source: int | Block, target: int | Block | None = None,
+        instruction: JumpInsn | type[JumpInsn] = goto,
+        *, doraise: bool = True,
     ) -> JumpEdge:
         """
         Creates a jump edge between two blocks.

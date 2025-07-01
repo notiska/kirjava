@@ -265,7 +265,7 @@ class Unknown(Instruction):
 
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool") -> Self:
-        raise ValueError("can't read unknown opcode")
+        raise ValueError("cannot read unknown opcode")
 
     def __init__(self, opcode: int) -> None:
         super().__init__()

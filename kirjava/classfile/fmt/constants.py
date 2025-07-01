@@ -142,6 +142,7 @@ class ConstInfo:
 
         info: ConstInfo
 
+        # TODO: Handled by subclasses?
         if isinstance(constant, Integer):
             info = IntegerInfo(constant.value)
         elif isinstance(constant, Float):

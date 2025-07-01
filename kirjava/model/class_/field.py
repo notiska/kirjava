@@ -88,17 +88,17 @@ class Field(Generic[T]):
         return " ".join(filter(None, access))
 
     def __init__(
-            self, name: str, type: "Type",
-            *,
-            is_public:    bool = False,
-            is_private:   bool = False,
-            is_protected: bool = False,
-            is_static:    bool = False,
-            is_final:     bool = False,
-            is_volatile:  bool = False,
-            is_transient: bool = False,
-            is_synthetic: bool = False,
-            is_enum:      bool = False,
+        self, name: str, type: "Type",
+        *,
+        is_public:    bool = False,
+        is_private:   bool = False,
+        is_protected: bool = False,
+        is_static:    bool = False,
+        is_final:     bool = False,
+        is_volatile:  bool = False,
+        is_transient: bool = False,
+        is_synthetic: bool = False,
+        is_enum:      bool = False,
     ) -> None:
         self.info: T | None = None
 

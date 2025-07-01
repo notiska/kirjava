@@ -23,12 +23,13 @@ from ..version import *
 from ..._compat import Self
 from ...backend import Result
 from ...model import Class, Field, Linker, Method
+from ...visitor import *
 
-if typing.TYPE_CHECKING:
-    from ..visitor import ClassFileVisitor
+# if typing.TYPE_CHECKING:
+#     from .visitor import CFVisitor
 
 
-class ClassFile:
+class ClassFile(Visitable):
     """
     A ClassFile struct.
 
@@ -106,8 +107,6 @@ class ClassFile:
     lower(class_: Class) -> Result[Self]
         Lowers the provided class into a class file.
 
-    visit(self, visitor: ClassFileVisitor) -> None
-        Calls a visitor on this class file.
     lift(self, linker: Linker, *, strict: bool = True) -> Result[Class]
         Creates a lifted class from this class file.
     write(self, stream: IO[bytes]) -> None
@@ -195,6 +194,12 @@ class ClassFile:
             self.is_annotation = class_.is_annotation
             self.is_enum = class_.is_enum
             self.is_module = class_.is_module
+
+            for subclass in AttributeInfo.supported(AttributeInfo.LOC_CLASS):
+                attribute = subclass.lower(class_, self).unwrap_into(result)
+                if attribute is not None:
+                    self.attributes.append(attribute)
+
             return result.ok(self)
         return result
 
@@ -298,13 +303,13 @@ class ClassFile:
             self.access &= ~ClassFile.ACC_MODULE
 
     def __init__(
-            self,
-            version: Version, pool: ConstPool,
-            access: int, this: ConstInfo, super_: ConstInfo | None,
-            interfaces:     Iterable[ConstInfo] | None = None,
-            fields:         Iterable[FieldInfo] | None = None,
-            methods:       Iterable[MethodInfo] | None = None,
-            attributes: Iterable[AttributeInfo] | None = None,
+        self,
+        version: Version, pool: ConstPool,
+        access: int, this: ConstInfo, super_: ConstInfo | None,
+        interfaces:     Iterable[ConstInfo] | None = None,
+        fields:         Iterable[FieldInfo] | None = None,
+        methods:       Iterable[MethodInfo] | None = None,
+        attributes: Iterable[AttributeInfo] | None = None,
     ) -> None:
         self.version = version
         self.pool = pool
@@ -337,19 +342,19 @@ class ClassFile:
         super_str = str(self.super) if self.super is not None else "[none]"
         return f"ClassFile({self.version!s},0x{self.access:04x},{self.this!s},{super_str})"
 
-    def visit(self, visitor: "ClassFileVisitor") -> None:
-        """
-        Calls a visitor on this class file.
-        """
-
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
         visitor.visit_start(self)
-        visitor.visit_pool(self.pool)
+        # visitor.visit_pool(self, self.pool)
+        # visitors.visit(self.pool)
         for field in self.fields:
-            visitor.visit_field(field)
+            # visitor.visit_field(self, field)
+            visitors.visit(field)
         for method in self.methods:
-            visitor.visit_method(method)
+            # visitor.visit_method(self, method)
+            visitors.visit(method)
         for attribute in self.attributes:
-            visitor.visit_attribute(attribute)
+            # visitor.visit_attribute(self, attribute)
+            visitors.visit(attribute)
         visitor.visit_end(self)
 
     def lift(self, linker: Linker, *, strict: bool = True) -> Result[Class[Self]]:
@@ -1029,7 +1034,7 @@ class InnerClasses(AttributeInfo[ClassFile, Class]):
                 self.access &= ~InnerClasses.InnerClass.ACC_ENUM
 
         def __init__(
-                self, inner_class: ConstInfo, outer_class: ConstInfo | None, name: ConstInfo | None, access: int,
+            self, inner_class: ConstInfo, outer_class: ConstInfo | None, name: ConstInfo | None, access: int,
         ) -> None:
             self.inner_class = inner_class
             self.outer_class = outer_class
@@ -1175,6 +1180,12 @@ class Record(AttributeInfo[ClassFile, Class]):
     def __len__(self) -> int:
         return len(self.components)
 
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        for component in self.components:
+            visitors.visit(component)
+        visitor.visit_end(self)
+
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_H(len(self.components)))
         for component in self.components:
@@ -1182,7 +1193,7 @@ class Record(AttributeInfo[ClassFile, Class]):
             for attribute in component.attributes:
                 attribute.write(stream, version, pool)
 
-    class ComponentInfo:
+    class ComponentInfo(Visitable):
         """
         A record_component_info struct.
 
@@ -1199,7 +1210,7 @@ class Record(AttributeInfo[ClassFile, Class]):
         __slots__ = ("name", "descriptor", "attributes")
 
         def __init__(
-                self, name: ConstInfo, descriptor: ConstInfo, attributes: Iterable[AttributeInfo] | None = None,
+            self, name: ConstInfo, descriptor: ConstInfo, attributes: Iterable[AttributeInfo] | None = None,
         ) -> None:
             self.name = name
             self.descriptor = descriptor
@@ -1221,6 +1232,12 @@ class Record(AttributeInfo[ClassFile, Class]):
                 self.descriptor == other.descriptor and
                 self.attributes == other.attributes
             )
+
+        def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+            visitor.visit_start(self)
+            for attribute in self.attributes:
+                visitors.visit(attribute)
+            visitor.visit_end(self)
 
 
 class SourceFile(AttributeInfo[ClassFile, Class]):
@@ -1248,6 +1265,15 @@ class SourceFile(AttributeInfo[ClassFile, Class]):
             index, = unpack_H(stream.read(2))
             return result.ok(cls(pool[index]))
         return result
+
+    @classmethod
+    def lower(cls, lifted: Class, parent: ClassFile) -> Result[Self | None]:
+        with Result[Self | None]() as result:
+            assert isinstance(lifted, Class), "lowering non-class to class file"
+            assert isinstance(parent, ClassFile), "lowering class to non-class file"
+            if lifted.source is not None:
+                return result.ok(cls(UTF8Info.encode(lifted.source)))
+        return result.ok(None)
 
     def __init__(self, file: ConstInfo) -> None:
         super().__init__()
@@ -1303,6 +1329,15 @@ class SourceDebugExtension(AttributeInfo[ClassFile, Class]):
             length, = unpack_I(stream.read(4))
             return result.ok(cls(stream.read(length)))
         return result
+
+    @classmethod
+    def lower(cls, lifted: Class, parent: ClassFile) -> Result[Self | None]:
+        with Result[Self | None]() as result:
+            assert isinstance(lifted, Class), "lowering non-class to class file"
+            assert isinstance(parent, ClassFile), "lowering class to non-class file"
+            if lifted.debug_ext is not None:
+                return result.ok(cls(lifted.debug_ext))
+        return result.ok(None)
 
     def __init__(self, extension: bytes) -> None:
         super().__init__()
@@ -1469,12 +1504,12 @@ class Module(AttributeInfo[ClassFile, Class]):
             self.flags &= ~Module.ACC_MANDATED
 
     def __init__(
-            self, module: ConstInfo, flags: int, version: ConstInfo | None,
-            requires: Iterable["Module.Require"] | None = None,
-            exports:   Iterable["Module.Export"] | None = None,
-            opens:       Iterable["Module.Open"] | None = None,
-            uses:            Iterable[ConstInfo] | None = None,
-            provides: Iterable["Module.Provide"] | None = None,
+        self, module: ConstInfo, flags: int, version: ConstInfo | None,
+        requires: Iterable["Module.Require"] | None = None,
+        exports:   Iterable["Module.Export"] | None = None,
+        opens:       Iterable["Module.Open"] | None = None,
+        uses:            Iterable[ConstInfo] | None = None,
+        provides: Iterable["Module.Provide"] | None = None,
     ) -> None:
         super().__init__()
         self.module = module

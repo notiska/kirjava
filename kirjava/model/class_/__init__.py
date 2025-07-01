@@ -110,22 +110,22 @@ class Class(Generic[T]):
         return " ".join(filter(None, access))
 
     def __init__(
-            self,
-            name: str,
-            super: Optional["Class"] = None,
-            interfaces: Iterable["Class"] | None = None,
-            fields:     Iterable["Field"] | None = None,
-            methods:   Iterable["Method"] | None = None,
-            *,
-            is_public:     bool = True,
-            is_final:      bool = False,
-            is_super:      bool = False,
-            is_interface:  bool = False,
-            is_abstract:   bool = False,
-            is_synthetic:  bool = False,
-            is_annotation: bool = False,
-            is_enum:       bool = False,
-            is_module:     bool = False,
+        self,
+        name: str,
+        super: Optional["Class"] = None,
+        interfaces: Iterable["Class"] | None = None,
+        fields:     Iterable["Field"] | None = None,
+        methods:   Iterable["Method"] | None = None,
+        *,
+        is_public:     bool = True,
+        is_final:      bool = False,
+        is_super:      bool = False,
+        is_interface:  bool = False,
+        is_abstract:   bool = False,
+        is_synthetic:  bool = False,
+        is_annotation: bool = False,
+        is_enum:       bool = False,
+        is_module:     bool = False,
     ) -> None:
         self.info: T | None = None
 

@@ -116,9 +116,9 @@ class LocalStart(Debug):
     mnemonic = "localstart"
 
     def __init__(
-            self, index: int, name: "ConstInfo",
-            descriptor: Optional["ConstInfo"] = None,
-            signature:  Optional["ConstInfo"] = None,
+        self, index: int, name: "ConstInfo",
+        descriptor: Optional["ConstInfo"] = None,
+        signature:  Optional["ConstInfo"] = None,
     ) -> None:
         super().__init__()
         self.index = index

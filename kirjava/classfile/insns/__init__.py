@@ -72,6 +72,7 @@ from typing_extensions import Buffer
 
 from ..._compat import Self
 from ...backend import Result
+from ...visitor import *
 
 if typing.TYPE_CHECKING:
     from ..analysis import Frame
@@ -80,7 +81,7 @@ if typing.TYPE_CHECKING:
     from ...model.types import Class
 
 
-class Instruction:
+class Instruction(Visitable):
     """
     A JVM instruction.
 
@@ -189,7 +190,7 @@ class Instruction:
         return None
 
     @classmethod
-    def read(cls, stream: IO[bytes], pool: "ConstPool") -> "Instruction":
+    def read(cls, stream: IO[bytes], pool: "ConstPool", *, doraise: bool = True) -> "Instruction":
         """
         Reads an instruction from a binary stream.
 
@@ -199,6 +200,9 @@ class Instruction:
             The binary stream to read from.
         pool: ConstPool
             The class file constant pool.
+        doraise: bool
+            Whether to raise an error if the opcode is unknown.
+            If `False`, it will return an `Unknown` instruction instead.
         """
 
         offset = stream.tell()
@@ -208,10 +212,13 @@ class Instruction:
         if subclass is None:
             subclass = cls.lookup(opcode)
             cls._cache[opcode] = subclass
+        self: Instruction
         if subclass is None:
-            # self = Unknown(opcode)
-            raise ValueError(f"unknown opcode 0x{opcode:02x} at offset {offset}")
-        self = subclass._read(stream, pool)
+            if doraise:
+                raise ValueError(f"unknown opcode 0x{opcode:02x} at offset {offset}")
+            self = Unknown(opcode)
+        else:
+            self = subclass._read(stream, pool)
         self.offset = offset
         return self
 
@@ -255,6 +262,10 @@ class Instruction:
 
     def __eq__(self, other: object) -> bool:
         raise NotImplementedError(f"== is not implemented for {type(self)!r}")
+
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        visitor.visit_end(self)
 
     def copy(self, deep: bool = False) -> "Instruction":
         """
@@ -379,9 +390,9 @@ class CodeIOWrapper(IO[bytes]):
         return self
 
     def __exit__(
-            self, exc_type: type[BaseException] | None,
-            exc_value: BaseException | None,
-            traceback: TracebackType | None,
+        self, exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
     ) -> None:
         self.delegate.__exit__(exc_type, exc_value, traceback)
 

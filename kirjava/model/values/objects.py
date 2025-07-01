@@ -10,6 +10,8 @@ __all__ = (
 Models for reference values (objects).
 """
 
+from typing import Iterable
+
 from . import Value
 from ..types import Array as ArrayType, Class
 
@@ -22,32 +24,28 @@ class Array(Value):
 
     Attributes
     ----------
-    sizes: tuple[Value, ...]
-        The sizes of this array.
+    size: Value
+        The size of the array.
+    elements: list[Value]
+        The elements in the array.
     """
 
-    __slots__ = ("type", "sizes")
+    __slots__ = ("type", "size", "elements")
 
-    # TODO: We could also store elements, to some degree.
-
-    def __init__(self, type: ArrayType, sizes: tuple[Value, ...]) -> None:
+    def __init__(self, type: ArrayType, size: Value, elements: Iterable[Value] | None = None) -> None:
         self.type = type
-        self.sizes = sizes
+        self.size = size
+        self.elements: list[Value] = []
+
+        if elements is not None:
+            self.elements.extend(elements)
 
     def __repr__(self) -> str:
-        return f"<Array(type={self.type!s}, sizes={self.sizes!r})>"
+        elements_str = ", ".join(map(str, self.elements))
+        return f"<Array(type={self.type!s}, size={self.size}, elements=[{elements_str}])>"
 
     def __str__(self) -> str:
-        sizes = []
-        type = self.type
-        for size in self.sizes:
-            # Mypy issue again, the type is checked properly in the loop, though.
-            type = type.element  # type: ignore[attr-defined]
-            sizes.append(f"[{size}]")
-            if not isinstance(type, ArrayType):
-                break
-        sizes_str = "".join(sizes)
-        return f"{self.type!s}{sizes_str}"
+        return str(self.type)  # FIXME
 
 
 class Object(Value):

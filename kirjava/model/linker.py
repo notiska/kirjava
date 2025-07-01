@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 __all__ = (
-    "Loader", "Linker",
+    "Loader", "CachingLoader", "Linker",
 )
 
 import typing
@@ -11,10 +11,8 @@ from typing import Iterable, Iterator
 from weakref import WeakValueDictionary
 
 from .class_ import Class, Field, Method
+from .types import Class as ClassType, Reference, Type
 from ..backend import Err, Ok, Result
-
-if typing.TYPE_CHECKING:
-    from .types import Type
 
 
 class Loader:
@@ -80,6 +78,52 @@ class Loader:
         raise NotImplementedError(f"find_resource() not implemented for {type(self)!r}")
 
 
+class CachingLoader(Loader):
+    """
+    A loader that holds strong references to classes.
+
+    Attributes
+    ----------
+    cached: int
+        The number of cached classes.
+    delegate: Loader
+        The delegate loader to load and cache from.
+
+    Methods
+    -------
+    clear(self) -> None
+        Clears the class cache.
+    """
+
+    __slots__ = ("delegate", "_cache")
+
+    @property
+    def cached(self) -> int:
+        return len(self._cache)
+
+    def __init__(self, delegate: Loader) -> None:
+        self.delegate = delegate
+        self._cache: dict[tuple[Linker, str], Class] = {}
+
+    def find_class(self, linker: "Linker", name: str) -> Result[Class]:
+        # Honestly this shouldn't happen if we're holding strong references because the linker should also look it up in
+        # its cache, but this acts as a fallback nonetheless.
+        class_ = self._cache.get((linker, name))
+        if class_ is not None:
+            return Ok(class_)
+        return self.delegate.find_class(linker, name)
+
+    def find_resource(self, name: str) -> Result[bytes]:
+        return self.delegate.find_resource(name)
+
+    def clear(self) -> None:
+        """
+        Clears the class cache.
+        """
+
+        self._cache.clear()
+
+
 class Linker:
     """
     A static linker implementation.
@@ -126,7 +170,7 @@ class Linker:
 
     def __init__(self, loaders: Iterable[Loader] | None = None) -> None:
         self._loaders: list[Loader] = []
-        self._cached: WeakValueDictionary[str, Class] = WeakValueDictionary()
+        self._cached: WeakValueDictionary[Reference, Class] = WeakValueDictionary()
 
         if loaders is not None:
             self._loaders.extend(loaders)
@@ -227,31 +271,34 @@ class Linker:
 
     # ------------------------------ Resolution API ------------------------------ #
 
-    def find_class(self, name: str) -> Result[Class]:
+    def find_class(self, name_or_type: str | Reference) -> Result[Class]:
         """
-        Finds a class given its name.
+        Finds a class given its name or type.
         """
 
-        cached = self._cached.get(name)
+        if not isinstance(name_or_type, Reference):
+            name_or_type = ClassType(name_or_type)
+
+        cached = self._cached.get(name_or_type)
         if cached is not None:
-            if cached.name == name:  # Need to do this check as `Class` objects are mutable.
+            if cached.as_type() == name_or_type:  # Need to do this check as `Class` objects are mutable.
                 return Ok(cached)
-            del self._cached[name]
-            self._cached[cached.name] = cached
+            del self._cached[name_or_type]
+            self._cached[cached.as_type()] = cached
 
         with Result[Class]() as result:
             for loader in self.loaders:
-                class_ = loader.find_class(self, name).into(result).value
+                class_ = loader.find_class(self, name_or_type.name).into(result).value
                 if class_ is not None:
-                    self._cached[name] = class_
+                    self._cached[name_or_type] = class_
                     return result.ok(class_)
-            return result.err(KeyError(name))
+            return result.err(KeyError(name_or_type))
         return result
 
     # FIXME: Static lookups needed too.
 
-    def find_field(self, name: str, type: "Type") -> Result[Field]:
+    def find_field(self, name: str, type: Type) -> Result[Field]:
         raise NotImplementedError()
 
-    def find_method(self, name: str, arg_types: tuple["Type", ...], ret_type: "Type") -> Result[Method]:
+    def find_method(self, name: str, arg_types: tuple[Type, ...], ret_type: Type) -> Result[Method]:
         raise NotImplementedError()

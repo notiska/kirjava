@@ -182,9 +182,9 @@ class Result(Generic[T]):
         return self
 
     def __exit__(
-            self, exc_type: type[BaseException] | None,
-            exc_value: BaseException | None,
-            traceback: TracebackType | None,
+        self, exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
     ) -> bool:
         if isinstance(exc_value, Exception):
             # The traceback we're given only goes one up until the context handler, so we'll add the extra frames too.

@@ -24,6 +24,7 @@ from ..version import *
 from ..._compat import Self, TypeVar
 from ...backend import Err, Ok, Result
 from ...model import Class, Field, Linker, Method
+from ...visitor import *
 
 if typing.TYPE_CHECKING:
     from .classfile import ClassFile, Record
@@ -35,14 +36,15 @@ P = TypeVar("P", default=Any)
 L = TypeVar(
     "L",
     # FIXME: Is the a better way to do this lol?
+    Any,
     Class, Field, Method,
     Class | Field, Class | Method, Field | Method,
     Class | Field | Method,
-    default=Class | Field | Method,
+    default=Any,  # Class | Field | Method,
 )
 
 
-class AttributeInfo(Generic[P, L]):
+class AttributeInfo(Visitable, Generic[P, L]):
     """
     An attribute_info struct.
 
@@ -72,8 +74,10 @@ class AttributeInfo(Generic[P, L]):
 
     Methods
     -------
-    lookup(tag: bytes) -> type[AttributeInfo[Any, Class | Field | Method]] | None
+    lookup(tag: bytes) -> type[AttributeInfo[Any, Any]] | None
         Looks up an attribute type by tag/name.
+    supported(location: int) -> list[type[AttributeInfo[Any, Any]]]
+        Collects all attributes that support the provided location.
     read(stream: IO[bytes], version: Version, pool: ConstPool, location: int) -> Result[AttributeInfo]
         Reads an attribute from a binary stream.
     lower(lifted: L, parent: P) -> Result[Self | None]
@@ -130,8 +134,20 @@ class AttributeInfo(Generic[P, L]):
         return None
 
     @classmethod
+    def supported(cls, location: int) -> list[type["AttributeInfo[Any, Any]"]]:
+        """
+        Collects all attributes that support the provided location.
+        """
+
+        supported = []
+        for subclass in cls.__subclasses__():
+            if location in subclass.locations:
+                supported.append(subclass)
+        return supported
+
+    @classmethod
     def read(
-            cls, stream: IO[bytes], version: Version, pool: "ConstPool", location: int | None,
+        cls, stream: IO[bytes], version: Version, pool: "ConstPool", location: int | None,
     ) -> Result["AttributeInfo"]:
         """
         Reads an attribute from the binary stream.
@@ -231,6 +247,10 @@ class AttributeInfo(Generic[P, L]):
     def __eq__(self, other: object) -> bool:
         raise NotImplementedError(f"== is not implemented for {type(self)!r}")
 
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        visitor.visit_end(self)
+
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         """
         Internal attribute write.
@@ -312,6 +332,10 @@ class RawInfo(AttributeInfo[Any, Class | Field | Method]):
     def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
         return Err(ValueError("attempted to parse raw attribute"))
 
+    @classmethod
+    def lower(cls, lifted: Class | Field | Method, parent: Any) -> Result[Self | None]:
+        return Ok(None)
+
     def __init__(self, name: ConstInfo, data: bytes) -> None:
         super().__init__(name)
         self.name: ConstInfo
@@ -360,6 +384,14 @@ class Documentation(AttributeInfo[Any, Class | Field | Method]):
             return result.ok(cls(stream.read(length)))
         return result
 
+    @classmethod
+    def lower(cls, lifted: Class | Field | Method, parent: Any) -> Result[Self | None]:
+        with Result[Self | None]() as result:
+            assert isinstance(lifted, (Class, Field, Method)), "lowering non-class/field/method"
+            if lifted.documentation is not None:
+                return result.ok(cls(lifted.documentation))
+        return result.ok(None)
+
     def __init__(self, doc: bytes) -> None:
         super().__init__()
         self.doc = doc
@@ -401,6 +433,14 @@ class Synthetic(AttributeInfo[Any, Class | Field | Method]):
     def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
         return Ok(cls())
 
+    @classmethod
+    def lower(cls, lifted: Class | Field | Method, parent: Any) -> Result[Self | None]:
+        with Result[Self | None]() as result:
+            assert isinstance(lifted, (Class, Field, Method)), "lowering non-class/field/method"
+            if lifted.synthetic:
+                return result.ok(cls())
+        return result.ok(None)
+
     def __repr__(self) -> str:
         return "<Synthetic>"
 
@@ -411,6 +451,7 @@ class Synthetic(AttributeInfo[Any, Class | Field | Method]):
         return isinstance(other, Synthetic)
 
     def lift(self, linker: Linker, parent: Any, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        lifted.synthetic = lifted.info == parent  # FIXME: Better solution (see below)?
         return Ok(lifted)
 
     def write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
@@ -485,6 +526,14 @@ class Deprecated(AttributeInfo[Any, Class | Field | Method]):
     def _read(cls, stream: IO[bytes], version: Version, pool: "ConstPool") -> Result[Self]:
         return Ok(cls())
 
+    @classmethod
+    def lower(cls, lifted: Class | Field | Method, parent: Any) -> Result[Self | None]:
+        with Result[Self | None]() as result:
+            assert isinstance(lifted, (Class, Field, Method)), "lowering non-class/field/method"
+            if lifted.deprecated:
+                return result.ok(cls())
+        return result.ok(None)
+
     def __repr__(self) -> str:
         return "<Deprecated>"
 
@@ -506,7 +555,7 @@ class Deprecated(AttributeInfo[Any, Class | Field | Method]):
         stream.write(self.extra)
 
 
-class RuntimeVisibleAnnotations(AttributeInfo):
+class RuntimeVisibleAnnotations(AttributeInfo[Any, Class | Field | Method]):
     """
     The RuntimeVisibleAnnotations attribute.
 
@@ -533,6 +582,17 @@ class RuntimeVisibleAnnotations(AttributeInfo):
             annotations = [Annotation.read(stream, pool) for _ in range(count)]
             return result.ok(cls(annotations))
         return result
+
+    @classmethod
+    def lower(cls, lifted: Class | Field | Method, parent: Any) -> Result[Self | None]:
+        with Result[Self | None]() as result:
+            annotations = []
+            for annotation in lifted.annotations:
+                if annotation.visible:
+                    annotations.append(Annotation.lower(annotation))
+            if annotations:
+                return result.ok(cls(annotations))
+        return result.ok(None)
 
     def __init__(self, annotations: Iterable[Annotation] | None = None) -> None:
         super().__init__()
@@ -568,13 +628,26 @@ class RuntimeVisibleAnnotations(AttributeInfo):
     def __len__(self) -> int:
         return len(self.annotations)
 
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        for annotation in self.annotations:
+            # visitor.visit_annotation(self, annotation)
+            visitors.visit(annotation)
+        visitor.visit_end(self)
+
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_H(len(self.annotations)))
         for annotation in self.annotations:
             annotation.write(stream, pool)
 
+    def lift(self, linker: Linker, parent: Any, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        with Result[Class | Field | Method]() as result:
+            annotations = [annotation.lift(linker).unwrap_into(result) for annotation in self.annotations]
+            lifted.annotations.extend(annotations)
+        return result.ok(lifted)
 
-class RuntimeInvisibleAnnotations(AttributeInfo):
+
+class RuntimeInvisibleAnnotations(AttributeInfo[Any, Class | Field | Method]):
     """
     The RuntimeInvisibleAnnotations attribute.
 
@@ -601,6 +674,17 @@ class RuntimeInvisibleAnnotations(AttributeInfo):
             annotations = [Annotation.read(stream, pool) for _ in range(count)]
             return result.ok(cls(annotations))
         return result
+
+    @classmethod
+    def lower(cls, lifted: Class | Field | Method, parent: Any) -> Result[Self | None]:
+        with Result[Self | None]() as result:
+            annotations = []
+            for annotation in lifted.annotations:
+                if not annotation.visible:
+                    annotations.append(Annotation.lower(annotation))
+            if annotations:
+                return result.ok(cls(annotations))
+        return result.ok(None)
 
     def __init__(self, annotations: Iterable[Annotation] | None = None) -> None:
         super().__init__()
@@ -636,10 +720,27 @@ class RuntimeInvisibleAnnotations(AttributeInfo):
     def __len__(self) -> int:
         return len(self.annotations)
 
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        for annotation in self.annotations:
+            # visitor.visit_annotation(self, annotation)
+            visitors.visit(annotation)
+        visitor.visit_end(self)
+
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_H(len(self.annotations)))
         for annotation in self.annotations:
             annotation.write(stream, pool)
+
+    def lift(self, linker: Linker, parent: Any, lifted: Class | Field | Method) -> Result[Class | Field | Method]:
+        with Result[Class | Field | Method]() as result:
+            annotations = []
+            for annotation in self.annotations:
+                lifted_anno = annotation.lift(linker).unwrap_into(result)
+                lifted_anno.visible = False
+                annotations.append(lifted_anno)
+            lifted.annotations.extend(annotations)
+        return result.ok(lifted)
 
 
 class RuntimeVisibleTypeAnnotations(AttributeInfo):
@@ -707,6 +808,13 @@ class RuntimeVisibleTypeAnnotations(AttributeInfo):
 
     def __len__(self) -> int:
         return len(self.annotations)
+
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        for annotation in self.annotations:
+            # visitor.visit_annotation(self, annotation)
+            visitors.visit(annotation)
+        visitor.visit_end(self)
 
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_H(len(self.annotations)))
@@ -779,6 +887,13 @@ class RuntimeInvisibleTypeAnnotations(AttributeInfo):
 
     def __len__(self) -> int:
         return len(self.annotations)
+
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        for annotation in self.annotations:
+            # visitor.visit_annotation(self, annotation)
+            visitors.visit(annotation)
+        visitor.visit_end(self)
 
     def _write(self, stream: IO[bytes], version: Version, pool: "ConstPool") -> None:
         stream.write(pack_H(len(self.annotations)))

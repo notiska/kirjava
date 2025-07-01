@@ -78,8 +78,8 @@ class Type:
     def __hash__(self) -> int:
         raise NotImplementedError(f"hash() is not implemented for {type(self)!r}")
 
-    # FIXME: Implicit cast option, because it doesn't make sense to use language-level constructs when evaluating the
-    #        validity of bytecode stack map frames.
+    # FIXME: Some kind of assignability checker class, so that implicit casting can be handled by that, as well as
+    #        handling Java class hierarchy lookups correctly.
     def assignable(self, other: "Type", *, implicit: bool = False) -> bool:
         """
         Checks if another type is assignable to this type.

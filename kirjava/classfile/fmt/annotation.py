@@ -16,17 +16,26 @@ JVM class file annotation structs found in annotation attributes.
 """
 
 import typing
-from typing import IO, Iterable, Iterator, Union
+from typing import Any, IO, Iterable, Iterator, Union
 
-from .constants import ConstInfo
+from .constants import ClassInfo, ConstInfo, UTF8Info
 from .._struct import *
+from ..desc import parse_reference, to_descriptor
 from ..._compat import Self
+from ...backend import Result
+from ...model import Annotation as LiftedAnnotation, Field, Linker
+from ...model.types import Class as ClassType, Reference
+from ...model.values import Constant
+from ...model.values.constants import (
+    Boolean, Byte, Character, Class as ClassConst, Double, Float, Integer, Long, Short, String,
+)
+from ...visitor import *
 
 if typing.TYPE_CHECKING:
     from .pool import ConstPool
 
 
-class ElementValue:
+class ElementValue(Visitable):
     """
     An element_value union.
 
@@ -35,7 +44,7 @@ class ElementValue:
     tags: bytes
         The tags (kinds) that identify this type of element value.
     kind: int
-        A single ASCII character indicating the kind of value.
+        A single ASCII character (ordinal) indicating the kind of value.
 
     Methods
     -------
@@ -43,6 +52,11 @@ class ElementValue:
         Looks up an element value type by kind.
     read(stream: IO[bytes], pool: ConstPool) -> Self
         Reads an annotation element value from a binary stream.
+    lower(lifted: LiftedAnnotation.Element) -> ElementValue
+        Lowers the provided lifted value into an element value.
+
+    lift(self, linker: Linker) -> Result[LiftedAnnotation.Element]
+        Creates a lifted value from this element value.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes this annotation element value to a binary stream.
     """
@@ -104,6 +118,47 @@ class ElementValue:
             raise ValueError(f"invalid kind {kind} for element value")
         return subclass._read(stream, pool, kind)
 
+    @classmethod
+    def lower(cls, value: LiftedAnnotation.Element) -> "ElementValue":
+        """
+        Lowers the provided lifted value into an element value.
+        """
+
+        # TODO: Could this be handled by the subclasses? Or not necessary?
+        if isinstance(value, LiftedAnnotation.Constant):
+            if isinstance(value.value, ClassConst):
+                return ClassValue(UTF8Info.encode(to_descriptor(value.value.ref_type).unwrap()))
+
+            if isinstance(value.value, Byte):
+                return ConstValue(ConstValue.BYTE, ConstInfo.lower(value.value.as_integer()))
+            elif isinstance(value.value, Character):
+                return ConstValue(ConstValue.CHAR, ConstInfo.lower(value.value.as_integer()))
+            elif isinstance(value.value, Double):
+                return ConstValue(ConstValue.DOUBLE, ConstInfo.lower(value.value))
+            elif isinstance(value.value, Float):
+                return ConstValue(ConstValue.FLOAT, ConstInfo.lower(value.value))
+            elif isinstance(value.value, Integer):
+                return ConstValue(ConstValue.INT, ConstInfo.lower(value.value))
+            elif isinstance(value.value, Long):
+                return ConstValue(ConstValue.LONG, ConstInfo.lower(value.value))
+            elif isinstance(value.value, Short):
+                return ConstValue(ConstValue.SHORT, ConstInfo.lower(value.value.as_integer()))
+            elif isinstance(value.value, Boolean):
+                return ConstValue(ConstValue.BOOLEAN, ConstInfo.lower(value.value.as_integer()))
+            elif isinstance(value.value, String):
+                return ConstValue(ConstValue.STRING, ConstInfo.lower(value.value))
+
+        elif isinstance(value, LiftedAnnotation.EnumField):
+            return EnumConstValue(UTF8Info.encode(to_descriptor(value.type).unwrap()), UTF8Info.encode(value.name))
+
+        elif isinstance(value, LiftedAnnotation.Nested):
+            return AnnotationValue(Annotation.lower(value.annotation))
+
+        elif isinstance(value, LiftedAnnotation.Array):
+            return ArrayValue(list(map(ElementValue.lower, value.values)))
+
+        raise NotImplementedError(f"don't know how to lower {value!s}")
+
     def __init__(self, kind: int) -> None:
         self.kind = kind
 
@@ -115,6 +170,22 @@ class ElementValue:
 
     def __eq__(self, other: object) -> bool:
         raise NotImplementedError(f"== is not implemented for {type(self)!r}")
+
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        visitor.visit_end(self)
+
+    def lift(self, linker: Linker) -> Result[LiftedAnnotation.Element]:
+        """
+        Creates a lifted value from this element value.
+
+        Parameters
+        ----------
+        linker: Linker
+            The linker to use to resolve references.
+        """
+
+        raise NotImplementedError(f"lift() is not implemented for {type(self)!r}")
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
@@ -131,7 +202,7 @@ class ElementValue:
         raise NotImplementedError(f"write() is not implemented for {type(self)!r}")
 
 
-class Annotation:
+class Annotation(Visitable):
     """
     An annotation struct.
 
@@ -146,6 +217,11 @@ class Annotation:
     -------
     read(stream: IO[bytes], pool: ConstPool) -> Self
         Reads an annotation from a binary stream.
+    lower(lifted: LiftedAnnotation) -> Self
+        Lowers the provided lifted annotation into an annotation.
+
+    lift(self, linker: Linker) -> Result[LiftedAnnotation]
+        Creates a lifted annotation from this annotation.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes this annotation to a binary stream.
     """
@@ -172,6 +248,17 @@ class Annotation:
             value = ElementValue.read(stream, pool)
             elements.append(Annotation.NamedElement(pool[name_index], value))
         return cls(pool[type_index], elements)
+
+    @classmethod
+    def lower(cls, lifted: LiftedAnnotation) -> Self:
+        """
+        Lowers the provided lifted annotation into an annotation.
+        """
+
+        elements = []
+        for name, value in lifted.values.items():
+            elements.append(cls.NamedElement(UTF8Info.encode(name), ElementValue.lower(value)))
+        return cls(UTF8Info.encode(to_descriptor(lifted.type).unwrap()), elements)
 
     def __init__(self, type: ConstInfo, elements: Iterable["Annotation.NamedElement"] | None = None) -> None:
         self.type = type
@@ -209,6 +296,39 @@ class Annotation:
     def __len__(self) -> int:
         return len(self.elements)
 
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        for element in self.elements:
+            visitors.visit(element)
+        visitor.visit_end(self)
+
+    def lift(self, linker: Linker) -> Result[LiftedAnnotation]:
+        """
+        Creates a lifted annotation from this annotation.
+
+        Parameters
+        ----------
+        linker: Linker
+            The linker to use to resolve references.
+        """
+
+        with Result[LiftedAnnotation]() as result:
+            if not isinstance(self.type, UTF8Info):
+                raise TypeError(f"annotation type {self.type!s} is not a UTF8 constant")
+            ref_type = parse_reference(self.type.decode()).unwrap_into(result)
+            if not isinstance(ref_type, ClassType):
+                raise TypeError(f"annotation type {ref_type!s} is not a class type")
+            # class_ = linker.find_class(ref_type.name).unwrap_into(result)
+
+            values = {}
+            for element in self.elements:
+                if not isinstance(element.name, UTF8Info):
+                    raise TypeError(f"annotation element name {element.name!s} is not a UTF8 constant")
+                values[element.name.decode()] = element.value.lift(linker).unwrap_into(result)
+
+            return result.ok(LiftedAnnotation(ref_type, values=values))
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
         Writes this annotation to a binary stream.
@@ -226,7 +346,7 @@ class Annotation:
             stream.write(pack_H(pool.add(element.name)))
             element.value.write(stream, pool)
 
-    class NamedElement:
+    class NamedElement(Visitable):
         """
         An element name and value pair.
 
@@ -256,8 +376,13 @@ class Annotation:
         def __iter__(self) -> Iterator[ConstInfo | ElementValue]:
             return iter((self.name, self.value))
 
+        def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+            visitor.visit_start(self)
+            visitors.visit(self.value)
+            visitor.visit_end(self)
 
-class ParameterAnnotations:
+
+class ParameterAnnotations(Visitable):
     """
     A parameter_annotations struct.
 
@@ -326,6 +451,12 @@ class ParameterAnnotations:
 
     def __len__(self) -> int:
         return len(self.annotations)
+
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        for annotation in self.annotations:
+            visitors.visit(annotation)
+        visitor.visit_end(self)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """
@@ -737,8 +868,8 @@ class TypeAnnotation(Annotation):
         return cls(pool[type_index], info, path, elements)
 
     def __init__(
-            self, type: ConstInfo, info: TargetInfo, path: TypePath,
-            elements: Iterable["Annotation.NamedElement"] | None = None,
+        self, type: ConstInfo, info: TargetInfo, path: TypePath,
+        elements: Iterable["Annotation.NamedElement"] | None = None,
     ) -> None:
         super().__init__(type, elements)
         self.info = info
@@ -847,6 +978,47 @@ class ConstValue(ElementValue):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ConstValue) and self.kind == other.kind and self.value == other.value
 
+    def lift(self, linker: Linker) -> Result[LiftedAnnotation.Element]:
+        with Result[LiftedAnnotation.Element]() as result:
+            value = self.value.lift().unwrap_into(result)
+
+            if self.kind == ConstValue.BYTE:
+                if not isinstance(value, Integer):
+                    raise TypeError(f"byte const value {value!s} is not an integer constant")
+                value = value.as_byte()
+            elif self.kind == ConstValue.CHAR:
+                if not isinstance(value, Integer):
+                    raise TypeError(f"char const value {value!s} is not an integer constant")
+                value = value.as_character()
+            elif self.kind == ConstValue.DOUBLE:
+                if not isinstance(value, Double):
+                    raise TypeError(f"double const value {value!s} is not a double constant")
+            elif self.kind == ConstValue.FLOAT:
+                if not isinstance(value, Float):
+                    raise TypeError(f"float const value {value!s} is not a float constant")
+            elif self.kind == ConstValue.INT:
+                if not isinstance(value, Integer):
+                    raise TypeError(f"integer const value {value!s} is not an integer constant")
+            elif self.kind == ConstValue.LONG:
+                if not isinstance(value, Long):
+                    raise TypeError(f"long const value {value!s} is not a long constant")
+            elif self.kind == ConstValue.SHORT:
+                if not isinstance(value, Integer):
+                    raise TypeError(f"short const value {value!s} is not an integer constant")
+                value = value.as_short()
+            elif self.kind == ConstValue.BOOLEAN:
+                if not isinstance(value, Integer):
+                    raise TypeError(f"boolean const value {value!s} is not an integer constant")
+                value = value.as_boolean()
+            elif self.kind == ConstValue.STRING:
+                if not isinstance(value, String):
+                    raise TypeError(f"string const value {value!s} is not a string constant")
+            else:
+                raise NotImplementedError(f"don't know how to lift kind {self.kind}")
+
+            return result.ok(LiftedAnnotation.Constant(value))
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.kind, pool.add(self.value)))
 
@@ -889,6 +1061,20 @@ class EnumConstValue(ElementValue):
     # def __iter__(self) -> Iterator[ConstInfo]:
     #     return iter((self.type, self.name))
 
+    def lift(self, linker: Linker) -> Result[LiftedAnnotation.Element]:
+        with Result[LiftedAnnotation.Element]() as result:
+            if not isinstance(self.type, UTF8Info):
+                raise TypeError(f"enum const value type {self.type!s} is not a UTF8 constant")
+            if not isinstance(self.name, UTF8Info):
+                raise TypeError(f"enum const value name {self.name!s} is not a UTF8 constant")
+
+            ref_type = parse_reference(self.type.decode()).unwrap_into(result)
+            if not isinstance(ref_type, ClassType):
+                raise TypeError(f"enum const value type {ref_type!s} is not a class type")
+
+            return result.ok(LiftedAnnotation.EnumField(ref_type, self.name.decode()))
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHH(EnumConstValue.tags[0], pool.add(self.type), pool.add(self.name)))
 
@@ -927,6 +1113,15 @@ class ClassValue(ElementValue):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ClassValue) and self.type == other.type
 
+    def lift(self, linker: Linker) -> Result[LiftedAnnotation.Element]:
+        with Result[LiftedAnnotation.Element]() as result:
+            if not isinstance(self.type, UTF8Info):
+                raise TypeError(f"class constant type {self.type!s} is not a UTF8 constant")
+            ref_type = parse_reference(self.type.decode()).unwrap_into(result)
+            assert isinstance(ref_type, Reference), "parse reference returned bad type"
+            return result.ok(LiftedAnnotation.Constant(ClassConst(ref_type)))
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(ClassValue.tags[0], pool.add(self.type)))
 
@@ -961,6 +1156,16 @@ class AnnotationValue(ElementValue):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, AnnotationValue) and self.annotation == other.annotation
+
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        visitors.visit(self.annotation)
+        visitor.visit_end(self)
+
+    def lift(self, linker: Linker) -> Result[LiftedAnnotation.Element]:
+        with Result[LiftedAnnotation.Element]() as result:
+            return result.ok(LiftedAnnotation.Nested(self.annotation.lift(linker).unwrap_into(result)))
+        return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(AnnotationValue.tags)
@@ -1019,6 +1224,31 @@ class ArrayValue(ElementValue):
 
     def __len__(self) -> int:
         return len(self.values)
+
+    def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
+        visitor.visit_start(self)
+        for value in self.values:
+            visitors.visit(value)
+        visitor.visit_end(self)
+
+    def lift(self, linker: Linker) -> Result[LiftedAnnotation.Element]:
+        with Result[LiftedAnnotation.Element]() as result:
+            if not self.values:
+                return result.ok(LiftedAnnotation.Array())
+            elif len(self.values) == 1:
+                value, = self.values
+                return result.ok(LiftedAnnotation.Array([value.lift(linker).unwrap_into(result)]))
+
+            values = [self.values[0].lift(linker).unwrap_into(result)]
+            value_type = type(values[0])
+            for value in self.values[1:]:
+                lifted = value.lift(linker).unwrap_into(result)
+                if not isinstance(lifted, value_type):
+                    raise TypeError(f"array element value {lifted!s} has wrong type, expected {value_type}")
+                values.append(lifted)
+
+            return result.ok(LiftedAnnotation.Array(values))
+        return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(ArrayValue.tags[0], len(self.values)))
