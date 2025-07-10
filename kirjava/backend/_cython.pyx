@@ -17,7 +17,7 @@ A Cython backend implementation.
 
 import math
 import sys
-from typing import SupportsFloat, SupportsInt
+from typing import Any, SupportsFloat, SupportsInt
 
 from libc cimport math as cmath
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t
@@ -60,25 +60,25 @@ cdef class u8:
     def __bool__(self) -> bool:
         return bool(self.value)
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         # Performance: The `isinstance` check is ~10ns slower for non-u8 checks and negligible for u8 checks.
         # if isinstance(other, u8):
         #     return self.value < (<u8>other).value
         return self.value < other
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         return self.value <= other
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.value == other
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         return self.value != other
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         return self.value > other
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         return self.value >= other
 
     def __hash__(self) -> int:
@@ -167,22 +167,22 @@ cdef class u16:
     def __bool__(self) -> bool:
         return bool(self.value)
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         return self.value < other
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         return self.value <= other
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.value == other
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         return self.value != other
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         return self.value > other
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         return self.value >= other
 
     def __hash__(self) -> int:
@@ -266,22 +266,22 @@ cdef class u32:
     def __bool__(self) -> bool:
         return bool(self.value)
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         return self.value < other
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         return self.value <= other
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.value == other
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         return self.value != other
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         return self.value > other
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         return self.value >= other
 
     def __hash__(self) -> int:
@@ -365,22 +365,22 @@ cdef class u64:
     def __bool__(self) -> bool:
         return bool(self.value)
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         return self.value < other
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         return self.value <= other
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.value == other
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         return self.value != other
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         return self.value > other
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         return self.value >= other
 
     def __hash__(self) -> int:
@@ -464,22 +464,22 @@ cdef class i8:
     def __bool__(self) -> bool:
         return bool(self.value)
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         return self.value < other
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         return self.value <= other
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.value == other
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         return self.value != other
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         return self.value > other
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         return self.value >= other
 
     def __hash__(self) -> int:
@@ -566,22 +566,22 @@ cdef class i16:
     def __bool__(self) -> bool:
         return bool(self.value)
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         return self.value < other
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         return self.value <= other
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.value == other
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         return self.value != other
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         return self.value > other
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         return self.value >= other
 
     def __hash__(self) -> int:
@@ -668,22 +668,22 @@ cdef class i32:
     def __bool__(self) -> bool:
         return bool(self.value)
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         return self.value < other
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         return self.value <= other
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.value == other
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         return self.value != other
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         return self.value > other
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         return self.value >= other
 
     def __hash__(self) -> int:
@@ -770,22 +770,22 @@ cdef class i64:
     def __bool__(self) -> bool:
         return bool(self.value)
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         return self.value < other
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         return self.value <= other
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.value == other
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         return self.value != other
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         return self.value > other
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         return self.value >= other
 
     def __hash__(self) -> int:
@@ -872,22 +872,22 @@ cdef class f32:
     def __bool__(self) -> bool:
         return bool(self.value)
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         return self.value < other
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         return self.value <= other
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.value == other
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         return self.value != other
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         return self.value > other
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         return self.value >= other
 
     def __hash__(self) -> int:
@@ -972,22 +972,22 @@ cdef class f64:
     def __bool__(self) -> bool:
         return bool(self.value)
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         return self.value < other
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         return self.value <= other
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.value == other
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         return self.value != other
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         return self.value > other
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         return self.value >= other
 
     def __hash__(self) -> int:

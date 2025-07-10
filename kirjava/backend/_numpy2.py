@@ -13,11 +13,14 @@ __all__ = (
 )
 
 """
-A numpy backend implementation.
+A numpy >=2.0.0 backend implementation:
+ - https://numpy.org/devdocs/release/2.0.0-notes.html
 """
 
 import numpy as np
 
+if np.__version__ < "2.0.0":
+    raise ImportError(f"numpy version {np.__version__} not supported, need >=2.0.0")
 
 u8 = np.uint8
 u16 = np.uint16

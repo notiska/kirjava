@@ -44,10 +44,19 @@ except Exception as error:
 if not USING_CYTHON:
     try:
         # This type ignore is probably one of the worst, but I'm not sure how to make this compatible.
-        from ._numpy import *  # type: ignore[assignment,unused-ignore]
+        from ._numpy2 import *  # type: ignore[assignment,unused-ignore]
         USING_NUMPY = True
     except Exception as error:
-        logger.debug("numpy backend not available: %s", error)
+        logger.debug("numpy >=2.0.0 backend not available: %s", error)
+        logger.debug(repr(error), exc_info=True)
+
+if not USING_NUMPY:
+    try:
+        from ._numpy1 import *  # type: ignore[assignment]
+        USING_NUMPY = True
+    except Exception as error:
+        raise
+        logger.debug("numpy <2.0.0 backend not available: %s", error)
         logger.debug(repr(error), exc_info=True)
 
 # if not imported:

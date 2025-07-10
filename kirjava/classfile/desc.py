@@ -6,7 +6,7 @@ __all__ = (
     "parse_reference", "parse_field_descriptor", "parse_method_descriptor", "to_descriptor",
 )
 
-from typing import Iterable
+from typing import Iterable, Union
 
 from ..backend import Err, Ok, Result
 from ..model.types import (
@@ -111,7 +111,7 @@ def parse_reference(descriptor: str, *, strict: bool = True) -> Result[Reference
         # TODO: May want to verify that the name is a qualified name.
         return Ok(Class(descriptor))
 
-    with Result[Reference | Invalid]() as result:
+    with Result[Union[Reference, Invalid]]() as result:  # Reference | Invalid  # py3.8
         array, trailing = _next_type(descriptor)
         assert isinstance(array, (Array, Invalid)), "improperly parsed array type"
 
@@ -180,7 +180,7 @@ def parse_method_descriptor(descriptor: str, *, strict: bool = True) -> Result[t
     if not descriptor:
         return Err(ValueError("descriptor is empty"))
 
-    with Result[tuple[tuple[Type, ...], Type]]() as result:
+    with Result["tuple[tuple[Type, ...], Type]"]() as result:  # Result[tuple[tuple[Type, ...], Type]]  # py3.8
         preceding, args_descriptor, remaining = _find_enclosing(descriptor, "(", ")")
         if preceding:
             result.err(ValueError(f"leading data {preceding!r} in descriptor"), reraise=strict)

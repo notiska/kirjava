@@ -8,7 +8,7 @@ __all__ = (
     "unpack_f32", "pack_f32", "unpack_f64", "pack_f64",
 )
 
-from typing import SupportsInt, SupportsFloat
+from typing import Any, SupportsInt, SupportsFloat
 
 
 class u8:
@@ -25,22 +25,22 @@ class u8:
     def __bool__(self) -> bool:
         ...
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         ...
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         ...
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         ...
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         ...
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         ...
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         ...
 
     def __hash__(self) -> int:
@@ -103,22 +103,22 @@ class u16:
     def __bool__(self) -> bool:
         ...
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         ...
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         ...
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         ...
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         ...
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         ...
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         ...
 
     def __hash__(self) -> int:
@@ -181,22 +181,22 @@ class u32:
     def __bool__(self) -> bool:
         ...
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         ...
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         ...
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         ...
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         ...
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         ...
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         ...
 
     def __hash__(self) -> int:
@@ -259,22 +259,22 @@ class u64:
     def __bool__(self) -> bool:
         ...
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         ...
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         ...
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         ...
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         ...
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         ...
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         ...
 
     def __hash__(self) -> int:
@@ -337,22 +337,22 @@ class i8:
     def __bool__(self) -> bool:
         ...
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         ...
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         ...
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         ...
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         ...
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         ...
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         ...
 
     def __hash__(self) -> int:
@@ -415,22 +415,22 @@ class i16:
     def __bool__(self) -> bool:
         ...
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         ...
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         ...
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         ...
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         ...
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         ...
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         ...
 
     def __hash__(self) -> int:
@@ -493,22 +493,22 @@ class i32:
     def __bool__(self) -> bool:
         ...
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         ...
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         ...
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         ...
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         ...
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         ...
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         ...
 
     def __hash__(self) -> int:
@@ -571,22 +571,22 @@ class i64:
     def __bool__(self) -> bool:
         ...
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         ...
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         ...
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         ...
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         ...
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         ...
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         ...
 
     def __hash__(self) -> int:
@@ -649,22 +649,22 @@ class f32:
     def __bool__(self) -> bool:
         ...
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         ...
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         ...
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         ...
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         ...
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         ...
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         ...
 
     def __hash__(self) -> int:
@@ -721,22 +721,22 @@ class f64:
     def __bool__(self) -> bool:
         ...
 
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: Any) -> bool:
         ...
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: Any) -> bool:
         ...
 
     def __eq__(self, other: object) -> bool:
         ...
 
-    def __ne__(self, other: object) -> bool:
+    def __ne__(self, other: Any) -> bool:
         ...
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: Any) -> bool:
         ...
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: Any) -> bool:
         ...
 
     def __hash__(self) -> int:

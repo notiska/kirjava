@@ -38,8 +38,7 @@ L = TypeVar(
     # FIXME: Is the a better way to do this lol?
     Any,
     Class, Field, Method,
-    Class | Field, Class | Method, Field | Method,
-    Class | Field | Method,
+    Union[Class, Field, Method],  # Class | Field | Method,  # Ughh, py3.8 compat...
     default=Any,  # Class | Field | Method,
 )
 
@@ -308,7 +307,7 @@ class AttributeInfo(Visitable, Generic[P, L]):
         stream.seek(end, SEEK_SET)
 
 
-class RawInfo(AttributeInfo[Any, Class | Field | Method]):
+class RawInfo(AttributeInfo[Any, Union[Class, Field, Method]]):  # Class | Field | Method
     """
     A raw attribute.
 
@@ -359,7 +358,7 @@ class RawInfo(AttributeInfo[Any, Class | Field | Method]):
         stream.write(self.extra)
 
 
-class Documentation(AttributeInfo[Any, Class | Field | Method]):
+class Documentation(AttributeInfo[Any, Union[Class, Field, Method]]):  # Class | Field | Method
     """
     The Documentation attribute.
 
@@ -415,7 +414,7 @@ class Documentation(AttributeInfo[Any, Class | Field | Method]):
         stream.write(self.extra)
 
 
-class Synthetic(AttributeInfo[Any, Class | Field | Method]):
+class Synthetic(AttributeInfo[Any, Union[Class, Field, Method]]):  # Class | Field | Method
     """
     The Synthetic attribute.
 
@@ -507,7 +506,7 @@ class Signature(AttributeInfo):
         stream.write(self.extra)
 
 
-class Deprecated(AttributeInfo[Any, Class | Field | Method]):
+class Deprecated(AttributeInfo[Any, Union[Class, Field, Method]]):  # Class | Field | Method
     """
     The Deprecated attribute.
 
@@ -555,7 +554,7 @@ class Deprecated(AttributeInfo[Any, Class | Field | Method]):
         stream.write(self.extra)
 
 
-class RuntimeVisibleAnnotations(AttributeInfo[Any, Class | Field | Method]):
+class RuntimeVisibleAnnotations(AttributeInfo[Any, Union[Class, Field, Method]]):  # Class | Field | Method
     """
     The RuntimeVisibleAnnotations attribute.
 
@@ -647,7 +646,7 @@ class RuntimeVisibleAnnotations(AttributeInfo[Any, Class | Field | Method]):
         return result.ok(lifted)
 
 
-class RuntimeInvisibleAnnotations(AttributeInfo[Any, Class | Field | Method]):
+class RuntimeInvisibleAnnotations(AttributeInfo[Any, Union[Class, Field, Method]]):  # Class | Field | Method
     """
     The RuntimeInvisibleAnnotations attribute.
 
