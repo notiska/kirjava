@@ -287,6 +287,7 @@ class Result(Generic[T]):
     def into(self, parent: Result[Any]) -> Self:
         """
         Adds any errors and/or metadata to a parent result.
+        Note: does not unwrap the value.
 
         Parameters
         ----------

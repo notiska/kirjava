@@ -27,12 +27,17 @@ from ...backend import Result
 
 # FIXME: Make the graph structure more/less expressive? Want to maximise usability, analysis can have a separate data
 #        structure to store more complex relations such as rethrow, direct links, resolved subroutines, etc...
+
 class Graph:
     """
     A JVM control flow graph.
 
     Attributes
     ----------
+    blocks: tuple[Block, ...]
+        An immutable copy of the blocks in this graph.
+    edges: tuple[Edge, ...]
+        An immutable copy of the edges in this graph.
     entry: Block
         The entry block of the graph.
     return_: Block
@@ -63,7 +68,7 @@ class Graph:
 
     __slots__ = (
         "entry", "return_", "rethrow", "opaque",
-        "_blocks", "_edges_out", "_edges_in",
+        "_blocks", "_edges", "_edges_out", "_edges_in",
     )
 
     @classmethod
@@ -81,6 +86,14 @@ class Graph:
 
         return disassemble(cls(), method, cf)
 
+    @property
+    def blocks(self) -> tuple[Block, ...]:
+        return tuple(self._blocks.values())
+
+    @property
+    def edges(self) -> tuple[Edge, ...]:
+        return tuple(self.edges)
+
     def __init__(self) -> None:
         self.entry   = MutableBlock(0)
         self.return_ = Return()
@@ -93,6 +106,7 @@ class Graph:
             self.return_.label: self.return_,
             self.entry.label: self.entry,
         }
+        self._edges: list[Edge] = []
         # Using dicts instead of sets here to preserve order.
         self._edges_out: dict[Block, dict[Edge, None]] = defaultdict(dict)
         self._edges_in:  dict[Block, dict[Edge, None]] = defaultdict(dict)
@@ -271,33 +285,36 @@ class Graph:
             if self._blocks[block_or_edge.target.label] != block_or_edge.target:
                 raise KeyError(block_or_edge.target)
 
+            self._edges.append(block_or_edge)
             self._edges_out[block_or_edge.source][block_or_edge] = None
             self._edges_in[block_or_edge.target][block_or_edge] = None
 
     # def update(self) -> None:
     #     raise NotImplementedError()  # TODO
 
-    def remove(self, value: Block | Edge) -> None:
+    def remove(self, block_or_edge: Block | Edge) -> None:
         """
         Removes a block or an edge from this graph.
 
         No error is raised if the block or edge does not exist in this graph.
         """
 
-        if isinstance(value, Edge):
-            self._edges_out[value.source].pop(value, None)
-            self._edges_in[value.target].pop(value, None)
+        if isinstance(block_or_edge, Edge):
+            self._edges.remove(block_or_edge)
+            self._edges_out[block_or_edge.source].pop(block_or_edge, None)
+            self._edges_in[block_or_edge.target].pop(block_or_edge, None)
             return
 
-        if isinstance(value, (Opaque, Rethrow, Return)):
+        if isinstance(block_or_edge, (Opaque, Rethrow, Return)):
             return
-        elif value == self.entry:
+        elif block_or_edge == self.entry:
             return
-        elif self._blocks.get(value.label) != value:
+        elif self._blocks.get(block_or_edge.label) != block_or_edge:
             return
 
-        del self._blocks[value.label]
-        for edge in self._edges_out.pop(value, ()):
+        del self._blocks[block_or_edge.label]
+        for edge in self._edges_out.pop(block_or_edge, ()):
+            self._edges.remove(edge)
             self._edges_in[edge.target].pop(edge, None)
 
     # def pop(self, key: int | Block) -> Block | set[Edge] | None:

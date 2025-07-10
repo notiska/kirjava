@@ -35,6 +35,9 @@ Homepage = "https://github.com/notiska/kirjava"
 Repository = "https://github.com/notiska/kirjava.git"
 Issues = "https://github.com/notiska/kirjava/issues"
 
+[dependency-groups]
+typing = ["mypy"]
+
 [project.optional-dependencies]
 # TODO: Cython backend.
 backend = ["numpy"]
@@ -44,6 +47,12 @@ version = {attr = "kirjava.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["kirjava*"]
+
+[tools.setuptools.package-data]
+kirjava = ["py.typed"]
+
+[tool.mypy]
+packages = "kirjava"
 
 # [tool.pdm.scripts]
 # test = "python -m unittest discover tests"

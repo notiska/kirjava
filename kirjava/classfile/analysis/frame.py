@@ -54,14 +54,14 @@ class Frame:
         Pops the item off the top of the stack.
     push(self, value: Verification) -> None
         Pushes an item on to the top of the stack.
-    get(self, local: int, expect: Verification) -> Result[Verification]
-        Gets an item from the local variable array.
-    set(self, local: int, item: Verification) -> None
-        Sets an item in the local variable array.
-    rget(self, local: int, expect: Verification) -> None
-        "Reverse gets" an item in the local variable array.
-    rset(self, local: int, expect: Verification) -> None
-        "Reverse sets" an item in the local variable array.
+    load(self, local: int, expect: Verification) -> Result[Verification]
+        Loads an item from the local variable array.
+    store(self, local: int, item: Verification) -> None
+        Stores an item in the local variable array.
+    rload(self, local: int, expect: Verification) -> None
+        "Reverse loads" an item from the local variable array.
+    rstore(self, local: int, expect: Verification) -> None
+        "Reverse stores" an item in the local variable array.
     dup(self) -> Result[Verification]
         Duplicates the item on the top of the stack.
     dup_x1(self) -> Result[Verification]
@@ -167,6 +167,8 @@ class Frame:
     ) -> None:
         self.stack: list[Verification] = []
         self.locals: dict[int, Verification] = {}
+        # self.uses: set[int] = set()
+        # self.defs: set[int] = set()
         self.this = this
         self.super = super
         self.version = version
@@ -178,14 +180,16 @@ class Frame:
 
     def __copy__(self) -> "Frame":
         copied = Frame(self.stack, self.locals, self.this, self.super, self.version)
+        # copied.uses.update(self.uses)
+        # copied.defs.update(self.defs)
         return copied
 
     def __repr__(self) -> str:
         stack_str = ", ".join(map(str, self.stack))
         locals_str = ", ".join(f"{index}: {type!s}" for index, type in sorted(self.locals.items(), key=itemgetter(0)))
         return (
-            f"<Frame(stack=[{stack_str}], locals={{{locals_str}}}, this={self.this!s}, super={self.super!s}, " +
-            f"version={self.version!r})>"
+            f"<Frame(stack=[{stack_str}], locals={{{locals_str}}}, " +  # uses={self.uses!r}, defs={self.defs!r}, " +
+            f"this={self.this!s}, super={self.super!s}, version={self.version!r})>"
         )
 
     def __str__(self) -> str:
@@ -222,7 +226,7 @@ class Frame:
 
     def pop(self, expect: Verification) -> Result[Verification]:
         """
-        Pops the item off the top of the stack.
+        Pops an item off the top of the stack.
 
         Parameters
         ----------
@@ -254,9 +258,9 @@ class Frame:
             self.stack.append(reserved_t)
         self.stack.append(item)
 
-    def get(self, index: int, expect: Verification) -> Result[Verification]:
+    def load(self, index: int, expect: Verification) -> Result[Verification]:
         """
-        Gets an item from the local variable array.
+        Loads an item from the local variable array.
 
         Parameters
         ----------
@@ -269,17 +273,21 @@ class Frame:
         with Result[Verification]() as result:
             item = self.locals.get(index)
             if expect.wide:
-                self.get(index + 1, reserved_t).unwrap_into(result)
+                self.load(index + 1, reserved_t).unwrap_into(result)
             if item is None:
                 raise IndexError(f"local index {index} is empty")
             if not expect.assignable(item):
                 raise TypeError(f"{item!s} is not assignable to {expect!s}")
+            # if not index in self.defs:
+            #     self.uses.add(index)
+            #     if expect is not None and expect.wide:
+            #         self.uses.add(index + 1)
             return result.ok(item)
         return result
 
-    def set(self, index: int, item: Verification) -> Result[Verification | None]:
+    def store(self, index: int, item: Verification) -> Result[Verification | None]:
         """
-        Sets an item in the local variable array.
+        Stores an item in the local variable array.
 
         Returns
         -------
@@ -290,6 +298,7 @@ class Frame:
 
         with Result[Verification | None]() as result:
             previous = self.locals.get(index)
+            # self.defs.add(index)
             if previous is not None and previous.wide:
                 del self.locals[index + 1]
             elif previous == reserved_t:
@@ -297,12 +306,13 @@ class Frame:
             self.locals[index] = item
             if item.wide:
                 self.locals[index + 1] = reserved_t
+                # self.defs.add(index + 1)
             return result.ok(previous)
         return result
 
-    def rget(self, index: int, expect: Verification) -> None:
+    def rload(self, index: int, expect: Verification) -> None:
         """
-        "Reverse gets" an item in the local variable array.
+        "Reverse loads" an item from the local variable array.
 
         Sets the item in the provided local slot if, and only if, it is not
         assignable to the expected type, or empty.
@@ -310,7 +320,7 @@ class Frame:
         Parameters
         ----------
         index: int
-            The local variable array index to "reverse get".
+            The local variable array index to "reverse load".
         expect: Verification
             The type that is expected to be in the local variable slot.
             If the item is not assignable to this type, this type becomes the item.
@@ -320,18 +330,18 @@ class Frame:
         if item is None or not expect.assignable(item):
             self.locals[index] = expect
 
-    def rset(self, index: int, expect: Verification) -> None:
+    def rstore(self, index: int, expect: Verification) -> None:
         """
-        "Reverse sets" an item in the local variable array.
+        "Reverse stores" an item in the local variable array.
 
         Removes the item in the provided local index slot, if it matches the
         expected type.
-        Naturally, it is lossy to reverse the `set()` operation.
+        Naturally, it is lossy to reverse the `store()` operation.
 
         Parameters
         ----------
         index: int
-            The local variable array index to "reverse set".
+            The local variable array index to "reverse store".
         expect: Verification
             The type that is expected to be in the local variable slot.
         """

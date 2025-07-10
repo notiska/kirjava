@@ -76,7 +76,7 @@ class LoadLocal(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            item = frame.get(self.index, self.type).unwrap_into(result)
+            item = frame.load(self.index, self.type).unwrap_into(result)
             frame.push(item)
             return result.ok(frame)
         return result
@@ -84,7 +84,7 @@ class LoadLocal(Instruction):
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             item = frame.pop(self.type).unwrap_into(result, self.type)
-            frame.rget(self.index, item)
+            frame.rload(self.index, item)
         return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
@@ -133,14 +133,14 @@ class StoreLocal(Instruction):
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             item = frame.pop(self.type).unwrap_into(result)
-            frame.set(self.index, item).unwrap_into(result)
+            frame.store(self.index, item).unwrap_into(result)
             return result.ok(frame)
         return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
             # FIXME: Item might already exist in local slot? Could try to take that into account.
-            frame.rset(self.index, self.type)
+            frame.rstore(self.index, self.type)
             frame.push(self.type)
         return result.ok(frame)
 
@@ -296,15 +296,15 @@ class IInc(Instruction):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.get(self.index, int_t).unwrap_into(result)
-            frame.set(self.index, int_t).unwrap_into(result)
+            frame.load(self.index, int_t).unwrap_into(result)
+            frame.store(self.index, int_t).unwrap_into(result)
             return result.ok(frame)
         return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.rset(self.index, int_t)  # These two operations in a row are sort of redundant, admittedly.
-            frame.rget(self.index, int_t)
+            frame.rstore(self.index, int_t)  # These two operations in a row are sort of redundant, admittedly.
+            frame.rload(self.index, int_t)
         return result.ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:

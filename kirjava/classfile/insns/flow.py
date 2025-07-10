@@ -523,12 +523,12 @@ class Ret(Jump):
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
-            frame.get(self.index, return_address_t).unwrap_into(result)
+            frame.load(self.index, return_address_t).unwrap_into(result)
             return result.ok(frame)
         return result
 
     def rstep(self, frame: "Frame") -> Result["Frame"]:
-        frame.rget(self.index, return_address_t)
+        frame.rload(self.index, return_address_t)
         return Ok(frame)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:

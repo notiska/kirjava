@@ -706,18 +706,18 @@ class AppendFrame(StackMapFrame):
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> Self:
         delta, = unpack_H(stream.read(2))
-        locals_ = [VerificationTypeInfo.read(stream, pool) for _ in range(tag - 251)]
-        return cls(tag, delta, locals_)
+        locals = [VerificationTypeInfo.read(stream, pool) for _ in range(tag - 251)]
+        return cls(tag, delta, locals)
 
-    def __init__(self, tag: int, delta: int, locals_: Iterable[VerificationTypeInfo] | None = None) -> None:
-        # if tag - 251 != len(locals_):
+    def __init__(self, tag: int, delta: int, locals: Iterable[VerificationTypeInfo] | None = None) -> None:
+        # if tag - 251 != len(locals):
         #     raise ValueError("invalid tag %i for %r, should reflect locals count" % (tag, type(self)))
         self.tag = tag
         self.delta = delta
         self.locals: list[VerificationTypeInfo] = []
 
-        if locals_ is not None:
-            self.locals.extend(locals_)
+        if locals is not None:
+            self.locals.extend(locals)
 
     def __repr__(self) -> str:
         locals_str = ", ".join(map(str, self.locals))
@@ -766,22 +766,22 @@ class FullFrame(StackMapFrame):
     @classmethod
     def _read(cls, stream: IO[bytes], pool: "ConstPool", tag: int) -> Self:
         delta, locals_count = unpack_HH(stream.read(4))
-        locals_ = tuple(VerificationTypeInfo.read(stream, pool) for _ in range(locals_count))
+        locals = tuple(VerificationTypeInfo.read(stream, pool) for _ in range(locals_count))
         stack_count, = unpack_H(stream.read(2))
         stack = tuple(VerificationTypeInfo.read(stream, pool) for _ in range(stack_count))
-        return cls(delta, locals_, stack)
+        return cls(delta, locals, stack)
 
     def __init__(
         self, delta: int,
-        locals_: Iterable[VerificationTypeInfo] | None = None,
-        stack:   Iterable[VerificationTypeInfo] | None = None,
+        locals: Iterable[VerificationTypeInfo] | None = None,
+        stack:  Iterable[VerificationTypeInfo] | None = None,
     ) -> None:
         self.delta = delta
         self.locals: list[VerificationTypeInfo] = []
         self.stack: list[VerificationTypeInfo] = []
 
-        if locals_ is not None:
-            self.locals.extend(locals_)
+        if locals is not None:
+            self.locals.extend(locals)
         if stack is not None:
             self.stack.extend(stack)
 

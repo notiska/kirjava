@@ -26,7 +26,7 @@ from ..types import (
     Array, Class as ClassType, Reference, Type,
 )
 from ..._compat import TypeVar
-from ...backend import f32, f64, i8, i16, i32, i64, u16
+from ...backend import f32, f64, i8, i16, i32, i64, u16, u32, u64
 
 T = TypeVar("T", default=Any)
 
@@ -39,6 +39,11 @@ class Constant(Generic[T], Value):
     ----------
     info: T | None
         The constant info that this constant was generated from.
+
+    Methods
+    -------
+    ushr(self, other: object) -> Constant[T]
+        An analog for the Java unsigned right shift operator (>>>).
     """
 
     __slots__ = ("info",)
@@ -46,8 +51,63 @@ class Constant(Generic[T], Value):
     def __init__(self) -> None:
         self.info: T | None = None
 
+    def __ne__(self, other: object) -> bool:
+        raise NotImplementedError(f"!= is not implemented for {type(self)!r}")
+
     def __hash__(self) -> int:
         raise NotImplementedError(f"hash() is not implemented for {type(self)!r}")
+
+    def __lt__(self, other: object) -> bool:
+        raise TypeError(f"'<' not supported between {type(self)!r} and {type(other)!r}")
+
+    def __ge__(self, other: object) -> bool:
+        raise TypeError(f"'>=' not supported between {type(self)!r} and {type(other)!r}")
+
+    def __gt__(self, other: object) -> bool:
+        raise TypeError(f"'>' not supported between {type(self)!r} and {type(other)!r}")
+
+    def __le__(self, other: object) -> bool:
+        raise TypeError(f"'<=' not supported between {type(self)!r} and {type(other)!r}")
+
+    def __neg__(self) -> "Constant[T]":
+        raise TypeError(f"bad operand type for unary -: {type(self)!r}")
+
+    def __add__(self, other: object) -> "Constant[T]":
+        raise TypeError(f"unsupported operand type(s) for +: {type(self)!r} and {type(other)!r}")
+
+    def __sub__(self, other: object) -> "Constant[T]":
+        raise TypeError(f"unsupported operand type(s) for -: {type(self)!r} and {type(other)!r}")
+
+    def __mul__(self, other: object) -> "Constant[T]":
+        raise TypeError(f"unsupported operand type(s) for *: {type(self)!r} and {type(other)!r}")
+
+    def __truediv__(self, other: object) -> "Constant[T]":
+        raise TypeError(f"unsupported operand type(s) for /: {type(self)!r} and {type(other)!r}")
+
+    def __mod__(self, other: object) -> "Constant[T]":
+        raise TypeError(f"unsupported operand type(s) for %: {type(self)!r} and {type(other)!r}")
+
+    def __lshift__(self, other: object) -> "Constant[T]":
+        raise TypeError(f"unsupported operand type(s) for <<: {type(self)!r} and {type(other)!r}")
+
+    def __rshift__(self, other: object) -> "Constant[T]":
+        raise TypeError(f"unsupported operand type(s) for >>: {type(self)!r} and {type(other)!r}")
+
+    def __and__(self, other: object) -> "Constant[T]":
+        raise TypeError(f"unsupported operand type(s) for &: {type(self)!r} and {type(other)!r}")
+
+    def __or__(self, other: object) -> "Constant[T]":
+        raise TypeError(f"unsupported operand type(s) for |: {type(self)!r} and {type(other)!r}")
+
+    def __xor__(self, other: object) -> "Constant[T]":
+        raise TypeError(f"unsupported operand type(s) for ^: {type(self)!r} and {type(other)!r}")
+
+    def ushr(self, other: object) -> "Constant[T]":
+        """
+        An analog for the Java unsigned right shift operator (>>>).
+        """
+
+        raise TypeError(f"unsupported operand type(s) for ushr (>>>): {type(self)!r} and {type(other)!r}")
 
 
 class Null(Constant[None]):
@@ -111,6 +171,9 @@ class Boolean(Constant[T]):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Boolean) and self._value == other._value
 
+    def __ne__(self, other: object) -> bool:
+        return not isinstance(other, Boolean) or self._value != other._value
+
     def __hash__(self) -> int:
         return self._hash
 
@@ -160,7 +223,10 @@ class Byte(Constant[T]):
         return f"<Byte(value={self._value!r})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Byte) and self._value == other._value
+        return isinstance(other, Byte) and bool(self._value == other._value)
+
+    def __ne__(self, other: object) -> bool:
+        return not isinstance(other, Byte) or bool(self._value != other._value)
 
     def __hash__(self) -> int:
         return self._hash
@@ -213,7 +279,10 @@ class Character(Constant[T]):
         return f"<Character(value={self._value!r})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Character) and self._value == other._value
+        return isinstance(other, Character) and bool(self._value == other._value)
+
+    def __ne__(self, other: object) -> bool:
+        return not isinstance(other, Character) or bool(self._value != other._value)
 
     def __hash__(self) -> int:
         return self._hash
@@ -264,7 +333,10 @@ class Short(Constant[T]):
         return f"<Short(value={self._value!r})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Short) and self._value == other._value
+        return isinstance(other, Short) and bool(self._value == other._value)
+
+    def __ne__(self, other: object) -> bool:
+        return not isinstance(other, Short) or bool(self._value != other._value)
 
     def __hash__(self) -> int:
         return self._hash
@@ -324,10 +396,95 @@ class Integer(Constant[T]):
         return f"{self._value!s}i"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Integer) and self._value == other._value
+        return isinstance(other, Integer) and bool(self._value == other._value)  # STUPID NUMPY BOOLS!!
+
+    def __ne__(self, other: object) -> bool:
+        return not isinstance(other, Integer) or bool(self._value != other._value)
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, Integer):
+            raise TypeError(f"'<' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value < other._value)
+
+    def __ge__(self, other: object) -> bool:
+        if not isinstance(other, Integer):
+            raise TypeError(f"'>=' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value >= other._value)
+
+    def __gt__(self, other: object) -> bool:
+        if not isinstance(other, Integer):
+            raise TypeError(f"'>' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value > other._value)
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, Integer):
+            raise TypeError(f"'<=' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value <= other._value)
 
     def __hash__(self) -> int:
         return self._hash
+
+    def __neg__(self) -> "Integer":
+        return Integer(-self._value)
+
+    def __add__(self, other: object) -> "Integer":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for +: {type(self)!r} and {type(other)!r}")
+        return Integer(self._value + other._value)
+
+    def __sub__(self, other: object) -> "Integer":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for -: {type(self)!r} and {type(other)!r}")
+        return Integer(self._value - other._value)
+
+    def __mul__(self, other: object) -> "Integer":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for *: {type(self)!r} and {type(other)!r}")
+        return Integer(self._value * other._value)
+
+    def __truediv__(self, other: object) -> "Integer":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for /: {type(self)!r} and {type(other)!r}")
+        if not other._value:
+            raise ZeroDivisionError("integer division by zero")
+        return Integer(self._value // other._value)
+
+    def __mod__(self, other: object) -> "Integer":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for %: {type(self)!r} and {type(other)!r}")
+        if not other._value:
+            raise ZeroDivisionError("integer modulo by zero")
+        return Integer(self._value % other._value)
+
+    def __lshift__(self, other: object) -> "Integer":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for <<: {type(self)!r} and {type(other)!r}")
+        return Integer(self._value << (other._value % 32))
+
+    def __rshift__(self, other: object) -> "Integer":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for >>: {type(self)!r} and {type(other)!r}")
+        return Integer(self._value >> (other._value % 32))
+
+    def __and__(self, other: object) -> "Integer":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for &: {type(self)!r} and {type(other)!r}")
+        return Integer(self._value & other._value)
+
+    def __or__(self, other: object) -> "Integer":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for |: {type(self)!r} and {type(other)!r}")
+        return Integer(self._value | other._value)
+
+    def __xor__(self, other: object) -> "Integer":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for ^: {type(self)!r} and {type(other)!r}")
+        return Integer(self._value ^ other._value)
+
+    def ushr(self, other: object) -> "Integer":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for ushr (>>>): {type(self)!r} and {type(other)!r}")
+        return Integer(i32(u32(self._value) >> (other._value % 32)))
 
     def as_boolean(self) -> Boolean[T]:
         """
@@ -401,10 +558,61 @@ class Float(Constant[T]):
         return f"{self._value!s}f"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Float) and self._value == other._value
+        return isinstance(other, Float) and bool(self._value == other._value)
+
+    def __ne__(self, other: object) -> bool:
+        return not isinstance(other, Float) or bool(self._value != other._value)
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, Float):
+            raise TypeError(f"'<' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value < other._value)
+
+    def __ge__(self, other: object) -> bool:
+        if not isinstance(other, Float):
+            raise TypeError(f"'>=' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value >= other._value)
+
+    def __gt__(self, other: object) -> bool:
+        if not isinstance(other, Float):
+            raise TypeError(f"'>' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value > other._value)
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, Float):
+            raise TypeError(f"'<=' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value <= other._value)
 
     def __hash__(self) -> int:
         return self._hash
+
+    def __neg__(self) -> "Float":
+        return Float(-self._value)
+
+    def __add__(self, other: object) -> "Float":
+        if not isinstance(other, Float):
+            raise TypeError(f"unsupported operand type(s) for +: {type(self)!r} and {type(other)!r}")
+        return Float(self._value + other._value)
+
+    def __sub__(self, other: object) -> "Float":
+        if not isinstance(other, Float):
+            raise TypeError(f"unsupported operand type(s) for -: {type(self)!r} and {type(other)!r}")
+        return Float(self._value - other._value)
+
+    def __mul__(self, other: object) -> "Float":
+        if not isinstance(other, Float):
+            raise TypeError(f"unsupported operand type(s) for *: {type(self)!r} and {type(other)!r}")
+        return Float(self._value * other._value)
+
+    def __truediv__(self, other: object) -> "Float":
+        if not isinstance(other, Float):
+            raise TypeError(f"unsupported operand type(s) for /: {type(self)!r} and {type(other)!r}")
+        return Float(self._value / other._value)
+
+    def __mod__(self, other: object) -> "Float":
+        if not isinstance(other, Float):
+            raise TypeError(f"unsupported operand type(s) for %: {type(self)!r} and {type(other)!r}")
+        return Float(self._value % other._value)
 
 
 class Long(Constant[T]):
@@ -441,10 +649,95 @@ class Long(Constant[T]):
         return f"{self._value!s}L"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Long) and self._value == other._value
+        return isinstance(other, Long) and bool(self._value == other._value)
+
+    def __ne__(self, other: object) -> bool:
+        return not isinstance(other, Long) or bool(self._value != other._value)
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, Long):
+            raise TypeError(f"'<' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value < other._value)
+
+    def __ge__(self, other: object) -> bool:
+        if not isinstance(other, Long):
+            raise TypeError(f"'>=' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value >= other._value)
+
+    def __gt__(self, other: object) -> bool:
+        if not isinstance(other, Long):
+            raise TypeError(f"'>' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value > other._value)
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, Long):
+            raise TypeError(f"'<=' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value <= other._value)
 
     def __hash__(self) -> int:
         return self._hash
+
+    def __neg__(self) -> "Long":
+        return Long(-self._value)
+
+    def __add__(self, other: object) -> "Long":
+        if not isinstance(other, Long):
+            raise TypeError(f"unsupported operand type(s) for +: {type(self)!r} and {type(other)!r}")
+        return Long(self._value + other._value)
+
+    def __sub__(self, other: object) -> "Long":
+        if not isinstance(other, Long):
+            raise TypeError(f"unsupported operand type(s) for -: {type(self)!r} and {type(other)!r}")
+        return Long(self._value - other._value)
+
+    def __mul__(self, other: object) -> "Long":
+        if not isinstance(other, Long):
+            raise TypeError(f"unsupported operand type(s) for *: {type(self)!r} and {type(other)!r}")
+        return Long(self._value * other._value)
+
+    def __truediv__(self, other: object) -> "Long":
+        if not isinstance(other, Long):
+            raise TypeError(f"unsupported operand type(s) for /: {type(self)!r} and {type(other)!r}")
+        if not other._value:
+            raise ZeroDivisionError("integer division by zero")
+        return Long(self._value // other._value)
+
+    def __mod__(self, other: object) -> "Long":
+        if not isinstance(other, Long):
+            raise TypeError(f"unsupported operand type(s) for %: {type(self)!r} and {type(other)!r}")
+        if not other._value:
+            raise ZeroDivisionError("integer modulo by zero")
+        return Long(self._value % other._value)
+
+    def __lshift__(self, other: object) -> "Long":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for <<: {type(self)!r} and {type(other)!r}")
+        return Long(self._value << (other._value % 64))
+
+    def __rshift__(self, other: object) -> "Long":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for >>: {type(self)!r} and {type(other)!r}")
+        return Long(self._value >> (other._value % 64))
+
+    def __and__(self, other: object) -> "Long":
+        if not isinstance(other, Long):
+            raise TypeError(f"unsupported operand type(s) for &: {type(self)!r} and {type(other)!r}")
+        return Long(self._value & other._value)
+
+    def __or__(self, other: object) -> "Long":
+        if not isinstance(other, Long):
+            raise TypeError(f"unsupported operand type(s) for |: {type(self)!r} and {type(other)!r}")
+        return Long(self._value | other._value)
+
+    def __xor__(self, other: object) -> "Long":
+        if not isinstance(other, Long):
+            raise TypeError(f"unsupported operand type(s) for ^: {type(self)!r} and {type(other)!r}")
+        return Long(self._value ^ other._value)
+
+    def ushr(self, other: object) -> "Long":
+        if not isinstance(other, Integer):
+            raise TypeError(f"unsupported operand type(s) for ushr (>>>): {type(self)!r} and {type(other)!r}")
+        return Long(i64(u64(self._value) >> (other._value % 32)))
 
 
 class Double(Constant[T]):
@@ -482,10 +775,61 @@ class Double(Constant[T]):
         return f"{self._value!s}D"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Double) and self._value == other._value
+        return isinstance(other, Double) and bool(self._value == other._value)
+
+    def __ne__(self, other: object) -> bool:
+        return not isinstance(other, Double) or bool(self._value != other._value)
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, Double):
+            raise TypeError(f"'<' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value < other._value)
+
+    def __ge__(self, other: object) -> bool:
+        if not isinstance(other, Double):
+            raise TypeError(f"'>=' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value >= other._value)
+
+    def __gt__(self, other: object) -> bool:
+        if not isinstance(other, Double):
+            raise TypeError(f"'>' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value > other._value)
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, Double):
+            raise TypeError(f"'<=' not supported between {type(self)!r} and {type(other)!r}")
+        return bool(self._value <= other._value)
 
     def __hash__(self) -> int:
         return self._hash
+
+    def __neg__(self) -> "Double":
+        return Double(-self._value)
+
+    def __add__(self, other: object) -> "Double":
+        if not isinstance(other, Double):
+            raise TypeError(f"unsupported operand type(s) for +: {type(self)!r} and {type(other)!r}")
+        return Double(self._value + other._value)
+
+    def __sub__(self, other: object) -> "Double":
+        if not isinstance(other, Double):
+            raise TypeError(f"unsupported operand type(s) for -: {type(self)!r} and {type(other)!r}")
+        return Double(self._value - other._value)
+
+    def __mul__(self, other: object) -> "Double":
+        if not isinstance(other, Double):
+            raise TypeError(f"unsupported operand type(s) for *: {type(self)!r} and {type(other)!r}")
+        return Double(self._value * other._value)
+
+    def __truediv__(self, other: object) -> "Double":
+        if not isinstance(other, Double):
+            raise TypeError(f"unsupported operand type(s) for /: {type(self)!r} and {type(other)!r}")
+        return Double(self._value / other._value)
+
+    def __mod__(self, other: object) -> "Double":
+        if not isinstance(other, Double):
+            raise TypeError(f"unsupported operand type(s) for %: {type(self)!r} and {type(other)!r}")
+        return Double(self._value % other._value)
 
 
 class Class(Constant[T]):
@@ -574,6 +918,9 @@ class String(Constant[T]):  # TODO: Note: string constants might escape the meth
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, String) and self._value == other._value
+
+    def __ne__(self, other: object) -> bool:
+        return not isinstance(other, String) or self._value != other._value
 
     def __hash__(self) -> int:
         return self._hash

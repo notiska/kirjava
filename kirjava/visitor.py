@@ -119,10 +119,10 @@ class Visitors:
     def __repr__(self) -> str:
         return f"<Visitors(visitors={self.visitors!r})>"
 
-    def __getitem__(self, key: type[Visitable]) -> list[Visitor[Visitable]]:
+    def __getitem__(self, key: type[Visitable]) -> list[Visitor[Any]]:
         return self.visitors[key]
 
-    def __setitem__(self, key: type[Visitable], value: Iterable[Visitable]) -> None:
+    def __setitem__(self, key: type[Visitable], value: Iterable[Visitor[Any]]) -> None:
         self.visitors[key].extend(value)
 
     def __delitem__(self, key: type[Visitable]) -> None:
