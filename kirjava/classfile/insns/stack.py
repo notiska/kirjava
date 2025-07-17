@@ -258,12 +258,12 @@ class LoadConstant(Instruction):
         super().__init__()
         self.info = info
 
-    def __copy__(self) -> "LoadConstant":
+    def __copy__(self) -> Self:
         copied = type(self)(self.info)
         copied.offset = self.offset
         return copied
 
-    def __deepcopy__(self, memo: dict[int, object]) -> "LoadConstant":
+    def __deepcopy__(self, memo: dict[int, object]) -> Self:
         copied = type(self)(deepcopy(self.info, memo))
         copied.offset = self.offset
         return copied

@@ -178,7 +178,7 @@ class LoadLocalAt(LoadLocal):
         super().__init__()
         self.index = index
 
-    def __copy__(self) -> "LoadLocalAt":
+    def __copy__(self) -> Self:
         copied = type(self)(self.index)
         copied.offset = self.offset
         return copied
@@ -220,7 +220,7 @@ class StoreLocalAt(StoreLocal):
         super().__init__()
         self.index = index
 
-    def __copy__(self) -> "StoreLocalAt":
+    def __copy__(self) -> Self:
         copied = type(self)(self.index)
         copied.offset = self.offset
         return copied

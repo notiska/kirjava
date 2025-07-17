@@ -11,7 +11,7 @@ from copy import deepcopy
 from .block import Block
 from ..fmt import ConstInfo
 from ..insns.flow import Jump as JumpInsn, Ret as RetInsn, Switch as SwitchInsn
-from ..._compat import replace
+from ..._compat import replace, Self
 
 
 class Edge:
@@ -32,7 +32,7 @@ class Edge:
 
     Methods
     -------
-    replace(self, **changes: object) -> Edge
+    replace(self, **changes: object) -> Self
         Creates a copy of this edge and replaces any specified attributes.
     """
 
@@ -53,7 +53,7 @@ class Edge:
         self._source = source
         self._target = target
 
-    def __replace__(self, **changes: object) -> "Edge":
+    def __replace__(self, **changes: object) -> Self:
         raise NotImplementedError(f"copy.replace() is not implemented for {type(self)!r}")
 
     def __repr__(self) -> str:
@@ -69,7 +69,7 @@ class Edge:
     def __hash__(self) -> int:
         raise NotImplementedError(f"hash() is not implemented for {type(self)!r}")
 
-    def replace(self, **changes: object) -> "Edge":
+    def replace(self, **changes: object) -> Self:
         """
         Creates a copy of this edge and replaces any specified attributes.
         """

@@ -246,7 +246,7 @@ class Instruction(Visitable):
     def __init__(self) -> None:
         self.offset: int | None = None
 
-    def __copy__(self) -> "Instruction":
+    def __copy__(self) -> Self:
         copied = type(self)()
         copied.offset = self.offset
         return copied
@@ -267,7 +267,7 @@ class Instruction(Visitable):
         visitor.visit_start(self)
         visitor.visit_end(self)
 
-    def copy(self, deep: bool = False) -> "Instruction":
+    def copy(self, deep: bool = False) -> Self:
         """
         Creates a copy of this instruction.
 

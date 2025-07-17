@@ -66,7 +66,7 @@ class Jump(Instruction):
         super().__init__()
         self.delta = delta
 
-    def __copy__(self) -> "Jump":
+    def __copy__(self) -> Self:
         copied = type(self)(self.delta)
         copied.offset = self.offset
         return copied
@@ -506,7 +506,7 @@ class Ret(Jump):
         super().__init__(None)
         self.index = index
 
-    def __copy__(self) -> "Ret":
+    def __copy__(self) -> Self:
         copied = type(self)(self.index)
         copied.offset = self.offset
         return copied
@@ -840,7 +840,7 @@ class Return(Jump):
     def __init__(self) -> None:
         super().__init__(None)
 
-    def __copy__(self) -> "Return":
+    def __copy__(self) -> Self:
         copied = type(self)()
         copied.offset = self.offset
         return copied

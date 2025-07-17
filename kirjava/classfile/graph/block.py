@@ -38,9 +38,9 @@ class Block:
 
     Methods
     -------
-    copy(self, deep: bool = False) -> Block
+    copy(self, deep: bool = False) -> Self
         Creates a copy of this block.
-    replace(self, **changes: object) -> Block
+    replace(self, **changes: object) -> Self
         Creates a copy of this block and replaces any specified attributes.
     index(self, value: Instruction | type[Instruction], start: int = 0, stop: int = -1) -> int
         Returns the index of the first occurrence of an instruction in this block.
@@ -63,13 +63,13 @@ class Block:
     def __init__(self, label: int) -> None:
         self._label = label
 
-    def __copy__(self) -> "Block":
+    def __copy__(self) -> Self:
         raise NotImplementedError(f"copy.copy() is not implemented for {type(self)!r}")
 
     # def __deepcopy__(self, memo: dict[int, object]) -> "Block":
     #     raise NotImplementedError(f"copy.deepcopy() is not implemented for {type(self)!r}")
 
-    def __replace__(self, **changes: object) -> "Block":
+    def __replace__(self, **changes: object) -> Self:
         raise NotImplementedError(f"copy.replace() is not implemented for {type(self)!r}")
 
     def __repr__(self) -> str:
@@ -93,7 +93,7 @@ class Block:
     def __len__(self) -> int:
         return len(self.insns)
 
-    def copy(self, deep: bool = False) -> "Block":
+    def copy(self, deep: bool = False) -> Self:
         """
         Creates a copy of this block.
 
@@ -107,7 +107,7 @@ class Block:
             return copy(self)
         return deepcopy(self)
 
-    def replace(self, **changes: object) -> "Block":
+    def replace(self, **changes: object) -> Self:
         """
         Creates a copy of this block and replaces any specified attributes.
         """

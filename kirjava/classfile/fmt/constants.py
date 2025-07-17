@@ -62,7 +62,7 @@ class ConstInfo:
     lower(constant: Constant) -> ConstInfo
         Lowers the provided constant into a constant info.
 
-    copy(self, deep: bool = True) -> ConstInfo
+    copy(self, deep: bool = True) -> Self
         Creates a copy of this constant.
     deref(self, pool: ConstPool) -> None
         Dereferences any indices in this constant.
@@ -255,7 +255,7 @@ class ConstInfo:
     def __init__(self, index: int | None = None) -> None:
         self.index = index
 
-    def __copy__(self) -> "ConstInfo":
+    def __copy__(self) -> Self:
         raise NotImplementedError(f"copy.copy() is not implemented for {type(self)!r}")
 
     # def __deepcopy__(self, memo: dict[int, object]) -> "ConstInfo":
@@ -270,7 +270,7 @@ class ConstInfo:
     def __eq__(self, other: object) -> bool:
         raise NotImplementedError(f"== is not implemented for {type(self)!r}")
 
-    def copy(self, deep: bool = False) -> "ConstInfo":
+    def copy(self, deep: bool = False) -> Self:
         """
         Creates a copy of this constant.
 

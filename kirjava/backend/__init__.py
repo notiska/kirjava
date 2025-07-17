@@ -55,7 +55,6 @@ if not USING_NUMPY:
         from ._numpy1 import *  # type: ignore[assignment]
         USING_NUMPY = True
     except Exception as error:
-        raise
         logger.debug("numpy <2.0.0 backend not available: %s", error)
         logger.debug(repr(error), exc_info=True)
 

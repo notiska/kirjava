@@ -271,7 +271,7 @@ class Unknown(Instruction):
         super().__init__()
         self.opcode = opcode
 
-    def __copy__(self) -> "Unknown":
+    def __copy__(self) -> Self:
         copied = type(self)(self.opcode)
         copied.offset = self.offset
         return copied
