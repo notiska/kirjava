@@ -263,6 +263,16 @@ class Instruction(Visitable):
     def __eq__(self, other: object) -> bool:
         raise NotImplementedError(f"== is not implemented for {type(self)!r}")
 
+    def __hash__(self) -> int:
+        raise NotImplementedError(f"hash() is not implemented for {type(self)!r}")
+
+    def _offsets_eq(self, other: "Instruction") -> bool:
+        """
+        Offset equality helper function.
+        """
+
+        return self.offset == other.offset or self.offset is None or other.offset is None
+
     def visit(self, visitor: Visitor[Self], visitors: Visitors) -> None:
         visitor.visit_start(self)
         visitor.visit_end(self)
