@@ -237,6 +237,7 @@ class Instruction(Visitable):
     def make(cls, opcode: int, mnemonic: str, base: type[Self] | None = None, **kwargs: object) -> type[Self]:
         namespace = {
             "__doc__": cls.__doc__,
+            "__slots__": (),
             "opcode": opcode,
             "mnemonic": mnemonic,
             **kwargs,

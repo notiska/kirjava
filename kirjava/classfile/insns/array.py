@@ -60,7 +60,10 @@ class ArrayLoad(Instruction):
         return f"<ArrayLoad(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, ArrayLoad) and self.opcode == other.opcode
+        return isinstance(other, ArrayLoad) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -142,7 +145,10 @@ class ArrayStore(Instruction):
         return f"<ArrayStore(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, ArrayStore) and self.opcode == other.opcode
+        return isinstance(other, ArrayStore) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -290,7 +296,10 @@ class NewArray(Instruction):
         return f"newarray({tag_str})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, NewArray) and self.tag == other.tag
+        return isinstance(other, NewArray) and self.tag == other.tag and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -386,7 +395,10 @@ class ANewArray(Instruction):
         return f"anewarray({self.classref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, ANewArray) and self.classref == other.classref
+        return isinstance(other, ANewArray) and self.classref == other.classref and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -492,8 +504,12 @@ class MultiANewArray(Instruction):
         return (
             isinstance(other, MultiANewArray) and
             self.classref == other.classref and
-            self.dimensions == other.dimensions
+            self.dimensions == other.dimensions and
+            self._offsets_eq(other)
         )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -609,7 +625,10 @@ class ArrayLength(Instruction):
         return "<ArrayLength>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, ArrayLength)
+        return isinstance(other, ArrayLength) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(ArrayLength)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:

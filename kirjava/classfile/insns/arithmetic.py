@@ -136,7 +136,10 @@ class Shift(BinOp):
         return f"<Shift(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Shift) and self.opcode == other.opcode
+        return isinstance(other, Shift) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -180,7 +183,10 @@ class Comparison(BinOp):
         return f"<Comparison(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Comparison) and self.opcode == other.opcode
+        return isinstance(other, Comparison) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -227,7 +233,10 @@ class Addition(BinOp):
         return f"<Addition(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Addition) and self.opcode == other.opcode
+        return isinstance(other, Addition) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:  # Constant propagation.
@@ -262,7 +271,10 @@ class Subtraction(BinOp):
         return f"<Subtraction(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Subtraction) and self.opcode == other.opcode
+        return isinstance(other, Subtraction) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -297,7 +309,10 @@ class Multiplication(BinOp):
         return f"<Multiplication(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Multiplication) and self.opcode == other.opcode
+        return isinstance(other, Multiplication) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -332,7 +347,10 @@ class Division(BinOp):
         return f"<Division(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Division) and self.opcode == other.opcode
+        return isinstance(other, Division) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -372,7 +390,10 @@ class Remainder(BinOp):
         return f"<Remainder(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Remainder) and self.opcode == other.opcode
+        return isinstance(other, Remainder) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -427,7 +448,10 @@ class Negate(Instruction):
         return f"<Negate(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Negate) and self.opcode == other.opcode
+        return isinstance(other, Negate) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -590,7 +614,10 @@ class BitwiseAnd(BinOp):
         return f"<BitwiseAnd(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, BitwiseAnd) and self.opcode == other.opcode
+        return isinstance(other, BitwiseAnd) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -625,7 +652,10 @@ class BitwiseOr(BinOp):
         return f"<BitwiseOr(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, BitwiseOr) and self.opcode == other.opcode
+        return isinstance(other, BitwiseOr) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:
@@ -660,7 +690,10 @@ class BitwiseXor(BinOp):
         return f"<BitwiseXor(type={self.type!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, BitwiseXor) and self.opcode == other.opcode
+        return isinstance(other, BitwiseXor) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:

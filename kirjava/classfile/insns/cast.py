@@ -52,7 +52,10 @@ class ValueCast(Instruction):
         return f"<ValueCast(type_in={self.type_in!s}, type_out={self.type_out!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, ValueCast) and self.opcode == other.opcode
+        return isinstance(other, ValueCast) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -155,7 +158,10 @@ class CheckCast(Instruction):
         return f"checkcast({self.classref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, CheckCast) and self.classref == other.classref
+        return isinstance(other, CheckCast) and self.classref == other.classref and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -247,7 +253,10 @@ class InstanceOf(Instruction):
         return f"instanceof({self.classref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, InstanceOf) and self.classref == other.classref
+        return isinstance(other, InstanceOf) and self.classref == other.classref and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:

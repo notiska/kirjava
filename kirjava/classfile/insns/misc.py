@@ -47,7 +47,10 @@ class Nop(Instruction):
         return "<Nop>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Nop)
+        return isinstance(other, Nop) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(Nop)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         return Ok(frame)
@@ -100,7 +103,10 @@ class Wide(Instruction):
         return "<Wide>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Wide)
+        return isinstance(other, Wide) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(Wide)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         return Ok(frame)  # Again, technically should cause the JVM to hang but yeah...
@@ -138,7 +144,10 @@ class MonitorEnter(Instruction):
         return "<MonitorEnter>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, MonitorEnter)
+        return isinstance(other, MonitorEnter) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(MonitorEnter)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -188,7 +197,10 @@ class MonitorExit(Instruction):
         return "<MonitorExit>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, MonitorExit)
+        return isinstance(other, MonitorExit) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(MonitorExit)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -235,7 +247,10 @@ class Internal(Instruction):  # FIXME: Too broad.
         return f"<Internal(opcode=0x{self.opcode:02x})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Internal) and self.opcode == other.opcode
+        return isinstance(other, Internal) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         return Ok(frame)
@@ -287,7 +302,10 @@ class Unknown(Instruction):
         return f"opcode(0x{self.opcode:02x})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Unknown) and self.opcode == other.opcode
+        return isinstance(other, Unknown) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         return Ok(frame)  # FIXME: Error?

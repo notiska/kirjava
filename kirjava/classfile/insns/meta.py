@@ -85,7 +85,10 @@ class LineNumber(Debug):
         return f"line({self.line})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, LineNumber) and self.line == other.line
+        return isinstance(other, LineNumber) and self.line == other.line and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
 
 class LocalStart(Debug):
@@ -164,8 +167,12 @@ class LocalStart(Debug):
             self.index == other.index and
             self.name == other.name and
             self.descriptor == other.descriptor and
-            self.signature == other.signature
+            self.signature == other.signature and
+            self._offsets_eq(other)
         )
+
+    def __hash__(self) -> int:
+        return id(self)
 
 
 class LocalEnd(Debug):
@@ -205,4 +212,7 @@ class LocalEnd(Debug):
         return f"localend({self.index})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, LocalEnd) and self.index == other.index
+        return isinstance(other, LocalEnd) and self.index == other.index and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)

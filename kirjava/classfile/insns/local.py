@@ -72,7 +72,10 @@ class LoadLocal(Instruction):
         return f"<LoadLocal(type={self.type!s}, index={self.index})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, LoadLocal) and self.opcode == other.opcode
+        return isinstance(other, LoadLocal) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -128,7 +131,10 @@ class StoreLocal(Instruction):
         return f"<StoreLocal(type={self.type!s}, index={self.index})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, StoreLocal) and self.opcode == other.opcode
+        return isinstance(other, StoreLocal) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -194,7 +200,15 @@ class LoadLocalAt(LoadLocal):
         return f"{self.mnemonic}({self.index})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, LoadLocalAt) and self.opcode == other.opcode and self.index == other.index
+        return (
+            isinstance(other, LoadLocalAt) and
+            self.opcode == other.opcode and
+            self.index == other.index and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
@@ -236,7 +250,15 @@ class StoreLocalAt(StoreLocal):
         return f"{self.mnemonic}({self.index})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, StoreLocalAt) and self.opcode == other.opcode and self.index == other.index
+        return (
+            isinstance(other, StoreLocalAt) and
+            self.opcode == other.opcode and
+            self.index == other.index and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.index)))
@@ -292,7 +314,15 @@ class IInc(Instruction):
         return f"iinc({self.index},{self.value:+})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, IInc) and self.index == other.index and self.value == other.value
+        return (
+            isinstance(other, IInc) and
+            self.index == other.index and
+            self.value == other.value and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -354,7 +384,15 @@ class LoadLocalAtWide(LoadLocalAt):
         return f"<LoadLocalAtWide(type={self.type!s}, index={self.index})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, LoadLocalAtWide) and self.opcode == other.opcode and self.index == other.index
+        return (
+            isinstance(other, LoadLocalAtWide) and
+            self.opcode == other.opcode and
+            self.index == other.index and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBH(wide.opcode, self.opcode, self.index))
@@ -384,7 +422,15 @@ class StoreLocalAtWide(StoreLocalAt):
         return f"<StoreLocalAtWide(index={self.index})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, StoreLocalAtWide) and self.opcode == other.opcode and self.index == other.index
+        return (
+            isinstance(other, StoreLocalAtWide) and
+            self.opcode == other.opcode and
+            self.index == other.index and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBH(wide.opcode, self.opcode, self.index))
@@ -424,7 +470,15 @@ class IIncWide(IInc):
         return f"iinc_w({self.index},{self.value:+})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, IIncWide) and self.index == other.index and self.value == other.value
+        return (
+            isinstance(other, IIncWide) and
+            self.index == other.index and
+            self.value == other.value and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBHh(wide.opcode, self.opcode, self.index, self.value))

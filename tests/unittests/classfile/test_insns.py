@@ -126,7 +126,7 @@ class TestInstructions(unittest.TestCase):
                 self.assertIsInstance(insn.lt_throws, frozenset)
                 self.assertIsInstance(insn.rt_throws, frozenset)
 
-    def test_repr_str_eq_copy(self) -> None:
+    def test_repr_str_eq_hash_copy(self) -> None:
         for subclass in INSTRUCTIONS:
             with self.subTest(subclass.mnemonic):
                 init = self._DEFAULTS.get(subclass)
@@ -136,12 +136,20 @@ class TestInstructions(unittest.TestCase):
 
                 print(str(insn_no_offset), repr(insn_no_offset), end=" ")
                 insn_offset = copy.copy(insn_no_offset)
-                insn_offset.offset = 30
+                insn_offset.offset = 30  # TODO: Offset against offset test.
                 print(str(insn_offset), repr(insn_offset))
+
+                insn_offset_other = copy.copy(insn_offset)
+                self.assertEqual(insn_offset_other.offset, 30)
+                insn_offset_other.offset = 50
 
                 self.assertEqual(insn_no_offset, insn_no_offset)
                 self.assertEqual(insn_no_offset, insn_offset)
                 self.assertIsNot(insn_no_offset, insn_offset)
+                self.assertNotEqual(insn_offset, insn_offset_other)
+
+                self.assertEqual(hash(insn_no_offset), hash(insn_no_offset))
+                self.assertEqual(hash(insn_offset), hash(insn_offset))
 
                 insn_deepcopy = copy.deepcopy(insn_offset)
                 self.assertEqual(insn_deepcopy, insn_offset)

@@ -9,7 +9,7 @@ __all__ = (
 import typing
 from copy import copy
 from operator import itemgetter
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Optional
 
 from ..desc import parse_method_descriptor
 from ..fmt import ClassFile, ClassInfo, MethodInfo, UTF8Info
@@ -296,13 +296,14 @@ class Frame:
             was empty.
         """
 
-        with Result[Verification | None]() as result:
+        with Result[Optional[Verification]]() as result:  # Result[Verification | None]  # py3.8
             previous = self.locals.get(index)
             # self.defs.add(index)
             if previous is not None and previous.wide:
                 del self.locals[index + 1]
             elif previous == reserved_t:
-                raise TypeError(f"setting local {index} splits wide type {self.locals[index - 1]}")
+                # raise TypeError(f"setting local {index} splits wide type {self.locals[index - 1]}")
+                del self.locals[index - 1]
             self.locals[index] = item
             if item.wide:
                 self.locals[index + 1] = reserved_t

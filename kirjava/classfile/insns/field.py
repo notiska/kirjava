@@ -76,7 +76,10 @@ class GetStatic(Instruction):
         return f"getstatic({self.fieldref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, GetStatic) and self.fieldref == other.fieldref
+        return isinstance(other, GetStatic) and self.fieldref == other.fieldref and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -172,7 +175,10 @@ class PutStatic(Instruction):
         return f"putstatic({self.fieldref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, PutStatic) and self.fieldref == other.fieldref
+        return isinstance(other, PutStatic) and self.fieldref == other.fieldref and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -266,7 +272,10 @@ class GetField(Instruction):
         return f"getfield({self.fieldref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, GetField) and self.fieldref == other.fieldref
+        return isinstance(other, GetField) and self.fieldref == other.fieldref and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -376,7 +385,10 @@ class PutField(Instruction):
         return f"putfield({self.fieldref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, PutField) and self.fieldref == other.fieldref
+        return isinstance(other, PutField) and self.fieldref == other.fieldref and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:

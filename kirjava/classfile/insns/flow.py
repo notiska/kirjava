@@ -86,7 +86,15 @@ class Jump(Instruction):
         return f"{self.mnemonic}({self.delta:+})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Jump) and self.opcode == other.opcode and self.delta == other.delta
+        return (
+            isinstance(other, Jump) and
+            self.opcode == other.opcode and
+            self.delta == other.delta and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         return Ok(frame)
@@ -724,8 +732,12 @@ class TableSwitch(Switch):
             self.default == other.default and
             self.low == other.low and
             self.high == other.high and
-            self.offsets == other.offsets
+            self.offsets == other.offsets and
+            self._offsets_eq(other)
         )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -792,7 +804,15 @@ class LookupSwitch(Switch):
         # )
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, LookupSwitch) and self.default == other.default and self.offsets == other.offsets
+        return (
+            isinstance(other, LookupSwitch) and
+            self.default == other.default and
+            self.offsets == other.offsets and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
@@ -856,7 +876,10 @@ class Return(Jump):
         return self.mnemonic
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Return) and self.opcode == other.opcode
+        return isinstance(other, Return) and self.opcode == other.opcode and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -921,7 +944,10 @@ class AThrow(Jump):
         return "athrow"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, AThrow)
+        return isinstance(other, AThrow) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(AThrow)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:

@@ -64,7 +64,15 @@ class PushConstant(Instruction):
         return f"<PushConstant(constant={self.constant!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, PushConstant) and self.opcode == other.opcode and self.constant == other.constant
+        return (
+            isinstance(other, PushConstant) and
+            self.opcode == other.opcode and
+            self.constant == other.constant and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     # def copy(self) -> "PushConstant":
     #     copy = type(self)(self.constant)
@@ -147,7 +155,10 @@ class BIPush(PushConstant):
         return f"bipush({self.value})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, BIPush) and self.value == other.value
+        return isinstance(other, BIPush) and self.value == other.value and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         frame.push(int_t)
@@ -213,7 +224,10 @@ class SIPush(PushConstant):
         return f"sipush({self.value})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, SIPush) and self.value == other.value
+        return isinstance(other, SIPush) and self.value == other.value and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         frame.push(int_t)
@@ -279,7 +293,15 @@ class LoadConstant(Instruction):
         return f"{self.mnemonic}({self.info!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, LoadConstant) and self.opcode == other.opcode and self.info == other.info
+        return (
+            isinstance(other, LoadConstant) and
+            self.opcode == other.opcode and
+            self.info == other.info and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -347,7 +369,15 @@ class LoadConstantWide(LoadConstant):
         return f"<LoadConstantWide(info={self.info!s})>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, LoadConstantWide) and self.opcode == other.opcode and self.info == other.info
+        return (
+            isinstance(other, LoadConstantWide) and
+            self.opcode == other.opcode and
+            self.info == other.info and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.info)))
@@ -418,7 +448,10 @@ class New(Instruction):
         return f"new({self.classref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, New) and self.classref == other.classref
+        return isinstance(other, New) and self.classref == other.classref and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         frame.push(Uninitialized(self))
@@ -478,7 +511,10 @@ class Pop(Instruction):
         return "<Pop>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Pop)
+        return isinstance(other, Pop) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(Pop)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -528,7 +564,10 @@ class Pop2(Instruction):
         return "<Pop2>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Pop2)
+        return isinstance(other, Pop2) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(Pop2)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -577,7 +616,10 @@ class Dup(Instruction):
         return "<Dup>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Dup)
+        return isinstance(other, Dup) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(Dup)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -624,7 +666,10 @@ class DupX1(Instruction):
         return "<DupX1>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, DupX1)
+        return isinstance(other, DupX1) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(DupX1)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -671,7 +716,10 @@ class DupX2(Instruction):
         return "<DupX2>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, DupX2)
+        return isinstance(other, DupX2) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(DupX2)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -718,7 +766,10 @@ class Dup2(Instruction):
         return "<Dup2>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Dup2)
+        return isinstance(other, Dup2) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(Dup2)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -771,7 +822,10 @@ class Dup2X1(Instruction):
         return "<Dup2X1>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Dup2X1)
+        return isinstance(other, Dup2X1) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(Dup2X1)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -813,7 +867,10 @@ class Dup2X2(Instruction):
         return "<Dup2X2>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Dup2X2)
+        return isinstance(other, Dup2X2) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(Dup2X2)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -855,7 +912,10 @@ class Swap(Instruction):
         return "<Swap>"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Swap)
+        return isinstance(other, Swap) and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return hash(Swap)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:

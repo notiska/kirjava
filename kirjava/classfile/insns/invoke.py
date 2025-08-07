@@ -78,7 +78,10 @@ class InvokeVirtual(Instruction):
         return f"invokevirtual({self.methodref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, InvokeVirtual) and self.methodref == other.methodref
+        return isinstance(other, InvokeVirtual) and self.methodref == other.methodref and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -208,7 +211,10 @@ class InvokeSpecial(Instruction):
         return f"invokespecial({self.methodref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, InvokeSpecial) and self.methodref == other.methodref
+        return isinstance(other, InvokeSpecial) and self.methodref == other.methodref and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         # FIXME: <init> and stuff.
@@ -365,7 +371,10 @@ class InvokeStatic(Instruction):
         return f"invokestatic({self.methodref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, InvokeStatic) and self.methodref == other.methodref
+        return isinstance(other, InvokeStatic) and self.methodref == other.methodref and self._offsets_eq(other)
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -490,8 +499,12 @@ class InvokeInterface(Instruction):
             isinstance(other, InvokeInterface) and
             self.methodref == other.methodref and
             self.count == other.count and
-            self.reserved == other.reserved
+            self.reserved == other.reserved and
+            self._offsets_eq(other)
         )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
@@ -633,7 +646,15 @@ class InvokeDynamic(Instruction):
         return f"invokedynamic({self.indyref!s})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, InvokeDynamic) and self.indyref == other.indyref and self.reserved == other.reserved
+        return (
+            isinstance(other, InvokeDynamic) and
+            self.indyref == other.indyref and
+            self.reserved == other.reserved and
+            self._offsets_eq(other)
+        )
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def step(self, frame: "Frame") -> Result["Frame"]:
         with Result["Frame"]() as result:
