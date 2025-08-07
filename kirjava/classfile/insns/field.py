@@ -22,8 +22,8 @@ from ...model.types import error_t, object_t, top_t, Class, Verification
 # from ...model.values.constants import Null
 
 if typing.TYPE_CHECKING:
-    from ..analysis import Frame
     from ..fmt import ConstPool
+    from ..frame import Frame
 
 
 class GetStatic(Instruction):

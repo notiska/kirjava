@@ -26,8 +26,8 @@ from ...model.types import *
 # from ...model.values.objects import Array as ArrayValue
 
 if typing.TYPE_CHECKING:
-    from ..analysis import Frame
     from ..fmt import ConstPool
+    from ..frame import Frame
 
 
 class ArrayLoad(Instruction):

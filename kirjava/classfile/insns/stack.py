@@ -30,8 +30,8 @@ from ...model.types import error_t, int_t, top_t, Class, Uninitialized
 from ...model.values.constants import Constant, Double, Float, Integer, Long, Null
 
 if typing.TYPE_CHECKING:
-    from ..analysis import Frame
     from ..fmt import ConstInfo, ConstPool
+    from ..frame import Frame
 
 
 class PushConstant(Instruction):

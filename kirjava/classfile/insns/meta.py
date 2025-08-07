@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 __all__ = (
-    "Debug",
+    "Meta",
     "LineNumber", "LocalStart", "LocalEnd",
 )
 
@@ -17,8 +17,8 @@ from ..._compat import Self
 from ...backend import Ok, Result
 
 if typing.TYPE_CHECKING:
-    from ..analysis import Frame
     from ..fmt import ConstInfo, ConstPool
+    from ..frame import Frame
 
 
 class Meta(Instruction):

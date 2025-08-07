@@ -6,27 +6,21 @@ __all__ = (
     "Frame",
 )
 
-import typing
 from copy import copy
 from operator import itemgetter
 from typing import Iterable, Mapping, Optional
 
-from ..desc import parse_method_descriptor
-from ..fmt import ClassFile, ClassInfo, MethodInfo, UTF8Info
-from ..version import JAVA_MAX, Version
-from ..._compat import Self
-from ...backend import Err, Ok, Result
-from ...model.types import object_t, reserved_t, top_t, uninitialized_this_t, void_t, Class, Verification
-
-if typing.TYPE_CHECKING:
-    from ..graph import Block
+from .desc import parse_method_descriptor
+from .fmt import ClassFile, ClassInfo, MethodInfo, UTF8Info
+from .version import JAVA_MAX, Version
+from .._compat import Self
+from ..backend import Result
+from ..model.types import object_t, reserved_t, uninitialized_this_t, void_t, Class, Verification
 
 
 class Frame:
     """
-    A basic execution frame.
-
-    Only stores the bare minimum needed for verifying code as valid.
+    Basic frame information.
 
     Attributes
     ----------

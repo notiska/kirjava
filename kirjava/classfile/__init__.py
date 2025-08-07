@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "analysis", "desc", "fmt", "graph", "insns", "loaders", "version",
+    "analysis", "desc", "fmt", "frame", "graph", "insns", "loaders", "version",
     "INSTRUCTIONS",
 
     "dump", "dumps", "load", "loads",
@@ -22,6 +22,8 @@ __all__ = (
     "ModuleInfo", "PackageInfo",
     "ConstPool",
 
+    "Frame",
+
     "Block", "Edge", "Graph",
     "Instruction",
     "DirLoader", "ListLoader", "ZipLoader",
@@ -32,10 +34,11 @@ __all__ = (
 Everything related to JVM class files.
 """
 
-from . import analysis, desc, fmt, graph, insns, loaders, version
+from . import analysis, desc, fmt, frame, graph, insns, loaders, version
 from ._api import *
 from .analysis import Analysis
 from .fmt import *
+from .frame import *
 from .graph import Block, Edge, Graph
 from .insns import INSTRUCTIONS, Instruction
 from .loaders import *

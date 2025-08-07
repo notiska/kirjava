@@ -20,8 +20,8 @@ from ...model.types import reference_t, Class
 # from ...model.values.constants import Null
 
 if typing.TYPE_CHECKING:
-    from ..analysis import Frame
     from ..fmt import ConstPool
+    from ..frame import Frame
 
 
 class Nop(Instruction):

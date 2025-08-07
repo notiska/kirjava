@@ -30,8 +30,8 @@ from ...model.types import *
 # from ...model.values.constants import Integer
 
 if typing.TYPE_CHECKING:
-    from ..analysis import Frame
     from ..fmt import ConstPool
+    from ..frame import Frame
 
 
 class BinOp(Instruction):

@@ -75,8 +75,8 @@ from ...backend import Result
 from ...visitor import *
 
 if typing.TYPE_CHECKING:
-    from ..analysis import Frame
     from ..fmt import ConstPool
+    from ..frame import Frame
     from ..version import Version
     from ...model.types import Class
 

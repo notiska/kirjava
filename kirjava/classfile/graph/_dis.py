@@ -6,8 +6,6 @@ __all__ = (
     "disassemble",
 )
 
-from ..fmt.constants import UTF8Info
-
 """
 The JVM bytecode disassembler.
 """
