@@ -21,9 +21,9 @@ if typing.TYPE_CHECKING:
     from ..fmt import ConstInfo, ConstPool
 
 
-class Debug(Instruction):
+class Meta(Instruction):
     """
-    A debug pseudo-instruction.
+    A meta pseudo-instruction. Encodes some form of metadata.
     """
 
     __slots__ = ()
@@ -47,7 +47,7 @@ class Debug(Instruction):
         ...
 
 
-class LineNumber(Debug):
+class LineNumber(Meta):
     """
     A line number indicator pseudo-instruction.
 
@@ -63,7 +63,7 @@ class LineNumber(Debug):
     __slots__ = ("line",)
 
     opcode = -1
-    mnemonic = "line"
+    mnemonic = "_line"
 
     def __init__(self, line: int) -> None:
         super().__init__()
@@ -81,8 +81,8 @@ class LineNumber(Debug):
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return f"{self.offset}:line({self.line})"
-        return f"line({self.line})"
+            return f"{self.offset}:_line({self.line})"
+        return f"_line({self.line})"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LineNumber) and self.line == other.line and self._offsets_eq(other)
@@ -91,7 +91,7 @@ class LineNumber(Debug):
         return id(self)
 
 
-class LocalStart(Debug):
+class LocalStart(Meta):
     """
     A local variable range start pseudo-instruction
 
@@ -116,7 +116,7 @@ class LocalStart(Debug):
     __slots__ = ("index", "name", "descriptor", "signature")
 
     opcode = -1
-    mnemonic = "localstart"
+    mnemonic = "_localstart"
 
     def __init__(
         self, index: int, name: "ConstInfo",
@@ -158,8 +158,8 @@ class LocalStart(Debug):
         desc_str = str(self.descriptor) if self.descriptor is not None else "[none]"
         sig_str = str(self.signature) if self.signature is not None else "[none]"
         if self.offset is not None:
-            return f"{self.offset}:localstart({self.index},{self.name!s},{desc_str},{sig_str})"
-        return f"localstart({self.index},{self.name!s},{desc_str},{sig_str})"
+            return f"{self.offset}:_localstart({self.index},{self.name!s},{desc_str},{sig_str})"
+        return f"_localstart({self.index},{self.name!s},{desc_str},{sig_str})"
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -175,7 +175,7 @@ class LocalStart(Debug):
         return id(self)
 
 
-class LocalEnd(Debug):
+class LocalEnd(Meta):
     """
     A local variable range end pseudo-instruction.
 
@@ -190,7 +190,7 @@ class LocalEnd(Debug):
     __slots__ = ("index",)
 
     opcode = -1
-    mnemonic = "localend"
+    mnemonic = "_localend"
 
     def __init__(self, index: int) -> None:
         super().__init__()
@@ -208,8 +208,8 @@ class LocalEnd(Debug):
 
     def __str__(self) -> str:
         if self.offset is not None:
-            return f"{self.offset}:localend({self.index})"
-        return f"localend({self.index})"
+            return f"{self.offset}:_localend({self.index})"
+        return f"_localend({self.index})"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, LocalEnd) and self.index == other.index and self._offsets_eq(other)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 __all__ = (
-    "arithmetic", "array", "cast", "debug", "field", "flow", "invoke", "local", "misc", "stack",
+    "arithmetic", "array", "cast", "field", "flow", "invoke", "local", "meta", "misc", "stack",
 
     "INSTRUCTIONS",
 
@@ -335,25 +335,6 @@ class Instruction(Visitable):
 
         raise NotImplementedError(f"write() is not implemented for {type(self)!r}")
 
-    # def trace(self, frame: "Frame", state: "State") -> Optional["State.Step"]:
-    #     """
-    #     Traces how this instruction would execute in a given frame.
-    #
-    #     Parameters
-    #     ----------
-    #     frame: Frame
-    #         The current frame.
-    #     state: State
-    #         The state to add trace information to.
-    #
-    #     Returns
-    #     -------
-    #     State.Step | None
-    #         Optional information about the trace step.
-    #     """
-    #
-    #     ...  # raise NotImplementedError("trace() is not implemented for %r" % self)
-
 
 class CodeIOWrapper(IO[bytes]):
     """
@@ -455,7 +436,7 @@ class CodeIOWrapper(IO[bytes]):
         self.delegate.writelines(lines)
 
 
-from . import arithmetic, array, cast, debug, field, flow, invoke, local, misc, stack  # noqa E402
+from . import arithmetic, array, cast, field, flow, invoke, local, meta, misc, stack  # noqa E402
 from .arithmetic import *  # noqa E402
 from .array import *       # noqa E402
 from .cast import *        # noqa E402
