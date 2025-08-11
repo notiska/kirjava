@@ -82,9 +82,9 @@ def disassemble(method: MethodInfo, cf: ClassFile | None = None) -> Graph:
     return Graph.disassemble(method, cf).unwrap()
 
 
-def analyse(graph: Graph) -> Analysis:
+def analyse(graph: Graph, method: MethodInfo, cf: ClassFile | None = None) -> Analysis:
     """
     Performs an analysis pass on the provided JVM CFG.
     """
 
-    return Analysis.analyse(graph).unwrap()
+    return Analysis.trace(graph, method, cf).unwrap()

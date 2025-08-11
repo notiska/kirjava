@@ -7,7 +7,7 @@ __all__ = (
 )
 
 import typing
-from typing import Iterable, Iterator
+from typing import overload, Iterable, Iterator
 from weakref import WeakValueDictionary
 
 from .class_ import Class, Field, Method
@@ -181,7 +181,14 @@ class Linker:
     def __iter__(self) -> Iterator[Loader]:
         return iter(self._loaders)
 
-    # FIXME: typing.overload for specifics. Needed in quite a few places actually.
+    @overload
+    def __getitem__(self, key: int) -> Loader:
+        ...
+
+    @overload
+    def __getitem__(self, key: str) -> Class:
+        ...
+
     def __getitem__(self, key: int | str) -> Loader | Class:
         if isinstance(key, int):
             return self._loaders[key]

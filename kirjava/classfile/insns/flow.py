@@ -29,9 +29,10 @@ from ..version import JAVA_1_1
 from ..._compat import Self
 from ...backend import Ok, Result
 from ...model.types import *
-# from ...model.values.constants import *
+from ...model.values.constants import Null
 
 if typing.TYPE_CHECKING:
+    from ..analysis import State, Step
     from ..fmt import ConstPool
     from ..frame import Frame
     # from ...model.values import Value
@@ -958,6 +959,13 @@ class AThrow(Jump):
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         frame.push(reference_t)
         return Ok(frame)
+
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            entry, steps = state.pop(self, reference_t).unwrap_into(result)
+            steps = state.throw(self, (), entry, steps).unwrap_into(result)
+            return result.ok(steps)
+        return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))

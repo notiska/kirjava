@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 __all__ = (
-    "backend", "classfile", "model", "visitor",
+    "backend", "classfile", "containers", "model", "visitor",
 
     "__name__", "__version__", "__author__",
     "logger",  # In case anyone wants to modify the logger properties.
@@ -14,7 +14,7 @@ kirjava - a Java bytecode library for Python.
 import logging
 # from logging import NullHandler
 
-from . import backend, classfile, model, visitor
+from . import backend, classfile, containers, model, visitor
 
 __name__ = "kirjava"
 __version__ = "0.2.3b1"

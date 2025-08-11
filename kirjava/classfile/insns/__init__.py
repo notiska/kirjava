@@ -75,6 +75,7 @@ from ...backend import Result
 from ...visitor import *
 
 if typing.TYPE_CHECKING:
+    from ..analysis import State, Step
     from ..fmt import ConstPool
     from ..frame import Frame
     from ..version import Version
@@ -121,8 +122,8 @@ class Instruction(Visitable):
     rstep(self, frame: Frame) -> Result[Frame]
         Reverse steps through how this instruction would change the given stack
         frame.
-    trace(self, state: State) -> Result[State.Step]
-        Traces how this instruction would affect an execution state.
+    trace(self, state: State) -> Result[list[Step]]
+        Traces how this instruction would behave in the provided execution state.
     write(self, stream: IO[bytes], pool: ConstPool) -> None
         Writes this instruction to the binary stream.
     """
@@ -320,6 +321,13 @@ class Instruction(Visitable):
         """
 
         raise NotImplementedError(f"rstep() is not implemented for {type(self)!r}")
+
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        """
+        Traces how this instruction would behave in the provided execution state.
+        """
+
+        raise NotImplementedError(f"trace() is not implemented for {type(self)!r}")
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         """

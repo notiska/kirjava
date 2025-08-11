@@ -16,10 +16,11 @@ from typing import IO
 from . import Instruction
 from ..._compat import Self
 from ...backend import Ok, Result
-from ...model.types import reference_t, Class
-# from ...model.values.constants import Null
+from ...model.types import null_t, reference_t, Class
+from ...model.values.constants import Null
 
 if typing.TYPE_CHECKING:
+    from ..analysis import State, Step
     from ..fmt import ConstPool
     from ..frame import Frame
 
@@ -58,11 +59,11 @@ class Nop(Instruction):
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return Ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        return Ok([])
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     ...
 
 
 class Wide(Instruction):
@@ -114,11 +115,11 @@ class Wide(Instruction):
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return Ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        return Ok([])
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     ...
 
 
 class MonitorEnter(Instruction):
@@ -160,14 +161,20 @@ class MonitorEnter(Instruction):
         frame.push(reference_t)
         return Ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            inst, steps = state.pop(self, reference_t).unwrap_into(result)
+            if isinstance(inst.value, Null) or inst.type == null_t:
+                _, step = state.throw(self, Class("java/lang/NullPointerException")).unwrap_into(result)
+                step.inputs.append(inst)
+                steps.append(step)
+            else:
+                steps.append(state.step(self, (inst,)))
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     value = frame.pop(reference_t, self)
-    #     if isinstance(value.value, Null) or value.type is null_t:
-    #         frame.throw(Class("java/lang/NullPointerException"), self)
-    #     return state.step(self, (value,))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     value, = step.inputs
@@ -212,14 +219,20 @@ class MonitorExit(Instruction):
         frame.push(reference_t)
         return Ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            inst, steps = state.pop(self, reference_t).unwrap_into(result)
+            if isinstance(inst.value, Null) or inst.type == null_t:
+                _, step = state.throw(self, Class("java/lang/NullPointerException")).unwrap_into(result)
+                step.inputs.append(inst)
+                steps.append(step)
+            else:
+                steps.append(state.step(self, (inst,)))
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     value = frame.pop(reference_t, self)
-    #     if isinstance(value.value, Null) or value.type is null_t:
-    #         frame.throw(Class("java/lang/NullPointerException"), self)
-    #     return state.step(self, (value,))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     value, = step.inputs

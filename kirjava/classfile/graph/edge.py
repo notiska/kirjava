@@ -6,12 +6,18 @@ __all__ = (
     "Edge", "Fallthrough", "Jump", "Ret", "Switch", "Catch",
 )
 
+import typing
 from copy import deepcopy
+from typing import Optional
 
 from .block import Block
 from ..fmt import ConstInfo
 from ..insns.flow import Jump as JumpInsn, Ret as RetInsn, Switch as SwitchInsn
 from ..._compat import replace, Self
+from ...backend import Result
+
+if typing.TYPE_CHECKING:
+    from ..analysis import State
 
 
 class Edge:
@@ -34,6 +40,8 @@ class Edge:
     -------
     replace(self, **changes: object) -> Self
         Creates a copy of this edge and replaces any specified attributes.
+    trace(self, state: State) -> Result[State.Target]
+        Traces how this edge behaves in the given execution state.
     """
 
     __slots__ = ("_source", "_target")
@@ -76,24 +84,22 @@ class Edge:
 
         return replace(self, **changes)
 
-    # def trace(self, frame: "Frame", state: "State") -> Optional["State.Target"]:
-    #     """
-    #     Traces the execution of this edge.
-    #
-    #     Parameters
-    #     ----------
-    #     frame: Frame
-    #         The current frame.
-    #     state: State
-    #         The state to add trace information to.
-    #
-    #     Returns
-    #     -------
-    #     State.Target | None
-    #         An optional target jump site.
-    #     """
-    #
-    #     raise NotImplementedError("trace() not implemented for %r" % self)
+    def trace(self, state: "State") -> Result["State.Target"]:
+        """
+        Traces how this edge behaves in the given execution state.
+
+        Parameters
+        ----------
+        state: State
+            The provided execution state.
+
+        Returns
+        -------
+        Result[State.Target]
+            The target jumpsite.
+        """
+
+        raise NotImplementedError(f"trace() not implemented for {type(self)!r}")
 
     # def lift(self, target: "State.Target") -> "IREdge":
     #     """
@@ -271,6 +277,13 @@ class Jump(Edge):
 
     def __hash__(self) -> int:
         return self._hash
+
+    def trace(self, state: "State") -> Result["State.Target"]:
+        with Result["State.Target"]() as result:
+            steps = self._insn.trace(state).unwrap_into(result)
+            # FIXME: Determine if jump is definite or not.
+            return result.ok(state.target(self, self._target, False, steps))
+        return result
 
     # def trace(self, frame: "Frame", state: "State") -> Optional["State.Target"]:
     #     if frame.thrown is not None:

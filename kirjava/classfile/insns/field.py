@@ -14,14 +14,17 @@ from typing import IO
 from . import Instruction
 from .._struct import *
 from ..desc import parse_field_descriptor
-from ..fmt.constants import ConstInfo, FieldrefInfo, NameAndTypeInfo, UTF8Info
+from ..fmt.constants import ClassInfo, ConstInfo, FieldrefInfo, NameAndTypeInfo, UTF8Info
 from ..._compat import Self
 from ...backend import Result
-from ...model.types import error_t, object_t, top_t, Class, Verification
-# from ...model.types import *
-# from ...model.values.constants import Null
+from ...model.types import (
+    error_t, null_t, object_t, top_t, uninitialized_this_t,
+    Class, Reference, Type, Union, Verification,
+)
+from ...model.values.constants import Null
 
 if typing.TYPE_CHECKING:
+    from ..analysis import State, Step
     from ..fmt import ConstPool
     from ..frame import Frame
 
@@ -98,23 +101,29 @@ class GetStatic(Instruction):
                 frame.pop(self.fieldref.get_type().unwrap_into(result, top_t).verification())
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            type: Type
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                type = top_t
+            else:
+                type = self.fieldref.get_type().unwrap_into(result)
+
+            entry = state.push(self, type).unwrap_into(result)
+            if isinstance(entry.type, Reference):
+                entry.constrain(null_t, self).unwrap()  # Noted as nullable.
+                entry.escapes.add(self)
+
+            return result.ok([state.step(self, (), (entry,))])
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
     #         verifier.report("ref is not a field ref constant", instruction=self)
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     assert isinstance(self.ref.name_and_type_index.info, ConstantNameAndTypeInfo), "invalid name and type info %r" % self.ref.name_and_type_index.info
-    #     field_type = parse_field_descriptor(str(self.ref.name_and_type_index.info.descriptor_index))
-    #
-    #     result = frame.push(field_type, self)
-    #     if isinstance(field_type, Reference):
-    #         result.constrain(null_t, self)
-    #         result.escapes.add(self)
-    #
-    #     return state.step(self, (), result)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     assert isinstance(self.ref.class_index.info, ConstantClassInfo), "invalid class info %r" % self.ref.class_index.info
@@ -197,22 +206,29 @@ class PutStatic(Instruction):
                 frame.push(self.fieldref.get_type().unwrap_into(result, top_t).verification())
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            type: Type
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                type = top_t
+            else:
+                type = self.fieldref.get_type().unwrap_into(result)
+
+            entry, steps = state.pop(self, type).unwrap_into(result)
+            if isinstance(entry.type, Reference):
+                entry.escapes.add(self)
+
+            steps.append(state.step(self, (entry,)))
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
     #         verifier.report("ref is not a field ref constant", instruction=self)
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     assert isinstance(self.ref.name_and_type_index.info, ConstantNameAndTypeInfo), "invalid name and type info %r" % self.ref.name_and_type_index.info
-    #     field_type = parse_field_descriptor(str(self.ref.name_and_type_index.info.descriptor_index))
-    #
-    #     value = frame.pop(field_type, self)
-    #     if isinstance(field_type, Reference):
-    #         value.escapes.add(self)
-    #
-    #     return state.step(self, (value,))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     assert isinstance(self.ref.class_index.info, ConstantClassInfo), "invalid class info %r" % self.ref.class_index.info
@@ -300,30 +316,39 @@ class GetField(Instruction):
                 frame.push(self.fieldref.get_class().unwrap_into(result, object_t))
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            type: Type
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                class_type = object_t
+                type = top_t
+            else:
+                class_type = self.fieldref.get_class().unwrap_into(result)
+                type = self.fieldref.get_type().unwrap_into(result)
+
+            inst, steps = state.pop(self, class_type).unwrap_into(result)
+            if isinstance(inst.value, Null) or inst.type == null_t:
+                _, step = state.throw(self, Class("java/lang/NullPointerException")).unwrap_into(result)
+                step.inputs.append(inst)
+                steps.append(step)
+                return result.ok(steps)
+
+            entry = state.push(self, type).unwrap_into(result)
+            if isinstance(entry.type, Reference):
+                entry.constrain(null_t, self).unwrap()
+                entry.escapes.add(self)
+
+            steps.append(state.step(self, (inst,), (entry,)))
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
     #         verifier.report("ref is not a field ref constant", instruction=self)
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     assert isinstance(self.ref.class_index.info, ConstantClassInfo), "invalid class info %r" % self.ref.class_index.info
-    #     assert isinstance(self.ref.name_and_type_index.info, ConstantNameAndTypeInfo), "invalid name and type info %r" % self.ref.name_and_type_index.info
-    #     class_type = self.ref.class_index.info.unwrap().as_rtype()
-    #     field_type = parse_field_descriptor(str(self.ref.name_and_type_index.info.descriptor_index))
-    #
-    #     instance = frame.pop(class_type, self)
-    #     if isinstance(instance.value, Null) or instance.type is null_t:
-    #         if frame.throw(Class("java/lang/NullPointerException"), self):
-    #             return state.step(self, (instance,))
-    #
-    #     result = frame.push(field_type, self)
-    #     if isinstance(field_type, Reference):
-    #         result.constrain(null_t, self)
-    #         result.escapes.add(self)
-    #
-    #     return state.step(self, (instance,), result)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     assert isinstance(self.ref.class_index.info, ConstantClassInfo), "invalid class info %r" % self.ref.class_index.info
@@ -411,33 +436,40 @@ class PutField(Instruction):
                 frame.push(self.fieldref.get_class().unwrap_into(result, object_t))
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            type: Type
+            if not isinstance(self.fieldref, FieldrefInfo):
+                result.err(TypeError(f"field ref {self.fieldref!s} is not a field ref constant"))
+                class_type = object_t
+                type = top_t
+            else:
+                class_type = self.fieldref.get_class().unwrap_into(result)
+                type = self.fieldref.get_type().unwrap_into(result)
+
+            entry, steps = state.pop(self, type).unwrap_into(result)
+            if isinstance(entry.type, Reference):
+                entry.escapes.add(self)
+
+            # JVM allows you to set field on an uninitializedThis type so long as they are not fields on the supertype, so
+            # we need to account for this here.
+            inst, steps = state.pop(self, Union(class_type, uninitialized_this_t), steps).unwrap_into(result)
+            if isinstance(inst.value, Null) or inst.type == null_t:
+                _, step = state.throw(self, Class("java/lang/NullPointerException")).unwrap_into(result)
+                step.inputs.append(inst)
+                steps.append(step)
+                return result.ok(steps)
+
+            steps.append(state.step(self, (inst,), (entry,)))
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.fieldref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.ref, FieldrefInfo):
     #         verifier.report("ref is not a field ref constant", instruction=self)
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     assert isinstance(self.ref.class_index.info, ConstantClassInfo), "invalid class info %r" % self.ref.class_index.info
-    #     assert isinstance(self.ref.name_and_type_index.info, ConstantNameAndTypeInfo), "invalid name and type info %r" % self.ref.name_and_type_index.info
-    #     class_type = self.ref.class_index.info.unwrap().as_rtype()
-    #     field_type = parse_field_descriptor(str(self.ref.name_and_type_index.info.descriptor_index))
-    #
-    #     value = frame.pop(field_type, self)
-    #     if isinstance(field_type, Reference):
-    #         value.escapes.add(self)
-    #
-    #     instance = frame.pop(reference_t, self)
-    #     if isinstance(instance.value, Null) or instance.type is null_t:
-    #         if frame.throw(Class("java/lang/NullPointerException"), self):
-    #             return frame.step(self, (instance, value))
-    #     # JVM allows you to set field on an uninitializedThis type so long as they are not fields on the supertype, so
-    #     # we need to account for this here.
-    #     elif instance.type is not uninitialized_this_t:
-    #         instance.constrain(class_type, self)
-    #
-    #     return state.step(self, (instance, value))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     assert isinstance(self.ref.class_index.info, ConstantClassInfo), "invalid class info %r" % self.ref.class_index.info

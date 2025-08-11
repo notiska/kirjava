@@ -20,7 +20,7 @@ __all__ = (
 
 import typing
 from copy import deepcopy
-from typing import IO
+from typing import IO, Optional
 
 from . import Instruction
 from .._struct import *
@@ -30,6 +30,7 @@ from ...model.types import error_t, int_t, top_t, Class, Uninitialized
 from ...model.values.constants import Constant, Double, Float, Integer, Long, Null
 
 if typing.TYPE_CHECKING:
+    from ..analysis import State, Step
     from ..fmt import ConstInfo, ConstPool
     from ..frame import Frame
 
@@ -93,11 +94,14 @@ class PushConstant(Instruction):
             frame.pop(top_t).into(result)
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            entry = state.push(self, self.constant).unwrap_into(result)
+            return result.ok([state.step(self, (), (entry,))])
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     return state.step(self, (), frame.push(self.constant, self))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     entry = step.output
@@ -317,21 +321,19 @@ class LoadConstant(Instruction):
             frame.pop(top_t).into(result)
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            constant = self.info.lift().unwrap_into(result)  # FIXME: Fallback if this fails.
+            entry = state.push(self, constant).unwrap_into(result)
+            return result.ok([state.step(self, (), (entry,))])
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, pool.add(self.info))))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not self.info.loadable:
     #         verifier.report("constant is not loadable", instruction=self)
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     metadata = Source.Metadata(self, logger)
-    #     try:
-    #         constant = self.ref.info.unwrap()
-    #     except Exception as error:  # Honestly, a whole bunch of errors could be thrown here.
-    #         metadata.error("%s", error)
-    #         constant = Index(self.ref.index)
-    #     return state.step(self, (), frame.push(constant, self), metadata)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     constant = step.output.value
@@ -462,15 +464,18 @@ class New(Instruction):
             frame.pop(Uninitialized(self)).into(result)
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            entry = state.push(self, Uninitialized(self)).unwrap_into(result)
+            return result.ok([state.step(self, (), (entry,))])
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.classref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
     #         verifier.report("class is not a class constant", instruction=self)
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     return state.step(self, (), frame.push(Uninitialized(self), self))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     class_ = self.class_.unwrap()  # TODO: CP ref, in case this throws.
@@ -527,18 +532,14 @@ class Pop(Instruction):
         frame.push(top_t)
         return Ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            _, steps = state.pop(self, top_t).unwrap_into(result)
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     popped = frame.pop(None, self)
-    #     if popped.hidword or popped.split:  # Looking for an unsplit LoDWord.
-    #         return
-    #     # Note: the copying is really a precaution because this entry may exist in other areas (dup'd on the stack,
-    #     # in locals), and obviously in those areas it's not split, or well it may be, but it's not the same entry.
-    #     entry = frame.stack[-1].copy()
-    #     entry.split = True
-    #     frame.stack[-1] = entry
 
 
 class Pop2(Instruction):
@@ -580,17 +581,15 @@ class Pop2(Instruction):
         frame.push(top_t)
         return Ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            _, steps = state.pop(self, top_t).unwrap_into(result)
+            _, steps = state.pop(self, top_t, steps).unwrap_into(result)
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     frame.pop(None, self)
-    #     popped = frame.pop(None, self)
-    #     if popped.hidword or popped.split:
-    #         return
-    #     entry = frame.stack[-1].copy()
-    #     entry.split = True
-    #     frame.stack[-1] = entry
 
 
 class Dup(Instruction):
@@ -630,17 +629,14 @@ class Dup(Instruction):
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup()
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            step = state.dup(self).unwrap_into(result)
+            return result.ok([step] if step is not None else [])
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     entry = frame.stack[-1]
-    #     if entry.hidword:
-    #         frame.stack.append(entry)
-    #         return
-    #     entry = entry.copy()
-    #     entry.split = True
-    #     frame.stack.append(entry)
 
 
 class DupX1(Instruction):
@@ -680,17 +676,14 @@ class DupX1(Instruction):
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup_x1()
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            step = state.dup_x1(self).unwrap_into(result)
+            return result.ok([step] if step is not None else [])
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     entry = frame.stack[-1]
-    #     if entry.hidword:
-    #         frame.stack.insert(-2, entry)
-    #         return
-    #     entry = entry.copy()
-    #     entry.split = True
-    #     frame.stack.insert(-2, entry)
 
 
 class DupX2(Instruction):
@@ -730,17 +723,14 @@ class DupX2(Instruction):
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup_x2()
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            step = state.dup_x2(self).unwrap_into(result)
+            return result.ok([step] if step is not None else [])
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     entry = frame.stack[-1]
-    #     if entry.hidword:
-    #         frame.stack.insert(-3, entry)
-    #         return
-    #     entry = entry.copy()
-    #     entry.split = True
-    #     frame.stack.insert(-3, entry)
 
 
 class Dup2(Instruction):
@@ -780,23 +770,14 @@ class Dup2(Instruction):
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup2()
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            step = state.dup2(self).unwrap_into(result)
+            return result.ok([step] if step is not None else [])
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     # [a, b] -> [a, b, a]
-    #     #  ^
-    #     # [a, b, a] -> [a, b, a, b]
-    #     #     ^
-    #     entry = frame.stack[-2]
-    #     if entry.hidword:
-    #         frame.stack.append(entry)
-    #         frame.stack.append(frame.stack[-2])
-    #         return
-    #     entry = entry.copy()
-    #     entry.split = True
-    #     frame.stack.append(entry)
-    #     frame.stack.append(frame.stack[-2])
 
 
 class Dup2X1(Instruction):
@@ -836,12 +817,14 @@ class Dup2X1(Instruction):
     def rstep(Self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup2_x1()
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            step = state.dup2_x1(self).unwrap_into(result)
+            return result.ok([step] if step is not None else [])
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     frame.stack.insert(-3, frame.stack[-2])
-    #     frame.stack.insert(-3, frame.stack[-1])
 
 
 class Dup2X2(Instruction):
@@ -881,12 +864,14 @@ class Dup2X2(Instruction):
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return frame.rdup2_x2()
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            step = state.dup2_x2(self).unwrap_into(result)
+            return result.ok([step] if step is not None else [])
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     for entry in frame.stack[-2:]:
-    #         frame.stack.insert(-4, entry.copy())
 
 
 class Swap(Instruction):
@@ -926,19 +911,14 @@ class Swap(Instruction):
     def rstep(self, frame: "Frame") -> Result["Frame"]:
         return frame.rswap()
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            step = state.swap(self).unwrap_into(result)
+            return result.ok([step] if step is not None else [])
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     if frame.stack[-1].type.wide:
-    #         entry = frame.stack[-1].copy()
-    #         entry.split = True
-    #         frame.stack[-1] = entry
-    #     if frame.stack[-2].type.wide:
-    #         entry = frame.stack[-2].copy()
-    #         entry.split = True
-    #         frame.stack[-2] = entry
-    #     frame.stack[-1], frame.stack[-2] = frame.stack[-2], frame.stack[-1]
 
 
 aconst_null = PushConstant.make(0x01, "aconst_null", constant=Null())

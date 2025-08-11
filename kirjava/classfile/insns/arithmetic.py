@@ -26,7 +26,7 @@ from . import Instruction
 from ..._compat import Self
 from ...backend import Result
 from ...model.types import *
-# from ...model.values import Value
+from ...model.values import Value
 # from ...model.values.constants import Integer
 
 if typing.TYPE_CHECKING:
@@ -73,52 +73,42 @@ class BinOp(Instruction):
             frame.push(self.type)
         return result.ok(frame)
 
+    # def trace(self, state: "State") -> Result["State.Step"]:
+    #     with Result["State.Step"]() as result:
+    #         right = state.pop(self.type, self)
+    #         left = state.pop(self.type, self)
+    #
+    #         if left.value is not None and right.value is not None:
+    #             metadata = self.evaluate(state, left.value, right.value)
+    #             if metadata is not None:
+    #                 if state.thrown is not None:
+    #                     return state.step(self, (left, right), None)
+    #                 return state.step(self, (left, right), frame.push(metadata.result or self.type, self), metadata)
+    #         return state.step(self, (left, right), frame.push(self.type, self))
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
 
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     right = frame.pop(self.type, self)
-    #     left = frame.pop(self.type, self)
-    #
-    #     if left.value is not None and right.value is not None:
-    #         metadata = self.evaluate(frame, left.value, right.value)
-    #         if metadata is not None:
-    #             if frame.thrown is not None:
-    #                 return state.step(self, (left, right), None, metadata)
-    #             return state.step(self, (left, right), frame.push(metadata.result or self.type, self), metadata)
-    #     return state.step(self, (left, right), frame.push(self.type, self))
+    def evaluate(self, state: "State", left: Value, right: Value) -> Result[Value | None]:
+        """
+        Evaluates the binary operation with the given left and right values.
 
-    # def evaluate(self, frame: "Frame", left: Value, right: Value) -> Optional["BinOp.Metadata"]:
-    #     """
-    #     Evaluates the binary operation with the given left and right values.
-    #
-    #     Parameters
-    #     ----------
-    #     frame: Frame
-    #         The frame to evaluate this operation in.
-    #     left: Value
-    #         The left operand value.
-    #     right: Value
-    #         The right operand value.
-    #
-    #     Returns
-    #     -------
-    #     BinOp.Metadata | None
-    #         The evaluation metadata, including the resulting value, if applicable.
-    #     """
-    #
-    #     raise NotImplementedError("evaluate() is not implemented for %r" % self)
+        Parameters
+        ----------
+        state: State
+            The current execution state, to evaluate this instruction in.
+        left: Value
+            The left operand value.
+        right: Value
+            The right operand value.
 
-    # class Metadata(Source.Metadata):
-    #
-    #     __slots__ = ("result",)
-    #
-    #     def __init__(self, source: "BinOp", result: Value | None) -> None:
-    #         super().__init__(source, logger)
-    #         self.result = result
-    #
-    #     def __repr__(self) -> str:
-    #         return "<BinOp.Metadata(result=%s)>" % self.result
+        Returns
+        -------
+        Result[Value | None]
+            The valuated value, or `None` if not applicable.
+        """
+
+        raise NotImplementedError(f"evaluate() is not implemented for {type(self)!r}")
 
 
 class Shift(BinOp):
@@ -213,9 +203,6 @@ class Comparison(BinOp):
     #             return state.step(self, (left, right), frame.push(metadata.result or int_t), metadata)
     #
     #     return state.step(self, (left, right), frame.push(int_t, self))
-
-    # def evaluate(self, frame: "Frame", left: Value, right: Value) -> Integer | None:
-    #     raise NotImplementedError("evaluate() is not implemented for %r" % self)
 
 
 class Addition(BinOp):

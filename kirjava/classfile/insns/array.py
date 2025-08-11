@@ -21,8 +21,12 @@ from .._struct import *
 from ..fmt.constants import ClassInfo, ConstInfo
 from ..._compat import Self
 from ...backend import Result
-from ...model.types import *
-# from ...model.values.constants import Integer, Null
+from ...model.types import (  # Naming...
+    array_t, boolean_t, byte_t, char_t, double_t, error_t, float_t, int_t, long_t, null_t, object_t, primitive_t,
+    reference_t, short_t, top_t,
+    Array, Class, Reference, Type, Verification,
+)
+from ...model.values.constants import Integer, Null
 # from ...model.values.objects import Array as ArrayValue
 
 if typing.TYPE_CHECKING:
@@ -80,33 +84,40 @@ class ArrayLoad(Instruction):
             frame.push(int_t)
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            index, steps = state.pop(self, int_t).unwrap_into(result)
+            array, steps = state.pop(self, Array(self.type), steps).unwrap_into(result)
+
+            if isinstance(array.value, Null) or array.type == null_t:
+                result.debug("%s[%s] (null pointer)", array, index)
+                steps = state.throw(
+                    self, (array, index), Class("java/lang/NullPointerException"), steps,
+                ).unwrap_into(result)
+                return result.ok(steps)
+            # FIXME: Array constant propagation.
+            # elif isinstance(index.value, Integer) and isinstance(array.value, ArrayValue) and array.value.sizes:
+            #     size = array.value.sizes[0]
+            #     if isinstance(size, Integer) and index.value >= size:
+            #         if frame.throw(Class("java/lang/ArrayIndexOutOfBoundsException")):
+            #             return state.step(self, (array, index))
+
+            if isinstance(array.type, Array):
+                element = state.push(self, array.type.element).unwrap_into(result)
+                if isinstance(element.type, Reference):
+                    element.constrain(null_t, self)  # More of a hint in this case.
+            elif self.type == reference_t:
+                element = state.push(self, object_t).unwrap_into(result)
+                element.constrain(null_t, self)
+            else:
+                element = state.push(self, self.type).unwrap_into(result)
+
+            steps.append(state.step(self, (array, index), (element,)))
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     index = frame.pop(int_t, self)
-    #     array = frame.pop(Array(self.type), self)
-    #
-    #     if isinstance(array.value, Null) or array.type is null_t:
-    #         frame.throw(Class("java/lang/NullPointerException"), self)
-    #         return state.step(self, (array, index))
-    #     elif isinstance(index.value, Integer) and isinstance(array.value, ArrayValue) and array.value.sizes:
-    #         size = array.value.sizes[0]
-    #         if isinstance(size, Integer) and index.value >= size:
-    #             if frame.throw(Class("java/lang/ArrayIndexOutOfBoundsException")):
-    #                 return state.step(self, (array, index))
-    #
-    #     if isinstance(array.type, Array):
-    #         result = frame.push(array.type.element, self)
-    #         if isinstance(result.type, Reference):
-    #             result.constrain(null_t, self)
-    #     elif self.type is reference_t:
-    #         result = frame.push(object_t, self)
-    #         result.constrain(null_t, self)
-    #     else:
-    #         result = frame.push(self.type, self)
-    #
-    #     return state.step(self, (array, index), result)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     array, index = step.inputs
@@ -165,29 +176,36 @@ class ArrayStore(Instruction):
             frame.push(self.type)
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            element, steps = state.pop(self, self.type).unwrap_into(result)
+            index, steps = state.pop(self, int_t, steps).unwrap_into(result)
+            array, steps = state.pop(self, Array(self.type), steps).unwrap_into(result)
+
+            # TODO: Which is thrown first? Could impact a lot.
+
+            if isinstance(array.value, Null) or array.type == null_t:
+                result.debug("%s[%s] = %s (null pointer)", array, index, element)
+                steps = state.throw(
+                    self, (array, index, element), Class("java/lang/NullPointerException"), steps,
+                ).unwrap_into(result)
+                return result.ok(steps)
+            # FIXME: Array constant propagation.
+            # elif isinstance(index.value, Integer) and isinstance(array.value, ArrayValue) and array.value.sizes:
+            #     size = array.value.sizes[0]
+            #     if isinstance(size, Integer) and index.value >= size:
+            #         if frame.throw(Class("java/lang/ArrayIndexOutOfBoundsException")):
+            #             return state.step(self, (array, index, item))
+
+            if isinstance(array.type, Array):
+                element.hint(array.type.element, self)
+
+            steps.append(state.step(self, (array, index, element)))
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     item = frame.pop(self.type, self)
-    #     index = frame.pop(int_t, self)
-    #     array = frame.pop(Array(self.type), self)
-    #
-    #     # TODO: Which is thrown first? Could impact a lot.
-    #
-    #     if isinstance(array.value, Null) or array.type is null_t:
-    #         if frame.throw(Class("java/lang/NullPointerException"), self):
-    #             return state.step(self, (array, index, item))
-    #     elif isinstance(index.value, Integer) and isinstance(array.value, ArrayValue) and array.value.sizes:
-    #         size = array.value.sizes[0]
-    #         if isinstance(size, Integer) and index.value >= size:
-    #             if frame.throw(Class("java/lang/ArrayIndexOutOfBoundsException")):
-    #                 return state.step(self, (array, index, item))
-    #
-    #     if isinstance(array.type, Array):
-    #         item.hint(array.type.element, self)
-    #
-    #     return state.step(self, (array, index, item))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     array, index, item = step.inputs
@@ -315,31 +333,33 @@ class NewArray(Instruction):
             frame.push(int_t)
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            size, steps = state.pop(self, int_t).unwrap_into(result)
+
+            # FIXME: Array constant propagation.
+            # if size.value is None:
+            array = state.push(self, Array(self.type)).unwrap_into(result)
+            # TODO: We could also check for potential heap allocation limit errors in the future.
+            # elif isinstance(size.value, Integer) and size.value < Integer(0):
+            #     if frame.throw(Class("java/lang/NegativeArraySizeException"), self):
+            #         metadata.debug("size %s (negative array size)", size.value)
+            #         return state.step(self, (size,), None, metadata)
+            #     array = frame.push(array_type, self)
+            # else:
+            #     array = state.push(self, ArrayValue(array_type, (size.value,)))
+            #     result.debug("size %s", size.value)
+
+            steps.append(state.step(self, (size,), (array,)))
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode, self.tag)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if not self.tag in NewArray._FWD_TAGS:
     #         verifier.report("invalid type tag", instruction=self)
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     array_type = Array(self.type)
-    #     size = frame.pop(int_t, self)
-    #
-    #     metadata = Source.Metadata(self, logger)
-    #     if size.value is None:
-    #         array = frame.push(array_type, self)
-    #     # TODO: We could also check for potential heap allocation limit errors in the future.
-    #     elif isinstance(size.value, Integer) and size.value < Integer(0):
-    #         if frame.throw(Class("java/lang/NegativeArraySizeException"), self):
-    #             metadata.debug("size %s (negative array size)", size.value)
-    #             return state.step(self, (size,), None, metadata)
-    #         array = frame.push(array_type, self)
-    #     else:
-    #         array = frame.push(ArrayValue(array_type, (size.value,)), self)
-    #         metadata.debug("size %s", size.value)
-    #
-    #     return state.step(self, (size,), array, metadata)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     variable = codegen.variable(step.output.type)
@@ -419,30 +439,37 @@ class ANewArray(Instruction):
             frame.push(int_t)
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            if not isinstance(self.classref, ClassInfo):
+                result.err(TypeError(f"class ref {self.classref!s} is not a class constant"))
+                array_type = Array(reference_t)
+            else:
+                array_type = Array(self.classref.get_type().unwrap_into(result, reference_t))
+            size, steps = state.pop(self, int_t).unwrap_into(result)
+
+            # FIXME: Array constant propagation.
+            # if size.value is None:
+            array = state.push(self, array_type).unwrap_into(result)
+            # elif isinstance(size.value, Integer) and size.value < Integer(0):
+            #     _, step = frame.throw(self, Class("java/lang/NegativeArraySizeException"))
+            #     step.inputs.append(size)
+            #     result.debug("size %s (negative array size)", size.value)
+            #     return result.ok(state)
+            # else:
+            #     array = frame.push(ArrayValue(array_type, (size.value,)), self)
+            #     result.debug("size %s", size.value)
+
+            steps.append(state.step(self, (size,), (array,)))
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BH(self.opcode, pool.add(self.classref)))
 
     # def verify(self, verifier: "Verifier") -> None:
     #     if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
     #         verifier.report("class is not a class constant", instruction=self)
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     array_type = Array(self.class_.unwrap().as_rtype())
-    #     size = frame.pop(int_t, self)
-    #
-    #     metadata = Source.Metadata(self, logger)
-    #     if size.value is None:
-    #         array = frame.push(array_type, self)
-    #     elif isinstance(size.value, Integer) and size.value < Integer(0):
-    #         if frame.throw(Class("java/lang/NegativeArraySizeException"), self):
-    #             metadata.debug("size %s (negative array size)", size.value)
-    #             return state.step(self, (size,), None, metadata)
-    #         array = frame.push(array_type, self)
-    #     else:
-    #         array = frame.push(ArrayValue(array_type, (size.value,)), self)
-    #         metadata.debug("size %s", size.value)
-    #
-    #     return state.step(self, (size,), array, metadata)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     variable = codegen.variable(step.output.type)
@@ -544,6 +571,43 @@ class MultiANewArray(Instruction):
 
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            if isinstance(self.classref, ClassInfo):
+                array_type = self.classref.get_type().unwrap_into(result)
+                if not isinstance(array_type, Array):
+                    result.err(TypeError(f"class ref {self.classref!s} is not an array type"))
+                    array_type = array_t
+            else:
+                result.err(TypeError(f"class ref {self.classref!s} is not a class constant"))
+                array_type = array_t
+
+            steps: list["Step"] = []
+            # valid = True
+            sizes = []
+            for _ in range(self.dimensions):
+                size, steps = state.pop(self, int_t, steps).unwrap_into(result)
+                sizes.append(size)
+
+                # FIXME: Array constant propagation.
+                # if size.value is not None isinstance(size.value, Integer) and size.value < Integer(0):
+                #     _, step = state.throw(self, Class("java/lang/NegativeArraySizeException")).unwrap_into(result)
+                #     step.inputs.extend(sizes)
+                #     result.debug("size %s (negative array size)", size.value)
+                #     return result.ok(state)
+                # else:
+                #     valid = False
+
+            # if not valid:
+            array = state.push(self, array_type).unwrap_into(result)
+            # else:
+            #     array = state.push(self, ArrayValue(array_type, tuple(size.value for size in reversed(sizes))))
+            #     metadata.debug("size(s) " + ", ".join("%s" for _ in range(len(sizes))), *sizes)
+
+            steps.append(state.step(self, sizes, (array,)))
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BHB(self.opcode, pool.add(self.classref), self.dimensions))
 
@@ -552,34 +616,6 @@ class MultiANewArray(Instruction):
     #         verifier.report("invalid dimensions", instruction=self)
     #     if verifier.check_const_types and not isinstance(self.class_, ClassInfo):
     #         verifier.report("class is not a class constant", instruction=self)
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     array_type = self.class_.unwrap().as_rtype()
-    #     assert isinstance(array_type, Array), "invalid array type %r" % array_type
-    #
-    #     metadata = Source.Metadata(self, logger)
-    #
-    #     valid = True
-    #     sizes = []
-    #     for _ in range(self.dimensions):
-    #         size = frame.pop(int_t, self)
-    #         sizes.append(size)
-    #
-    #         if size.value is not None:
-    #             if isinstance(size.value, Integer) and size.value < Integer(0):
-    #                 if frame.throw(Class("java/lang/NegativeArraySizeException"), self):
-    #                     metadata.debug("size %s (negative array size)", size.value)
-    #                     return state.step(self, tuple(sizes), None, metadata)
-    #         else:
-    #             valid = False
-    #
-    #     if not valid:
-    #         array = frame.push(array_type, self)
-    #     else:
-    #         array = frame.push(ArrayValue(array_type, tuple(size.value for size in reversed(sizes))), self)
-    #         metadata.debug("size(s) " + ", ".join("%s" for _ in range(len(sizes))), *sizes)
-    #
-    #     return state.step(self, tuple(sizes), array, metadata)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     variable = codegen.variable(step.output.type)
@@ -643,26 +679,29 @@ class ArrayLength(Instruction):
             frame.push(array_t)
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            array, steps = state.pop(self, array_t).unwrap_into(result)
+
+            if isinstance(array.value, Null) or array.type == null_t:
+                result.debug("%s.length (null pointer)", array)
+                _, step = state.throw(self, Class("java/lang/NullPointerException")).unwrap_into(result)
+                step.inputs.append(array)
+                steps.append(step)
+                return result.ok(steps)
+            # FIXME: Array constant propagation.
+            # elif isinstance(array.value, ArrayValue) and array.value.sizes:
+            #     length = frame.push(array.value.sizes[0], self)
+            #     metadata.debug("%s.length", array.value)
+            else:
+                length = state.push(self, int_t).unwrap_into(result)
+
+            steps.append(state.step(self, (array,), (length,)))
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     metadata = Source.Metadata(self, logger)
-    #
-    #     array = frame.pop(array_t, self)
-    #
-    #     if isinstance(array.value, Null) or array.type is null_t:
-    #         if frame.throw(Class("java/lang/NullPointerException"), self):
-    #             metadata.debug("%s.length (null pointer)", array)
-    #             return state.step(self, (array,), None, metadata)
-    #         length = frame.push(int_t, self)
-    #     elif isinstance(array.value, ArrayValue) and array.value.sizes:
-    #         length = frame.push(array.value.sizes[0], self)
-    #         metadata.debug("%s.length", array.value)
-    #     else:
-    #         length = frame.push(int_t, self)
-    #
-    #     return state.step(self, (array,), length, metadata)
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     if step.output.value is not None:

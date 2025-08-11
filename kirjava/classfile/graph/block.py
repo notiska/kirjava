@@ -16,8 +16,10 @@ from typing import Iterable, Iterator
 from ..insns import Instruction
 from ..insns.flow import Jump, Switch
 from ..._compat import replace, Self
+from ...backend import Result
 
 if typing.TYPE_CHECKING:
+    from ..analysis import State
     from ...model.types import Class
 
 
@@ -46,8 +48,8 @@ class Block:
         Returns the index of the first occurrence of an instruction in this block.
     count(self, value: Instruction | type[Instruction]) -> int
         Returns the number of occurrences of an instruction in this block.
-    trace(frame: Frame) -> list[Trace.Step]
-        Traces the execution of this block.
+    trace(self, state: State) -> Result[list[State.Step]]
+        Traces all the instructions in this block.
     """
 
     __slots__ = ("_label",)
@@ -152,26 +154,25 @@ class Block:
 
         raise NotImplementedError(f"count() is not implemented for {type(self)!r}")
 
-    # def trace(self, frame: "Frame", state: "State") -> None:
-    #     """
-    #     Traces the execution of this block.
-    #
-    #     Parameters
-    #     ----------
-    #     frame: Frame
-    #         The current frame.
-    #     state: State
-    #         The state to add trace information to.
-    #     """
-    #
-    #     steps = 0
-    #     for instruction in self.insns:
-    #         if instruction.trace(frame, state) is not None:
-    #             steps += 1
-    #         if frame.thrown is not None:
-    #             break
-    #
-    #     logger.debug("Traced %s (%i insns) in %i step(s).", self, len(self.insns), steps)
+    def trace(self, state: "State") -> Result[list["State.Step"]]:
+        """
+        Traces all the instructions in this block.
+
+        Parameters
+        ----------
+        state: State
+            The execution state to trace from.
+        """
+
+        with Result[list["State.Step"]].meta(__name__) as result:
+            steps = []
+            for instruction in self.insns:
+                steps.extend(instruction.trace(state).unwrap_into(result))
+                if state.thrown is not None:
+                    break
+            result.debug("Traced %s (%i insns) in %i step(s).", self, len(self.insns), len(steps))
+            return result.ok(steps)
+        return result
 
 
 class MutableBlock(Block):

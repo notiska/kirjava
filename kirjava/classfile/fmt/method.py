@@ -106,6 +106,14 @@ class MethodInfo(Visitable):
         See `ACC_STRICT`.
     is_synthetic: bool
         See `ACC_SYNTHETIC`.
+    code: Code | None
+        The first code attribute in this method (note that hotspot only reads the
+        first one it finds), or `None` if there are no code attributes.
+    exceptions: Exceptions | None
+        The first exceptions attribute in this method, or `None` if there are none.
+    parameters: MethodParameters | None
+        The first method parameters attribute in this method, or `None` if there are
+        none.
     access: int
         A bitmask indicating the access permission and properties of this method.
     name: ConstInfo
@@ -331,6 +339,29 @@ class MethodInfo(Visitable):
             self.access |= MethodInfo.ACC_SYNTHETIC
         else:
             self.access &= ~MethodInfo.ACC_SYNTHETIC
+
+    # TODO: More comprehensive.
+
+    @property
+    def code(self) -> Optional["Code"]:
+        for attribute in self.attributes:
+            if isinstance(attribute, Code):
+                return attribute
+        return None
+
+    @property
+    def exceptions(self) -> Optional["Exceptions"]:
+        for attribute in self.attributes:
+            if isinstance(attribute, Exceptions):
+                return attribute
+        return None
+
+    @property
+    def parameters(self) -> Optional["MethodParameters"]:
+        for attribute in self.attributes:
+            if isinstance(attribute, MethodParameters):
+                return attribute
+        return None
 
     def __init__(
         self, access: int, name: ConstInfo, descriptor: ConstInfo,

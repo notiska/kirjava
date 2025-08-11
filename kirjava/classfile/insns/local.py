@@ -35,6 +35,7 @@ from ...model.types import *
 # from ...model.values.constants import *
 
 if typing.TYPE_CHECKING:
+    from ..analysis import State, Step
     from ..fmt import ConstPool
     from ..frame import Frame
 
@@ -90,11 +91,16 @@ class LoadLocal(Instruction):
             frame.rload(self.index, item)
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            entry, steps = state.load(self, self.index, self.type).unwrap_into(result)
+            state.push(self, entry).unwrap_into(result)
+            # TODO: Step? Not that anything actually happens here but the info would be nice to record.
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     return state.step(self, (), frame.push(frame.load(self.index, self.type, self), self))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     ...
@@ -150,19 +156,15 @@ class StoreLocal(Instruction):
             frame.push(self.type)
         return result.ok(frame)
 
+    def trace(self, state: "State") -> Result[list["Step"]]:
+        with Result[list["Step"]]() as result:
+            entry, steps = state.pop(self, self.type).unwrap_into(result)
+            state.store(self, self.index, entry).unwrap_into(result)
+            return result.ok(steps)
+        return result
+
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(bytes((self.opcode,)))
-
-    # def trace(self, frame: "Frame", state: "State") -> "State.Step":
-    #     # astore instructions have special cases for return addresses, which need to be accounted for.
-    #     if self.type is reference_t:
-    #         entry = frame.pop(None, self)
-    #         if not isinstance(entry.type, ReturnAddress):
-    #             entry = entry.constrain(reference_t, self)
-    #     else:
-    #         entry = frame.pop(self.type, self)
-    #     frame.store(self.index, entry, self)
-    #     return state.step(self, (entry,))
 
     # def lift(self, step: "State.Step", codegen: "CodeGen") -> None:
     #     ...
@@ -336,6 +338,12 @@ class IInc(Instruction):
             frame.rstore(self.index, int_t)  # These two operations in a row are sort of redundant, admittedly.
             frame.rload(self.index, int_t)
         return result.ok(frame)
+
+    # def trace(self, state: "State") -> Result[list["Step"]]:
+    #     with Result[list["Step"]]() as result:
+    #         entry, steps = state.load(self, self.index, int_t).unwrap_into(result)
+    #         ...
+    #     return result
 
     def write(self, stream: IO[bytes], pool: "ConstPool") -> None:
         stream.write(pack_BBb(self.opcode, self.index, self.value))

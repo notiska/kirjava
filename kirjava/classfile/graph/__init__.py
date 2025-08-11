@@ -14,6 +14,7 @@ from copy import copy, deepcopy
 from typing import Iterable, Iterator
 
 from . import block, edge
+from ._asm import assemble
 from ._dis import disassemble
 from .block import *
 from .edge import *
@@ -52,6 +53,8 @@ class Graph:
     disassemble(method: MethodInfo, cf: ClassFile | None = None) -> Result[Self]
         Disassembled a method into a JVM control flow graph.
 
+    assemble(self, method: MethodInfo, cf: ClassFile | None = None) -> Result[Self]
+        Assembles this JVM control flow graph into the provided method.
     predecessors(self, block: int | Block) -> tuple[Edge, ...]
         Returns all the predecessor edges of a block.
     successors(self, block: int | Block) -> tuple[Edge, ...]
@@ -184,6 +187,20 @@ class Graph:
 
     def __len__(self) -> int:
         return len(self._blocks)
+
+    def assemble(self, method: MethodInfo, cf: ClassFile | None = None) -> Result[Self]:
+        """
+        Assembles this JVM control flow graph into the provided method.
+
+        Parameters
+        ----------
+        method: MethodInfo
+            The method to assemble to.
+        cf: ClassFile | None
+            The class file containing the method.
+        """
+
+        return assemble(self, method, cf)
 
     def predecessors(self, block: int | Block) -> tuple[Edge, ...]:
         """
